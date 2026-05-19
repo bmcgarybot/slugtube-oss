@@ -1,0 +1,4 @@
+# Force LF line endings on shell scripts (Windows git converts to CRLF which breaks bash in Docker)
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+Dockerfile text eol=lf
