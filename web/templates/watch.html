@@ -45,6 +45,9 @@
         {% if next_video %}
         <a href="/watch/{{ next_video.id }}" class="btn btn-sm">⏭️ Next</a>
         {% endif %}
+        <form method="POST" action="/delete/{{ video.id }}" style="display:inline; margin-left:auto;">
+            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('🗑️ Delete this video permanently?\n\n{{ video.title }}\n\nThis will remove the video file, thumbnail, subtitles, and database entry. This cannot be undone.')">🗑️ Delete</button>
+        </form>
     </div>
 
     {% if video.description %}

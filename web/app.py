@@ -810,6 +810,66 @@ def watch(video_id):
     )
 
 
+@app.route("/delete/<video_id>", methods=["POST"])
+def delete_video(video_id):
+    """Delete a video file, its metadata, thumbnail, subtitles, and DB entry."""
+    from indexer import get_video, get_db
+
+    video = get_video(video_id)
+    if not video:
+        abort(404)
+
+    channel_name = video.get('channel_name', '')
+
+    # Delete the video file
+    try:
+        if video.get('file_path') and os.path.isfile(video['file_path']):
+            os.remove(video['file_path'])
+    except Exception as e:
+        print(f"Error deleting video file: {e}")
+
+    # Delete thumbnail
+    try:
+        if video.get('thumbnail_path') and os.path.isfile(video['thumbnail_path']):
+            os.remove(video['thumbnail_path'])
+    except Exception as e:
+        print(f"Error deleting thumbnail: {e}")
+
+    # Delete subtitle file
+    try:
+        if video.get('subtitle_path') and os.path.isfile(video['subtitle_path']):
+            os.remove(video['subtitle_path'])
+    except Exception as e:
+        print(f"Error deleting subtitle: {e}")
+
+    # Delete NFO file (same name, .nfo extension)
+    try:
+        if video.get('file_path'):
+            nfo_path = os.path.splitext(video['file_path'])[0] + '.nfo'
+            if os.path.isfile(nfo_path):
+                os.remove(nfo_path)
+    except Exception as e:
+        print(f"Error deleting NFO: {e}")
+
+    # Remove from database
+    try:
+        conn = get_db()
+        conn.execute("DELETE FROM watch_history WHERE video_id = ?", (video_id,))
+        conn.execute("DELETE FROM videos WHERE id = ?", (video_id,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error removing from DB: {e}")
+
+    # Remove from archive so it doesn't get re-downloaded
+    # (keep it in archive — user intentionally deleted it)
+
+    # Redirect back to channel
+    if channel_name:
+        return redirect(url_for("channel_view", channel_name=channel_name))
+    return redirect(url_for("library"))
+
+
 # ── Media Serving ──────────────────────────────────
 
 @app.route("/media/video/<video_id>")
