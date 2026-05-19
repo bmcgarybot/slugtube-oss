@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title_extra %} — Watch History{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📜 Watch History</h1>
+    <div class="btn-group">
+        <a href="/history?filter=all" class="btn {% if filter_type == 'all' %}btn-blue{% endif %}">All ({{ stats.total }})</a>
+        <a href="/history?filter=in-progress" class="btn {% if filter_type == 'in-progress' %}btn-purple{% endif %}">▶️ In Progress ({{ stats.in_progress }})</a>
+        <a href="/history?filter=watched" class="btn {% if filter_type == 'watched' %}btn-primary{% endif %}">✅ Watched ({{ stats.watched }})</a>
+        {% if stats.total > 0 %}
+        <form method="POST" action="/history/clear" style="display:inline">
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Clear all watch history? This cannot be undone.')">🗑️ Clear History</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+{% if videos %}
+<div class="video-grid">
+    {% for v in videos %}
+    <a href="/watch/{{ v.id }}" class="video-card">
+        <div class="video-thumb">
+            {% if v.thumbnail_path %}
+            <img src="/media/thumb/{{ v.id }}" alt="{{ v.title }}" loading="lazy">
+            {% else %}
+            <div class="thumb-placeholder">🎬</div>
+            {% endif %}
+            <span class="video-duration">{{ format_duration(v.duration) }}</span>
+            {% if v.watched %}<span class="watched-badge">✓</span>{% endif %}
+            {% if v.position_seconds and not v.watched and v.duration %}
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ (v.position_seconds / v.duration * 100) | round(1) }}%"></div>
+            </div>
+            {% endif %}
+        </div>
+        <div class="video-info">
+            <div class="video-title">{{ v.title }}</div>
+            <div class="video-meta">{{ v.channel_name }} · {{ v.upload_date or 'Unknown' }}</div>
+            <div class="video-meta">
+                {% if v.watched %}
+                    ✅ Watched
+                {% elif v.position_seconds and v.duration %}
+                    ▶️ {{ format_duration(v.position_seconds | int) }} / {{ format_duration(v.duration) }}
+                {% endif %}
+                · {{ v.last_watched[:16] if v.last_watched else '' }}
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div style="text-align:center; color: var(--text-dimmer); padding: 80px 20px;">
+    {% if filter_type == 'in-progress' %}
+        <p style="font-size: 48px; margin-bottom: 16px;">▶️</p>
+        <p style="font-size: 16px;">No videos in progress</p>
+        <p style="font-size: 13px; margin-top: 8px;">Start watching something and your progress will be saved automatically.</p>
+    {% elif filter_type == 'watched' %}
+        <p style="font-size: 48px; margin-bottom: 16px;">✅</p>
+        <p style="font-size: 16px;">No watched videos yet</p>
+        <p style="font-size: 13px; margin-top: 8px;">Videos are marked as watched when they finish playing or you click "Mark Watched".</p>
+    {% else %}
+        <p style="font-size: 48px; margin-bottom: 16px;">📜</p>
+        <p style="font-size: 16px;">No watch history yet</p>
+        <p style="font-size: 13px; margin-top: 8px;">Go to the <a href="/library" style="color:var(--accent);">Library</a> and start watching!</p>
+    {% endif %}
+</div>
+{% endif %}
+
+<style>
+    .video-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 16px;
+    }
+    .video-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        text-decoration: none;
+        color: var(--text);
+        transition: all 0.2s;
+    }
+    .video-card:hover {
+        border-color: var(--accent);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    .video-thumb {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16/9;
+        overflow: hidden;
+        background: var(--bg);
+    }
+    .video-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .thumb-placeholder { width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:36px;background:var(--bg-hover); }
+    .video-duration { position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.8);color:white;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;font-family:monospace; }
+    .watched-badge { position:absolute;top:6px;right:6px;background:var(--green);color:white;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold; }
+    .progress-bar { position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(255,255,255,0.2); }
+    .progress-fill { height:100%;background:var(--red);border-radius:0 2px 2px 0; }
+    .video-info { padding: 10px 12px; }
+    .video-title { font-weight:600;font-size:13px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
+    .video-meta { font-size:11px;color:var(--text-dim);margin-top:4px; }
+</style>
+{% endblock %}

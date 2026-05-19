@@ -137,8 +137,32 @@ player.addEventListener('timeupdate', () => {
                 position: player.currentTime,
                 watched: false
             })
-        });
+        }).then(r => r.json()).then(d => {
+            if (d.error) console.warn('Watch progress save failed:', d.error);
+        }).catch(e => console.warn('Watch progress error:', e));
     }
+});
+
+// Also save on pause and before leaving
+player.addEventListener('pause', () => {
+    fetch('/api/watch-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            video_id: videoId,
+            position: player.currentTime,
+            watched: false
+        })
+    }).catch(() => {});
+});
+
+window.addEventListener('beforeunload', () => {
+    // Use sendBeacon for reliable save on page close
+    navigator.sendBeacon('/api/watch-progress', JSON.stringify({
+        video_id: videoId,
+        position: player.currentTime || 0,
+        watched: false
+    }));
 });
 
 // Mark as watched when video ends

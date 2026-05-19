@@ -604,6 +604,19 @@ def clear_logs():
     return redirect(url_for("logs"))
 
 
+@app.route("/history/clear", methods=["POST"])
+def clear_history():
+    try:
+        from indexer import get_db
+        conn = get_db()
+        conn.execute("DELETE FROM watch_history")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error clearing history: {e}")
+    return redirect(url_for("watch_history"))
+
+
 @app.route("/api/status")
 def api_status():
     return jsonify({**jobs, "paused": is_paused()})
@@ -678,6 +691,64 @@ def library_recent():
         page="library",
         videos=videos,
         index_status=get_index_status(),
+        job=jobs,
+        paused=is_paused(),
+    )
+
+
+@app.route("/history")
+def watch_history():
+    from indexer import get_db
+
+    filter_type = request.args.get("filter", "all")  # all, watched, in-progress
+
+    conn = get_db()
+    if filter_type == "watched":
+        rows = conn.execute("""
+            SELECT v.*, wh.position_seconds, wh.watched, wh.last_watched
+            FROM watch_history wh
+            JOIN videos v ON v.id = wh.video_id
+            WHERE wh.watched = 1
+            ORDER BY wh.last_watched DESC
+            LIMIT 200
+        """).fetchall()
+    elif filter_type == "in-progress":
+        rows = conn.execute("""
+            SELECT v.*, wh.position_seconds, wh.watched, wh.last_watched
+            FROM watch_history wh
+            JOIN videos v ON v.id = wh.video_id
+            WHERE wh.watched = 0 AND wh.position_seconds > 5
+            ORDER BY wh.last_watched DESC
+            LIMIT 200
+        """).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT v.*, wh.position_seconds, wh.watched, wh.last_watched
+            FROM watch_history wh
+            JOIN videos v ON v.id = wh.video_id
+            ORDER BY wh.last_watched DESC
+            LIMIT 200
+        """).fetchall()
+    conn.close()
+
+    videos = [dict(r) for r in rows]
+
+    # Stats
+    conn2 = get_db()
+    stats = {}
+    r = conn2.execute("SELECT COUNT(*) as c FROM watch_history WHERE watched = 1").fetchone()
+    stats['watched'] = r['c'] or 0
+    r = conn2.execute("SELECT COUNT(*) as c FROM watch_history WHERE watched = 0 AND position_seconds > 5").fetchone()
+    stats['in_progress'] = r['c'] or 0
+    r = conn2.execute("SELECT COUNT(*) as c FROM watch_history").fetchone()
+    stats['total'] = r['c'] or 0
+    conn2.close()
+
+    return render_template("history.html",
+        page="history",
+        videos=videos,
+        filter_type=filter_type,
+        stats=stats,
         job=jobs,
         paused=is_paused(),
     )
@@ -844,18 +915,21 @@ def serve_subtitle(video_id):
 @app.route("/api/watch-progress", methods=["POST"])
 def api_watch_progress():
     """Save watch progress/status."""
-    from indexer import update_watch_progress
+    try:
+        from indexer import update_watch_progress
 
-    data = request.get_json()
-    if not data or 'video_id' not in data:
-        return jsonify({"error": "missing video_id"}), 400
+        data = request.get_json(force=True, silent=True)
+        if not data or 'video_id' not in data:
+            return jsonify({"error": "missing video_id"}), 400
 
-    update_watch_progress(
-        video_id=data['video_id'],
-        position_seconds=data.get('position', 0),
-        watched=data.get('watched', False)
-    )
-    return jsonify({"ok": True})
+        update_watch_progress(
+            video_id=data['video_id'],
+            position_seconds=data.get('position', 0),
+            watched=data.get('watched', False)
+        )
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/reindex", methods=["POST"])
