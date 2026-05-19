@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title_extra %} — Logs{% endblock %}
+{% block content %}
+
+<div class="page-header">
+    <h1>📋 Logs</h1>
+    <div class="btn-group">
+        <span style="color: var(--text-dim); font-size: 13px; align-self: center;">Log file: {% if log_size >= 1048576 %}{{ "%.1f"|format(log_size / 1048576) }} MB{% elif log_size >= 1024 %}{{ "%.1f"|format(log_size / 1024) }} KB{% else %}{{ log_size }} B{% endif %}</span>
+        <form method="POST" action="/logs/clear" style="display:inline">
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Clear all logs? This cannot be undone.')">🗑️ Clear Logs</button>
+        </form>
+        <a href="/logs?lines=50" class="btn {% if lines == 50 %}btn-blue{% endif %}">50</a>
+        <a href="/logs?lines=150" class="btn {% if lines == 150 %}btn-blue{% endif %}">150</a>
+        <a href="/logs?lines=500" class="btn {% if lines == 500 %}btn-blue{% endif %}">500</a>
+        <a href="/logs?lines=1000" class="btn {% if lines == 1000 %}btn-blue{% endif %}">1000</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body" style="padding: 0;">
+        {% if log_text and log_text.strip() %}
+        <pre id="logbox">{{ log_text }}</pre>
+        {% else %}
+        <div style="text-align:center; color: var(--text-dimmer); padding: 48px;">
+            No logs yet. Logs appear after the first download run.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    const box = document.getElementById('logbox');
+    if (box) box.scrollTop = box.scrollHeight;
+</script>
+
+{% endblock %}

@@ -1,0 +1,38 @@
+# ============================================================
+# SlugTube - Homemade PinchFlat (With Dashboard)
+# ============================================================
+# Start:   docker compose up -d
+# Stop:    docker compose down
+# Logs:    docker compose logs -f
+# Web UI:  http://localhost:5000
+# Manual:  docker compose exec slugtube /app/scripts/download.sh --full
+# ============================================================
+
+services:
+  slugtube:
+    build: .
+    container_name: slugtube
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      # Schedule: fast check every 6 hours, full index weekly (Sunday 3AM)
+      - FAST_CRON=0 */6 * * *
+      - FULL_CRON=0 3 * * 0
+      - UPDATE_CRON=0 1 * * *
+      - TZ=America/Phoenix
+      - PUID=1000
+      - PGID=1000
+    volumes:
+      # Your media library (existing PinchFlat downloads)
+      - G:/Youtube/shows:/shows
+      # SlugTube config, cookies, archive, logs, database
+      - C:/SlugTube:/config
+      # Live code mount — update files without rebuilding
+      - C:/SlugTube/app/scripts:/app/scripts
+      - C:/SlugTube/app/web:/app/web
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

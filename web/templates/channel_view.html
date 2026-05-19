@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title_extra %} — {{ channel_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display:flex;align-items:center;gap:16px;">
+        <a href="/library" style="color:var(--text-dim);text-decoration:none;font-size:20px;">←</a>
+        <h1>{{ channel_name }}</h1>
+        <span class="badge badge-blue">{{ total }} videos</span>
+    </div>
+    <div class="btn-group">
+        <select id="sort-select" class="btn btn-sm" onchange="updateSort()" style="cursor:pointer;">
+            <option value="newest" {% if sort=='newest' %}selected{% endif %}>📅 Newest</option>
+            <option value="oldest" {% if sort=='oldest' %}selected{% endif %}>📅 Oldest</option>
+            <option value="title" {% if sort=='title' %}selected{% endif %}>🔤 Title A-Z</option>
+            <option value="largest" {% if sort=='largest' %}selected{% endif %}>📦 Largest</option>
+            <option value="smallest" {% if sort=='smallest' %}selected{% endif %}>📦 Smallest</option>
+            <option value="longest" {% if sort=='longest' %}selected{% endif %}>⏱️ Longest</option>
+            <option value="shortest" {% if sort=='shortest' %}selected{% endif %}>⏱️ Shortest</option>
+            <option value="most_viewed" {% if sort=='most_viewed' %}selected{% endif %}>👁️ Most Viewed</option>
+        </select>
+    </div>
+</div>
+
+<div class="video-grid">
+    {% for v in videos %}
+    <a href="/watch/{{ v.id }}" class="video-card">
+        <div class="video-thumb">
+            {% if v.thumbnail_path %}
+            <img src="/media/thumb/{{ v.id }}" alt="{{ v.title }}" loading="lazy">
+            {% else %}
+            <div class="thumb-placeholder">🎬</div>
+            {% endif %}
+            <span class="video-duration">{{ format_duration(v.duration) }}</span>
+            {% if v.watched %}<span class="watched-badge">✓</span>{% endif %}
+            {% if v.position_seconds and not v.watched %}
+            <div class="progress-bar"><div class="progress-fill" style="width:{{ (v.position_seconds / (v.duration or 1) * 100) | round }}%"></div></div>
+            {% endif %}
+        </div>
+        <div class="video-info">
+            <div class="video-title">{{ v.title }}</div>
+            <div class="video-meta">{{ v.upload_date or 'Unknown date' }} · {{ format_size(v.file_size) }}</div>
+            {% if v.view_count %}<div class="video-meta">{{ "{:,}".format(v.view_count) }} views</div>{% endif %}
+        </div>
+    </a>
+    {% endfor %}
+</div>
+
+{% if total > videos|length %}
+<div style="text-align:center;padding:24px;">
+    {% if offset > 0 %}
+    <a href="/library/{{ channel_name | urlencode }}?sort={{ sort }}&offset={{ offset - limit }}" class="btn btn-sm">← Previous</a>
+    {% endif %}
+    {% if offset + limit < total %}
+    <a href="/library/{{ channel_name | urlencode }}?sort={{ sort }}&offset={{ offset + limit }}" class="btn btn-sm">Next →</a>
+    {% endif %}
+    <div style="color:var(--text-dimmer);font-size:12px;margin-top:8px;">
+        Showing {{ offset + 1 }}-{{ [offset + limit, total] | min }} of {{ total }}
+    </div>
+</div>
+{% endif %}
+
+<style>
+    .video-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 16px;
+    }
+    .video-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        text-decoration: none;
+        color: var(--text);
+        transition: all 0.2s;
+    }
+    .video-card:hover {
+        border-color: var(--accent);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    .video-thumb {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16/9;
+        overflow: hidden;
+        background: var(--bg);
+    }
+    .video-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .thumb-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        background: var(--bg-hover);
+    }
+    .video-duration {
+        position: absolute;
+        bottom: 6px;
+        right: 6px;
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        font-family: monospace;
+    }
+    .watched-badge {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        background: var(--green);
+        color: white;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .progress-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: rgba(255,255,255,0.2);
+    }
+    .progress-fill {
+        height: 100%;
+        background: var(--red);
+        border-radius: 0 2px 2px 0;
+    }
+    .video-info {
+        padding: 10px 12px;
+    }
+    .video-title {
+        font-weight: 600;
+        font-size: 13px;
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .video-meta {
+        font-size: 11px;
+        color: var(--text-dim);
+        margin-top: 4px;
+    }
+</style>
+
+<script>
+function updateSort() {
+    const sort = document.getElementById('sort-select').value;
+    window.location.href = '/library/{{ channel_name | urlencode }}?sort=' + sort;
+}
+</script>
+{% endblock %}

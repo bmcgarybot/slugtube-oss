@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title_extra %} — Cookies{% endblock %}
+{% block content %}
+
+<div class="page-header">
+    <h1>🍪 Cookies</h1>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        YouTube Cookies
+        <span style="font-size: 12px; color: var(--text-dim); font-weight: 400;">
+            {% if cookie_exists %}
+                ✅ Cookie file found ({{ cookie_size }}) — Last modified: {{ cookie_modified }}
+            {% else %}
+                ⚠️ No cookie file found
+            {% endif %}
+        </span>
+    </div>
+    <div class="card-body">
+        <p style="font-size: 13px; color: var(--text-dim); margin-bottom: 16px;">
+            YouTube requires cookies for age-restricted content and to avoid rate limiting.
+            Paste your cookies below in <strong>Netscape format</strong> (from a browser extension like
+            <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank">"Get cookies.txt LOCALLY"</a>).
+        </p>
+
+        <form method="POST" action="/cookies/save">
+            <textarea name="cookies" rows="18" style="
+                width: 100%;
+                background: var(--bg);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 14px;
+                color: var(--text);
+                font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+                font-size: 12px;
+                line-height: 1.5;
+                resize: vertical;
+            " placeholder="# Netscape HTTP Cookie File
+# Paste your YouTube cookies here...
+.youtube.com	TRUE	/	TRUE	0	LOGIN_INFO	...
+.youtube.com	TRUE	/	FALSE	0	SID	...">{{ cookie_content }}</textarea>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+                <span style="font-size: 12px; color: var(--text-dimmer);">
+                    Saved to: C:\SlugTube\Cookie\cookies.txt
+                </span>
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-primary">💾 Save Cookies</button>
+                </div>
+            </div>
+        </form>
+
+        {% if save_status == 'success' %}
+        <div style="margin-top: 12px; padding: 10px 16px; background: rgba(63,185,80,0.08); border: 1px solid rgba(63,185,80,0.3); border-radius: 6px; color: var(--green); font-size: 13px;">
+            ✅ Cookies saved successfully!
+        </div>
+        {% elif save_status == 'error' %}
+        <div style="margin-top: 12px; padding: 10px 16px; background: rgba(248,81,73,0.08); border: 1px solid rgba(248,81,73,0.3); border-radius: 6px; color: var(--red); font-size: 13px;">
+            ❌ Error saving cookies. Check the logs.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">📖 How to Get Cookies</div>
+    <div class="card-body" style="font-size: 13px; color: var(--text-dim); line-height: 1.8;">
+        <ol style="padding-left: 20px;">
+            <li>Install <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank">Get cookies.txt LOCALLY</a> in Chrome/Edge</li>
+            <li>Go to <a href="https://www.youtube.com" target="_blank">youtube.com</a> and make sure you're logged in</li>
+            <li>Click the extension icon → <strong>Export</strong></li>
+            <li>Copy the entire text</li>
+            <li>Paste it in the box above and hit <strong>Save Cookies</strong></li>
+        </ol>
+        <p style="margin-top: 12px; color: var(--orange);">
+            ⚠️ Cookies expire periodically. If downloads start failing, refresh them with the steps above.
+        </p>
+    </div>
+</div>
+
+{% endblock %}

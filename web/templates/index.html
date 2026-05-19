@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐌 SlugTube</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e1e1e1;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 24px 32px;
+            border-bottom: 2px solid #0f3460;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .header h1 { font-size: 28px; }
+        .header h1 span { font-size: 32px; }
+        .header-stats {
+            display: flex;
+            gap: 24px;
+        }
+        .stat-box {
+            text-align: center;
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+        }
+        .stat-box .number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #53d769;
+        }
+        .stat-box .label {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+        }
+
+        /* Main layout */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        /* Cards */
+        .card {
+            background: #1a1a1a;
+            border-radius: 12px;
+            border: 1px solid #2a2a2a;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .card-header {
+            padding: 16px 20px;
+            background: #222;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .card-header h2 { font-size: 18px; }
+        .card-body { padding: 20px; }
+
+        /* Job status */
+        .job-banner {
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-weight: 500;
+        }
+        .job-idle { background: rgba(255,255,255,0.05); color: #888; }
+        .job-running {
+            background: rgba(83, 215, 105, 0.1);
+            color: #53d769;
+            animation: pulse 2s infinite;
+        }
+        .job-done { background: rgba(83, 215, 105, 0.1); color: #53d769; }
+        .job-error { background: rgba(255, 69, 58, 0.1); color: #ff453a; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn-fast {
+            background: #0a84ff;
+            color: white;
+        }
+        .btn-full {
+            background: #5e5ce6;
+            color: white;
+        }
+        .btn-danger {
+            background: transparent;
+            color: #ff453a;
+            border: 1px solid #ff453a;
+            padding: 4px 10px;
+            font-size: 12px;
+        }
+        .btn-add {
+            background: #30d158;
+            color: white;
+        }
+        .btn-group { display: flex; gap: 8px; }
+
+        /* Channel list */
+        .channel-list {
+            list-style: none;
+        }
+        .channel-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #222;
+        }
+        .channel-item:last-child { border-bottom: none; }
+        .channel-url {
+            color: #0a84ff;
+            text-decoration: none;
+            font-size: 14px;
+            word-break: break-all;
+        }
+        .channel-section {
+            font-size: 12px;
+            color: #666;
+            padding: 12px 0 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        /* Add channel form */
+        .add-form {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .add-form input {
+            flex: 1;
+            padding: 10px 14px;
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #e1e1e1;
+            font-size: 14px;
+        }
+        .add-form input::placeholder { color: #555; }
+        .add-form input:focus {
+            outline: none;
+            border-color: #0a84ff;
+        }
+
+        /* Log link */
+        .log-link {
+            color: #0a84ff;
+            text-decoration: none;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #444;
+            font-size: 12px;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .header { flex-direction: column; gap: 12px; }
+            .header-stats { justify-content: center; }
+            .btn-group { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1><span>🐌</span> SlugTube</h1>
+    <div class="header-stats">
+        <div class="stat-box">
+            <div class="number">{{ channel_count }}</div>
+            <div class="label">Channels</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">{{ video_count | default(0) }}</div>
+            <div class="label">Videos</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">{{ archive_count }}</div>
+            <div class="label">Archived</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">v{{ ytdlp_version }}</div>
+            <div class="label">yt-dlp</div>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+
+    <!-- Job Status -->
+    <div class="job-banner job-{{ job.status }}">
+        {% if job.status == 'idle' %}
+            ⏸️ Idle — waiting for next scheduled check
+        {% elif job.status == 'running' %}
+            🔄 {{ job.mode | capitalize }} download running (started {{ job.started }})...
+        {% elif job.status == 'done' %}
+            ✅ Last {{ job.mode }} download completed
+        {% elif job.status == 'error' %}
+            ❌ Error: {{ job.log[:200] }}
+        {% endif %}
+    </div>
+
+    <!-- Controls -->
+    <div class="card">
+        <div class="card-header">
+            <h2>⚡ Controls</h2>
+            <a href="/logs" class="log-link">📋 View Logs</a>
+        </div>
+        <div class="card-body">
+            <div class="btn-group">
+                <form method="POST" action="/run/fast" style="display:inline">
+                    <button type="submit" class="btn btn-fast" {% if job.status == 'running' %}disabled{% endif %}>
+                        ⚡ Fast Check (Recent 50)
+                    </button>
+                </form>
+                <form method="POST" action="/run/full" style="display:inline">
+                    <button type="submit" class="btn btn-full" {% if job.status == 'running' %}disabled{% endif %}>
+                        📚 Full Index (All Videos)
+                    </button>
+                </form>
+            </div>
+            <p style="margin-top:12px; color:#666; font-size:13px">
+                Fast checks every 6 hours • Full index Sundays 3 AM • yt-dlp updates daily
+            </p>
+        </div>
+    </div>
+
+    <!-- Channels -->
+    <div class="card">
+        <div class="card-header">
+            <h2>📺 Channels ({{ channel_count }})</h2>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="/add" class="add-form">
+                <input type="url" name="url" placeholder="https://www.youtube.com/@ChannelName/videos" required>
+                <button type="submit" class="btn btn-add">+ Add</button>
+            </form>
+
+            <ul class="channel-list" style="margin-top:16px">
+                {% set ns = namespace(current_section='') %}
+                {% for ch in channels %}
+                    {% if ch.section != ns.current_section %}
+                        {% set ns.current_section = ch.section %}
+                        <li class="channel-section">{{ ch.section }}</li>
+                    {% endif %}
+                    <li class="channel-item">
+                        <a href="{{ ch.url }}" target="_blank" class="channel-url">{{ ch.url }}</a>
+                        <form method="POST" action="/remove" style="display:inline">
+                            <input type="hidden" name="url" value="{{ ch.url }}">
+                            <button type="submit" class="btn btn-danger" onclick="return confirm('Remove this channel?')">✕</button>
+                        </form>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+</div>
+
+<div class="footer">
+    🐌 SlugTube — Built by Obsidian Slug • No UI that breaks, just UI that works
+</div>
+
+<!-- Auto-refresh when a job is running -->
+{% if job.status == 'running' %}
+<script>setTimeout(() => location.reload(), 10000);</script>
+{% endif %}
+
+</body>
+</html>

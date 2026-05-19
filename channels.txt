@@ -1,0 +1,101 @@
+# ============================================================
+# SlugTube Channels — Pinned Folder Names
+# ============================================================
+# Format: URL|FolderName
+# The folder name is locked — yt-dlp will always use it,
+# regardless of what YouTube returns as the display name.
+# ============================================================
+
+# --- Horror / Creepypasta / Paranormal ---
+https://www.youtube.com/@chillingtalesfordarknights/videos|Chilling Tales for Dark Nights
+https://www.youtube.com/@ClancyPasta/videos|ClancyPasta
+https://www.youtube.com/@CreepsMcPasta/videos|Creeps McPasta
+https://www.youtube.com/@CreepyGhostStories/videos|Creepy Ghost Stories
+https://www.youtube.com/@CreepyPastaJr/videos|CreepyPasta JR
+https://www.youtube.com/@Darksomnium/videos|Dark Somnium
+https://www.youtube.com/@DarknessPrevails/videos|Darkness Prevails
+https://www.youtube.com/@DrCreepen/videos|Dr Creepen
+https://www.youtube.com/@FearDear/videos|Fear Dear
+https://www.youtube.com/@HauntTV/videos|Haunt TV
+https://www.youtube.com/@LetsReadPodcast/videos|Lets Read!
+https://www.youtube.com/@LighthouseHorror/videos|Lighthouse Horror
+https://www.youtube.com/@MortisMedia/videos|Mortis Media
+https://www.youtube.com/@MrCreepyPasta/videos|Mr Creepypasta
+https://www.youtube.com/@MrCreeps/videos|Mr. Creeps
+https://www.youtube.com/@OperationInsomnia/videos|Operation Insomnia
+https://www.youtube.com/@RavenReads/videos|Raven Reads
+https://www.youtube.com/@RomNex/videos|RomNex
+https://www.youtube.com/@swampdweller/videos|Swamp Dweller
+https://www.youtube.com/@TheTapeLibrary/videos|The Tape Library
+https://www.youtube.com/@TheVolgun/videos|The Volgun
+https://www.youtube.com/@UNIT522/videos|Unit 522
+https://www.youtube.com/@Viidith22/videos|VLidith 22
+https://www.youtube.com/@StillnessStories-rx5wc/videos|Beyond the Veil
+
+# --- Playlists: Horror ---
+https://youtube.com/playlist?list=PL1mDIUltQoqKxlNTFa2VDL637VnxsbNzA|A ouija Board is Never a good Idea Urmaker
+https://youtube.com/playlist?list=PLNSWS5qF9_qTsBKRm4KY53_3oSQ1L9y6I|Haunt Tv Paranormal Survivor Playlist
+
+# --- True Crime / Crime ---
+https://www.youtube.com/@AbsoluteCrime/videos|Absolute Crime
+https://www.youtube.com/@CrimeUpCloseITVS/videos|Crime Up Close
+https://www.youtube.com/@FilmRiseTrueCrime/videos|FilmRise True Crime
+https://www.youtube.com/@TrueCrimeCentral/videos|True Crime Central
+
+# --- Documentaries / Nature / Science ---
+https://www.youtube.com/@BestDoc/videos|Best Documentary Channel
+https://www.youtube.com/@FreeDocumentary/videos|Free Documentary
+https://www.youtube.com/@FreeDocumentaryNature/videos|Free Documentary Nature
+https://www.youtube.com/@JavaDiscover/videos|Java Discover Documentaries
+https://www.youtube.com/@NatGeoAnimals/videos|Nat Geo Animals
+https://www.youtube.com/@NatGeo/videos|National Geographic
+https://www.youtube.com/@NaturesTemper/videos|Natures Temper
+https://www.youtube.com/@OnlyHumanDocs/videos|Only Human Documentaries
+https://www.youtube.com/@RealStories/videos|Real Stories
+https://www.youtube.com/@ShowMeTheWorld/videos|Show Me the World
+https://youtube.com/playlist?list=PLt_h-HAMwfEn0-5zTDKEAyezCX0uvLICi|Nova PBS Full Documentaries
+
+# --- Health / Mindset / Tapping / Hypnotherapy ---
+https://www.youtube.com/@TenPercentHappier/videos|10 Percent Happier
+https://www.youtube.com/@hubermanlab/videos|Huberman Lab
+https://www.youtube.com/@AztraumaOrg/videos|Arizona Trauma Institute
+https://www.youtube.com/@dom.the.hypnotist/videos|Dom The Hypnotist
+https://www.youtube.com/@DrPetaStapleton/videos|Dr Peta Stapleton
+https://www.youtube.com/@EftuniverseEFT/videos|EFT Universe
+https://www.youtube.com/@TheTappingSolutionChannel/videos|The Tapping Solution
+https://www.youtube.com/@DaveAspreyBPR/videos|Dave Asprey
+
+# --- Business / Entrepreneurship ---
+https://www.youtube.com/@bigthink/videos|Big Think
+https://www.youtube.com/@CEOEntrepreneur/videos|CEO Entrepreneur
+https://www.youtube.com/@MasterKeySociety/videos|Master Key Society
+https://www.youtube.com/@ArlansYourFirstMillion/videos|Arlan Hamilton
+https://www.youtube.com/@charliemofficial/videos|Charlie Morgan
+https://www.youtube.com/@CodieSanchezCT/videos|Codie Sanchez
+https://www.youtube.com/@TheDiaryOfACEO/videos|Diary of a CEO
+https://www.youtube.com/@ChrisWillx/videos|Chris Williamson
+https://www.youtube.com/@DeepDivewithAliAbdaal/videos|Deep Dive with Ali AbdaAL
+
+# --- Animation / Comedy ---
+https://www.youtube.com/@sickanimation/videos|Sick Animation
+https://www.youtube.com/@MeatCanyon/videos|Meat Canyon
+https://www.youtube.com/@ADHD/videos|Animation Domination High Def
+https://www.youtube.com/@dropout/videos|Dropout
+https://www.youtube.com/@FelixColgrave/videos|Felix Colgrave
+https://www.youtube.com/@DungeonSoup/videos|Dungeon Soup
+https://www.youtube.com/@Devenrod/videos|Deven Rodriguez
+
+# --- Playlists: Comedy / Animation ---
+https://youtube.com/playlist?list=PLA3D67612B92CD08B|College Humor
+https://youtube.com/playlist?list=PLXStUELwePSdan9WxCfFqSjRwI2iHXwhA|Pound House
+https://youtube.com/playlist?list=PLsXShNJY8udpXJH8nQ1JInJ4E3VQW18fd|Hommer
+
+# --- Other ---
+https://www.youtube.com/@CalebRalston/videos|Caleb Ralston
+https://www.youtube.com/@derikfay/videos|Derik Fay
+https://www.youtube.com/@DinaLu|Dina Lu
+https://www.youtube.com/@ericamallett/videos|Theory of One
+https://www.youtube.com/@crashcourse/playlists|Crash Course Channel
+
+# --- Playlists: Other ---
+https://www.youtube.com/playlist?list=PLAzrgbu8gEMIIK3r4Se1dOZWSZzUSadfZ|Hot Ones
