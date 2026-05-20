@@ -156,10 +156,12 @@ def get_channels():
                     elif "/c/" in url:
                         name = url.split("/c/")[1].split("/")[0]
                     elif "playlist?list=" in url:
-                        name = "Playlist: " + url.split("list=")[1][:12] + "..."
+                        name = url.split("list=")[1][:20]
                     elif "/channel/" in url:
-                        name = url.split("/channel/")[1].split("/")[0][:16] + "..."
-                    channels.append({"url": url, "name": name, "section": current_section})
+                        name = url.split("/channel/")[1].split("/")[0][:20]
+                    # Clean up URL-encoded names
+                    name = name.replace("%20", " ").replace("+", " ")
+                    channels.append({"url": url, "name": name, "section": current_section, "type": "channel"})
     except FileNotFoundError:
         pass
     return channels
@@ -431,14 +433,16 @@ def dashboard():
 @app.route("/channels")
 def channels():
     channels_list = get_channels()
-    channel_stats = get_channel_stats()
+    from indexer import get_all_channels, get_index_status
+    idx_channels = get_all_channels()
+    idx_status = get_index_status()
     return render_template("channels.html",
         page="channels",
         channels=channels_list,
-        channel_stats=sorted(channel_stats, key=lambda c: c["name"].lower()),
+        channel_stats=idx_channels,
         job=jobs,
         paused=is_paused(),
-        scanning=_stats_cache["scanning"] or (not _stats_cache["data"] and _stats_cache["updated"] == 0),
+        scanning=idx_status.get('scanning', False),
     )
 
 

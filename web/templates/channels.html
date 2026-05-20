@@ -27,7 +27,6 @@
                 <tr>
                     <th>Channel</th>
                     <th style="text-align:center">Videos</th>
-                    <th style="text-align:center">Seasons</th>
                     <th style="text-align:right">Size</th>
                     <th style="text-align:center">NFO</th>
                     <th style="text-align:center">Art</th>
@@ -38,9 +37,8 @@
                 {% for ch in channel_stats %}
                 <tr>
                     <td class="channel-name">{{ ch.name }}</td>
-                    <td style="text-align:center"><span class="badge badge-green">{{ ch.videos }}</span></td>
-                    <td style="text-align:center"><span class="badge badge-dim">{{ ch.season_count }}</span></td>
-                    <td style="text-align:right; color: var(--text-dim);">{{ ch.size_gb }} GB</td>
+                    <td style="text-align:center"><span class="badge badge-green">{{ ch.video_count }}</span></td>
+                    <td style="text-align:right; color: var(--text-dim);">{{ "%.1f"|format((ch.total_size_bytes or 0) / 1073741824) }} GB</td>
                     <td style="text-align:center">{% if ch.has_nfo %}✅{% else %}—{% endif %}</td>
                     <td style="text-align:center">{% if ch.has_poster %}🖼️{% else %}—{% endif %}</td>
                     <td style="text-align:center">
@@ -67,7 +65,7 @@
 <!-- Subscribed Channels (from channels.txt) -->
 <div class="card">
     <div class="card-header">
-        📋 Subscribed — {{ channels | length }} channels in channels.txt
+        📋 Subscribed — {{ channels | length }} channels
     </div>
     <div class="card-body" style="padding: 0;">
         <table>
