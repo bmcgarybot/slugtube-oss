@@ -696,6 +696,14 @@ def run(mode):
 def run_single():
     url = request.form.get("url", "").strip()
     folder_name = request.form.get("folder", "").strip() or None
+
+    # If no folder from form, look it up in channels.txt
+    if not folder_name and url:
+        for ch in get_channels():
+            if ch["url"] == url:
+                folder_name = ch["name"]
+                break
+
     if not url:
         return "Missing URL", 400
     if jobs["status"] == "running":
