@@ -25,7 +25,7 @@
         </p>
 
         <form method="POST" action="/cookies/save">
-            <textarea name="cookies" rows="18" style="
+            <textarea name="cookies" id="cookie-editor" rows="18" style="
                 width: 100%;
                 background: var(--bg);
                 border: 1px solid var(--border);
@@ -36,10 +36,110 @@
                 font-size: 12px;
                 line-height: 1.5;
                 resize: vertical;
+                white-space: pre;
+                tab-size: 8;
+                -moz-tab-size: 8;
+                overflow-x: auto;
             " placeholder="# Netscape HTTP Cookie File
 # Paste your YouTube cookies here...
 .youtube.com	TRUE	/	TRUE	0	LOGIN_INFO	...
 .youtube.com	TRUE	/	FALSE	0	SID	...">{{ cookie_content }}</textarea>
+            <div id="cookie-warning" style="display:none; margin-top: 8px; padding: 10px 16px; background: rgba(227,179,65,0.08); border: 1px solid rgba(227,179,65,0.3); border-radius: 6px; color: var(--orange); font-size: 13px;">
+                ⚠️ <strong>Tab characters missing!</strong> Cookie files require tab-separated values. Your paste may have converted tabs to spaces. Trying to auto-fix...
+            </div>
+            <script>
+            (function() {
+                var editor = document.getElementById('cookie-editor');
+                var warning = document.getElementById('cookie-warning');
+
+                // Validate cookie format — check for tabs in non-comment lines
+                function validateCookies(text) {
+                    var lines = text.split('\n');
+                    var dataLines = 0, tabLines = 0;
+                    for (var i = 0; i < lines.length; i++) {
+                        var line = lines[i].trim();
+                        if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+                        dataLines++;
+                        if (line.indexOf('\t') !== -1) tabLines++;
+                    }
+                    return dataLines === 0 || tabLines > dataLines * 0.5;
+                }
+
+                // Try to fix space-mangled cookies by converting multi-spaces to tabs
+                function fixCookieTabs(text) {
+                    var lines = text.split('\n');
+                    var fixed = [];
+                    for (var i = 0; i < lines.length; i++) {
+                        var line = lines[i];
+                        if (!line.trim() || line.trim().startsWith('#') || line.trim().startsWith('//')) {
+                            fixed.push(line);
+                            continue;
+                        }
+                        // If line has no tabs but has spaces, try to fix it
+                        if (line.indexOf('\t') === -1 && line.indexOf('  ') !== -1) {
+                            // Cookie lines have 7 fields: domain, flag, path, secure, expiry, name, value
+                            // Replace runs of 2+ spaces with a single tab
+                            line = line.replace(/ {2,}/g, '\t');
+                        }
+                        fixed.push(line);
+                    }
+                    return fixed.join('\n');
+                }
+
+                // Intercept paste — preserve raw clipboard text with tabs
+                editor.addEventListener('paste', function(e) {
+                    var clipboardData = e.clipboardData || window.clipboardData;
+                    if (!clipboardData) return;
+
+                    var pasted = clipboardData.getData('text/plain');
+                    if (!pasted) return;
+
+                    e.preventDefault();
+
+                    // Check if tabs are present in pasted content
+                    if (!validateCookies(pasted)) {
+                        // Tabs were stripped — try to fix
+                        pasted = fixCookieTabs(pasted);
+                        warning.style.display = 'block';
+                        setTimeout(function() {
+                            if (validateCookies(editor.value)) {
+                                warning.innerHTML = '✅ <strong>Auto-fixed!</strong> Tab characters were restored. Please verify the content looks correct before saving.';
+                                warning.style.borderColor = 'rgba(63,185,80,0.3)';
+                                warning.style.background = 'rgba(63,185,80,0.08)';
+                                warning.style.color = 'var(--green)';
+                            }
+                        }, 100);
+                    } else {
+                        warning.style.display = 'none';
+                    }
+
+                    // Insert at cursor position (or replace selection)
+                    var start = editor.selectionStart;
+                    var end = editor.selectionEnd;
+                    var val = editor.value;
+                    editor.value = val.substring(0, start) + pasted + val.substring(end);
+                    editor.selectionStart = editor.selectionEnd = start + pasted.length;
+                });
+
+                // Allow Tab key to insert actual tab character
+                editor.addEventListener('keydown', function(e) {
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        var start = editor.selectionStart;
+                        var end = editor.selectionEnd;
+                        var val = editor.value;
+                        editor.value = val.substring(0, start) + '\t' + val.substring(end);
+                        editor.selectionStart = editor.selectionEnd = start + 1;
+                    }
+                });
+
+                // Validate on load
+                if (editor.value && !validateCookies(editor.value)) {
+                    warning.style.display = 'block';
+                    warning.innerHTML = '⚠️ <strong>Warning:</strong> Current cookie file may have corrupted tab formatting. Re-paste fresh cookies or upload the file directly.';
+                }
+            })();
+            </script>
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
                 <span style="font-size: 12px; color: var(--text-dimmer);">

@@ -510,6 +510,28 @@ def save_cookies():
     cookie_path = "/config/Cookie/cookies.txt"
     try:
         os.makedirs(os.path.dirname(cookie_path), exist_ok=True)
+
+        # Fix tab-mangling: browsers often convert tabs to spaces in textareas
+        fixed_lines = []
+        tabs_fixed = 0
+        for line in cookie_text.split("\n"):
+            stripped = line.strip()
+            # Skip comments and blank lines
+            if not stripped or stripped.startswith("#") or stripped.startswith("//"):
+                fixed_lines.append(line)
+                continue
+            # If a data line has no tabs but has multi-spaces, fix it
+            if "\t" not in line and "  " in line:
+                # Cookie format: domain flag path secure expiry name value (7 fields)
+                line = re.sub(r" {2,}", "\t", line)
+                tabs_fixed += 1
+            fixed_lines.append(line)
+
+        cookie_text = "\n".join(fixed_lines)
+
+        if tabs_fixed > 0:
+            print(f"🍪 Cookie save: auto-fixed tabs in {tabs_fixed} lines (browser mangled them)")
+
         with open(cookie_path, "w") as f:
             f.write(cookie_text)
         return redirect("/cookies?saved=success")
