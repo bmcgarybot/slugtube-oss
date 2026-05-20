@@ -123,17 +123,14 @@ def init_db():
             channel_name TEXT NOT NULL,
             title TEXT NOT NULL,
             video_count INTEGER DEFAULT 0,
-            updated_at TEXT,
-            FOREIGN KEY (channel_name) REFERENCES channels(name)
+            updated_at TEXT
         );
 
         CREATE TABLE IF NOT EXISTS video_playlists (
             video_id TEXT NOT NULL,
             playlist_id TEXT NOT NULL,
             playlist_index INTEGER DEFAULT 0,
-            PRIMARY KEY (video_id, playlist_id),
-            FOREIGN KEY (video_id) REFERENCES videos(id),
-            FOREIGN KEY (playlist_id) REFERENCES playlists(id)
+            PRIMARY KEY (video_id, playlist_id)
         );
 
         CREATE INDEX IF NOT EXISTS idx_video_playlists_playlist ON video_playlists(playlist_id);
@@ -595,8 +592,7 @@ def run_index(force=False):
                     ch_elapsed = time.time() - ch_start
                     total_videos += vcount
                     total_channels += 1
-                    if ch_elapsed > 2:
-                        log(f"  [{i}/{num_dirs}] ✅ {channel_dir.name}: {vcount} videos ({ch_elapsed:.1f}s)")
+                    log(f"  [{i}/{num_dirs}] ✅ {channel_dir.name}: {vcount} videos ({ch_elapsed:.1f}s)")
                     # Commit per channel so data is visible immediately
                     conn.commit()
                 except Exception as e:
