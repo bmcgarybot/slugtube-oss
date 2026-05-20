@@ -118,7 +118,6 @@ if [ "$MODE" = "--single" ] && [ -n "$SINGLE_URL" ]; then
         --retry-sleep 30
         --no-overwrites
         --windows-filenames
-        --extractor-args "youtube:player_client=web"
     )
 
     if [ "$EMBED_SUBS" = "true" ]; then
@@ -206,7 +205,6 @@ YT_OPTS=(
     --retry-sleep 30
     --no-overwrites
     --windows-filenames
-    --extractor-args "youtube:player_client=web"
 )
 
 # ── Conditional options based on config ──
