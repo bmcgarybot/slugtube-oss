@@ -400,12 +400,30 @@ def run_download(mode):
     jobs["mode"] = mode
     jobs["started"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             ["/app/scripts/download.sh", f"--{mode}"],
-            capture_output=True, text=True, timeout=14400
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
         )
-        jobs["log"] = result.stdout[-3000:] if result.stdout else "No output"
-        jobs["status"] = "done"
+
+        log_lines = []
+        log_file = open(LOG_FILE, "a") if LOG_FILE else None
+        for line in proc.stdout:
+            line = line.rstrip('\n')
+            log_lines.append(line)
+            if len(log_lines) > 200:
+                log_lines = log_lines[-200:]
+            jobs["log"] = '\n'.join(log_lines)
+            if log_file:
+                log_file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} [download] {line}\n")
+                log_file.flush()
+
+        proc.wait()
+        if log_file:
+            log_file.close()
+
+        jobs["status"] = "done" if proc.returncode == 0 else "error"
         state = load_state()
         state[f"last_{mode}"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         save_state(state)
@@ -415,9 +433,6 @@ def run_download(mode):
             start_background_index()
         except:
             pass
-    except subprocess.TimeoutExpired:
-        jobs["status"] = "timeout"
-        jobs["log"] = "Job timed out after 4 hours"
     except Exception as e:
         jobs["status"] = "error"
         jobs["log"] = str(e)
