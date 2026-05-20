@@ -340,8 +340,28 @@ def run_single_channel(url, folder_name=None):
             cmd,
             capture_output=True, text=True, timeout=14400
         )
-        jobs["log"] = result.stdout[-3000:] if result.stdout else "No output"
-        jobs["status"] = "done"
+        # Combine stdout + stderr (yt-dlp puts progress/errors on stderr)
+        combined = (result.stdout or "") + (result.stderr or "")
+        jobs["log"] = combined[-5000:] if combined else "No output"
+        jobs["status"] = "done" if result.returncode == 0 else "error"
+
+        # Also write to log file so it shows on the Logs page
+        try:
+            os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+            with open(LOG_FILE, "a") as f:
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                f.write(f"\n{ts} [download] 🐌 Single channel download: {url}\n")
+                if folder_name:
+                    f.write(f"{ts} [download] 📁 Folder: {folder_name}\n")
+                # Write last 2000 chars of combined output to log
+                log_tail = combined[-2000:] if combined else "No output"
+                for line in log_tail.splitlines():
+                    f.write(f"{ts} [download] {line}\n")
+                status = "✅ Done" if result.returncode == 0 else f"❌ Error (exit {result.returncode})"
+                f.write(f"{ts} [download] {status}\n")
+        except Exception:
+            pass
+
         # Trigger re-index after downloads complete
         try:
             from indexer import start_background_index
