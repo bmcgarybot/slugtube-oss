@@ -79,8 +79,8 @@ esac
 if [ "$MODE" = "--single" ] && [ -n "$SINGLE_URL" ]; then
     # Check for --folder argument
     FOLDER_OVERRIDE=""
-    if [ "$3" = "--folder" ] && [ -n "$4" ]; then
-        FOLDER_OVERRIDE="$4"
+    if [ "${3:-}" = "--folder" ] && [ -n "${4:-}" ]; then
+        FOLDER_OVERRIDE="${4}"
     fi
 
     echo ""
