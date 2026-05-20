@@ -149,16 +149,23 @@ def get_channels():
                 elif line.startswith("#") or line.strip() == "":
                     continue
                 else:
-                    url = line.strip()
-                    name = url
-                    if "/@" in url:
-                        name = url.split("/@")[1].split("/")[0]
-                    elif "/c/" in url:
-                        name = url.split("/c/")[1].split("/")[0]
-                    elif "playlist?list=" in url:
-                        name = url.split("list=")[1][:20]
-                    elif "/channel/" in url:
-                        name = url.split("/channel/")[1].split("/")[0][:20]
+                    raw = line.strip()
+                    # Handle pipe separator: URL|DisplayName
+                    if "|" in raw:
+                        url, name = raw.split("|", 1)
+                        url = url.strip()
+                        name = name.strip()
+                    else:
+                        url = raw
+                        name = url
+                        if "/@" in url:
+                            name = url.split("/@")[1].split("/")[0]
+                        elif "/c/" in url:
+                            name = url.split("/c/")[1].split("/")[0]
+                        elif "playlist?list=" in url:
+                            name = url.split("list=")[1][:20]
+                        elif "/channel/" in url:
+                            name = url.split("/channel/")[1].split("/")[0][:20]
                     # Clean up URL-encoded names
                     name = name.replace("%20", " ").replace("+", " ")
                     channels.append({"url": url, "name": name, "section": current_section, "type": "channel"})
