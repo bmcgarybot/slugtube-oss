@@ -77,15 +77,31 @@ esac
 
 # ── Single channel mode ──
 if [ "$MODE" = "--single" ] && [ -n "$SINGLE_URL" ]; then
+    # Check for --folder argument
+    FOLDER_OVERRIDE=""
+    if [ "$3" = "--folder" ] && [ -n "$4" ]; then
+        FOLDER_OVERRIDE="$4"
+    fi
+
     echo ""
     echo "============================================"
     echo " 🐌 SlugTube Single Channel — $(date)"
     echo " URL: $SINGLE_URL"
+    if [ -n "$FOLDER_OVERRIDE" ]; then
+        echo " Folder: $FOLDER_OVERRIDE"
+    fi
     echo "============================================"
+
+    # Build output template — use folder override if set, otherwise %(channel)s
+    if [ -n "$FOLDER_OVERRIDE" ]; then
+        OUTPUT_TEMPLATE="${OUTPUT_DIR}/${FOLDER_OVERRIDE}/Season %(upload_date>%Y,release_date>%Y,modified_date>%Y)s/s%(upload_date>%Y,release_date>%Y,modified_date>%Y)se%(upload_date,release_date,modified_date)s - %(title).150s [%(id)s].%(ext)s"
+    else
+        OUTPUT_TEMPLATE="${OUTPUT_DIR}/%(channel)s/Season %(upload_date>%Y,release_date>%Y,modified_date>%Y)s/s%(upload_date>%Y,release_date>%Y,modified_date>%Y)se%(upload_date,release_date,modified_date)s - %(title).150s [%(id)s].%(ext)s"
+    fi
 
     # Build yt-dlp options for single channel (same as full, no playlist-end)
     YT_OPTS=(
-        -o "${OUTPUT_DIR}/%(channel)s/Season %(upload_date>%Y,release_date>%Y,modified_date>%Y)s/s%(upload_date>%Y,release_date>%Y,modified_date>%Y)se%(upload_date,release_date,modified_date)s - %(title).150s [%(id)s].%(ext)s"
+        -o "$OUTPUT_TEMPLATE"
         --download-archive "$ARCHIVE_FILE"
         --cookies "$COOKIES_FILE"
         -f "bestvideo[height<=${HEIGHT_LIMIT}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=${HEIGHT_LIMIT}]+bestaudio/best[height<=${HEIGHT_LIMIT}]/best"

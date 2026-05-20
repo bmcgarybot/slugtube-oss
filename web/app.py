@@ -322,7 +322,7 @@ def check_cookie_health():
         return {"status": "missing", "message": f"Error reading cookies: {e}", "age_days": 0, "expired_count": 0, "total_count": 0}
 
 
-def run_single_channel(url):
+def run_single_channel(url, folder_name=None):
     """Download a single channel (full, no playlist-end limit)."""
     if is_paused():
         jobs["status"] = "paused"
@@ -333,8 +333,11 @@ def run_single_channel(url):
     jobs["mode"] = "single"
     jobs["started"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
+        cmd = ["/app/scripts/download.sh", "--single", url]
+        if folder_name:
+            cmd.extend(["--folder", folder_name])
         result = subprocess.run(
-            ["/app/scripts/download.sh", "--single", url],
+            cmd,
             capture_output=True, text=True, timeout=14400
         )
         jobs["log"] = result.stdout[-3000:] if result.stdout else "No output"
@@ -636,13 +639,14 @@ def run(mode):
 @app.route("/run/single", methods=["POST"])
 def run_single():
     url = request.form.get("url", "").strip()
+    folder_name = request.form.get("folder", "").strip() or None
     if not url:
         return "Missing URL", 400
     if jobs["status"] == "running":
         return redirect(request.referrer or url_for("channels"))
     if is_paused():
         set_paused(False)
-    thread = threading.Thread(target=run_single_channel, args=(url,), daemon=True)
+    thread = threading.Thread(target=run_single_channel, args=(url, folder_name), daemon=True)
     thread.start()
     return redirect(request.referrer or url_for("channels"))
 
