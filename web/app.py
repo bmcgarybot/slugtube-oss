@@ -396,20 +396,25 @@ def run_update():
 def dashboard():
     channels = get_channels()
     archive_count = count_lines(ARCHIVE_FILE)
-    channel_stats = get_channel_stats()
     disk_usage = get_disk_usage()
     state = load_state()
-    total_videos = sum(c["videos"] for c in channel_stats)
     config = load_config()
-
     cookie_health = check_cookie_health()
+
+    # Use the indexer database for stats (same source as Library page)
+    from indexer import get_library_stats, get_all_channels, get_index_status
+    idx_stats = get_library_stats()
+    idx_channels = get_all_channels()
+    idx_status = get_index_status()
+    total_videos = idx_stats.get('total_videos', 0)
+    top_channels = sorted(idx_channels, key=lambda c: c.get('video_count', 0), reverse=True)[:10]
 
     return render_template("dashboard.html",
         page="dashboard",
         channel_count=len(channels),
         archive_count=archive_count,
         total_videos=total_videos,
-        library_count=len(channel_stats),
+        library_count=idx_stats.get('total_channels', 0),
         disk_usage=disk_usage,
         ytdlp_version=get_ytdlp_version(),
         job=jobs,
@@ -417,8 +422,8 @@ def dashboard():
         paused=is_paused(),
         config=config,
         recent=get_recent_downloads(15),
-        top_channels=sorted(channel_stats, key=lambda c: c["videos"], reverse=True)[:10],
-        scanning=_stats_cache["scanning"] or (not _stats_cache["data"] and _stats_cache["updated"] == 0),
+        top_channels=top_channels,
+        scanning=idx_status.get('scanning', False),
         cookie_health=cookie_health,
     )
 

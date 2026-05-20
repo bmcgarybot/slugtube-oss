@@ -85,8 +85,8 @@
                     {% for ch in top_channels %}
                     <tr>
                         <td class="channel-name">{{ ch.name }}</td>
-                        <td style="text-align:right"><span class="badge badge-green">{{ ch.videos }}</span></td>
-                        <td style="text-align:right; color: var(--text-dim);">{{ ch.size_gb }} GB</td>
+                        <td style="text-align:right"><span class="badge badge-green">{{ ch.video_count or ch.get('videos', 0) }}</span></td>
+                        <td style="text-align:right; color: var(--text-dim);">{{ "%.1f"|format((ch.total_size_bytes or 0) / 1073741824) }} GB</td>
                     </tr>
                     {% endfor %}
                     {% if not top_channels %}
