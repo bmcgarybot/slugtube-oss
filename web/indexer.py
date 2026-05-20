@@ -788,12 +788,14 @@ def get_library_stats():
 
 
 def get_channel_playlists(channel_name):
-    """Get all playlists for a channel, ordered by title."""
+    """Get all playlists for a channel, ordered by title.
+    Filters out generic 'uploads' playlists (title ending with ' - Videos').
+    """
     conn = get_db()
     rows = conn.execute("""
         SELECT id, channel_name, title, video_count, updated_at
         FROM playlists
-        WHERE channel_name = ?
+        WHERE channel_name = ? AND title NOT LIKE '% - Videos'
         ORDER BY title COLLATE NOCASE
     """, (channel_name,)).fetchall()
     conn.close()
