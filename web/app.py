@@ -344,6 +344,8 @@ def run_single_channel(url, folder_name=None):
 
         with open(LOG_FILE, "a") as logf:
             logf.write(f"\n{ts} [download] 🐌 Single channel download: {url}\n")
+            logf.write(f"{ts} [download] [DEBUG] folder_name={folder_name!r}\n")
+            logf.write(f"{ts} [download] [DEBUG] cmd={cmd!r}\n")
             if folder_name:
                 logf.write(f"{ts} [download] 📁 Folder: {folder_name}\n")
             logf.flush()

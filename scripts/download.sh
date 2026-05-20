@@ -77,6 +77,10 @@ esac
 
 # ── Single channel mode ──
 if [ "$MODE" = "--single" ] && [ -n "$SINGLE_URL" ]; then
+    # Debug: show exactly what arguments were received
+    echo "[DEBUG] All arguments: $@"
+    echo "[DEBUG] \$1=$1  \$2=$2  \$3=${3:-EMPTY}  \$4=${4:-EMPTY}"
+
     # Check for --folder argument
     FOLDER_OVERRIDE=""
     if [ "${3:-}" = "--folder" ] && [ -n "${4:-}" ]; then
@@ -87,9 +91,7 @@ if [ "$MODE" = "--single" ] && [ -n "$SINGLE_URL" ]; then
     echo "============================================"
     echo " 🐌 SlugTube Single Channel — $(date)"
     echo " URL: $SINGLE_URL"
-    if [ -n "$FOLDER_OVERRIDE" ]; then
-        echo " Folder: $FOLDER_OVERRIDE"
-    fi
+    echo " Folder: ${FOLDER_OVERRIDE:-NOT SET (will use %(channel)s)}"
     echo "============================================"
 
     # Build output template — use folder override if set, otherwise %(channel)s
@@ -116,6 +118,7 @@ if [ "$MODE" = "--single" ] && [ -n "$SINGLE_URL" ]; then
         --retry-sleep 30
         --no-overwrites
         --windows-filenames
+        --extractor-args "youtube:player_client=web"
     )
 
     if [ "$EMBED_SUBS" = "true" ]; then
@@ -203,6 +206,7 @@ YT_OPTS=(
     --retry-sleep 30
     --no-overwrites
     --windows-filenames
+    --extractor-args "youtube:player_client=web"
 )
 
 # ── Conditional options based on config ──
