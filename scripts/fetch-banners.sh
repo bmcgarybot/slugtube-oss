@@ -1,8 +1,7 @@
 #!/bin/bash
-# Fetch YouTube channel banner images for all subscribed channels
-# Saves as banner.jpg in each channel's directory under /shows/
+# Fetch YouTube channel banner images using metadata from existing videos
+# Reads channel_url from .info.json files already on disk — no URL matching needed
 
-CHANNELS_FILE="/config/channels.txt"
 SHOWS_DIR="/shows"
 COOKIE_FILE="/config/Cookie/cookies.txt"
 LOG="/config/logs/slugtube.log"
@@ -11,26 +10,20 @@ log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [banners] $1" | tee -a "$LOG"; }
 
 log "Starting banner fetch..."
 
+COOKIE_ARGS=""
+if [ -f "$COOKIE_FILE" ]; then
+    COOKIE_ARGS="--cookies $COOKIE_FILE"
+fi
+
 count=0
 skipped=0
 failed=0
+total=0
 
-while IFS= read -r line; do
-    # Skip comments and empty lines
-    [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
-
-    url="$line"
-
-    # Extract channel name (same logic as app.py)
-    if [[ "$url" == *"/@"* ]]; then
-        name=$(echo "$url" | sed 's|.*/@||' | sed 's|/.*||')
-    elif [[ "$url" == *"/c/"* ]]; then
-        name=$(echo "$url" | sed 's|.*/c/||' | sed 's|/.*||')
-    else
-        continue  # Skip playlists and channel IDs for banners
-    fi
-
-    channel_dir="$SHOWS_DIR/$name"
+for channel_dir in "$SHOWS_DIR"/*/; do
+    [ ! -d "$channel_dir" ] && continue
+    channel_name=$(basename "$channel_dir")
+    total=$((total + 1))
 
     # Skip if banner already exists
     if [ -f "$channel_dir/banner.jpg" ]; then
@@ -38,34 +31,45 @@ while IFS= read -r line; do
         continue
     fi
 
-    # Skip if channel directory doesn't exist yet
-    if [ ! -d "$channel_dir" ]; then
+    # Find a channel URL from any .info.json in this channel's directory
+    channel_url=""
+    json_file=$(find "$channel_dir" -name "*.info.json" -type f | head -1)
+
+    if [ -n "$json_file" ]; then
+        channel_url=$(python3 -c "
+import json, sys
+try:
+    with open('$json_file', 'r', errors='replace') as f:
+        d = json.load(f)
+    url = d.get('channel_url') or d.get('uploader_url') or ''
+    if url:
+        print(url)
+except:
+    pass
+" 2>/dev/null)
+    fi
+
+    if [ -z "$channel_url" ]; then
+        log "  ⏭️  $channel_name — no channel URL found in metadata"
+        failed=$((failed + 1))
         continue
     fi
 
-    log "  Fetching banner for: $name"
+    log "  Fetching banner for: $channel_name ($channel_url)"
 
-    # Use yt-dlp to get channel metadata and extract banner URL
-    COOKIE_ARGS=""
-    if [ -f "$COOKIE_FILE" ]; then
-        COOKIE_ARGS="--cookies $COOKIE_FILE"
-    fi
-
-    # Download the channel page info and extract banner
-    banner_url=$(yt-dlp $COOKIE_ARGS --dump-json --playlist-items 0 "$url" 2>/dev/null | \
+    # Use yt-dlp to get channel page thumbnails
+    banner_url=$(yt-dlp $COOKIE_ARGS --dump-json --playlist-items 0 "$channel_url" 2>/dev/null | \
         python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
     thumbs = data.get('thumbnails', [])
-    # Look for banner-type thumbnails (usually the widest ones)
+    # Look for banner-type thumbnails
     banners = [t for t in thumbs if t.get('width', 0) > 1000 and t.get('height', 0) < t.get('width', 0)]
     if banners:
-        # Get the highest resolution banner
         best = sorted(banners, key=lambda t: t.get('width', 0), reverse=True)[0]
         print(best['url'])
     else:
-        # Try channel metadata
         for t in thumbs:
             if 'banner' in t.get('id', '').lower():
                 print(t['url'])
@@ -75,21 +79,21 @@ except:
 " 2>/dev/null)
 
     if [ -n "$banner_url" ]; then
-        curl -s -L -o "$channel_dir/banner.jpg" "$banner_url" 2>/dev/null
-        if [ -f "$channel_dir/banner.jpg" ] && [ -s "$channel_dir/banner.jpg" ]; then
+        curl -s -L -o "${channel_dir}banner.jpg" "$banner_url" 2>/dev/null
+        if [ -f "${channel_dir}banner.jpg" ] && [ -s "${channel_dir}banner.jpg" ]; then
             count=$((count + 1))
-            log "  ✅ $name banner saved"
+            log "  ✅ $channel_name"
         else
-            rm -f "$channel_dir/banner.jpg"
+            rm -f "${channel_dir}banner.jpg"
             failed=$((failed + 1))
+            log "  ❌ $channel_name — download failed"
         fi
     else
         failed=$((failed + 1))
+        log "  ❌ $channel_name — no banner URL found"
     fi
 
-    # Be nice to YouTube
     sleep 2
+done
 
-done < "$CHANNELS_FILE"
-
-log "Banner fetch done. Downloaded: $count, Skipped (already have): $skipped, Failed: $failed"
+log "Banner fetch done. Channels: $total, Downloaded: $count, Already had: $skipped, Failed: $failed"
