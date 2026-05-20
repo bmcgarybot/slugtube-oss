@@ -1200,9 +1200,16 @@ def api_reindex():
 
     status = get_index_status()
     if status['scanning']:
+        if request.args.get('force') or request.form.get('force'):
+            return redirect(request.referrer or url_for("settings"))
         return jsonify({"status": "already scanning"})
 
-    start_background_index(force=True)
+    force = request.args.get('force', 'false').lower() == 'true'
+    start_background_index(force=force)
+
+    # If called from browser (form submit), redirect back
+    if request.referrer:
+        return redirect(request.referrer)
     return jsonify({"status": "started"})
 
 

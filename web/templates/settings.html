@@ -221,6 +221,9 @@
             <form method="POST" action="/run/update">
                 <button type="submit" class="btn" {% if job.status == 'running' %}disabled{% endif %}>🔄 Update yt-dlp</button>
             </form>
+            <form method="POST" action="/api/reindex?force=true" style="display:inline;">
+                <button type="submit" class="btn btn-green" {% if job.status == 'running' %}disabled{% endif %}>📂 Re-Index Library</button>
+            </form>
         </div>
     </div>
 </div>
