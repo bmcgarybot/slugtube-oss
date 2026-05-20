@@ -497,12 +497,11 @@ def run_index(force=False):
 
             # Log what we can see
             top_dirs = [d.name for d in shows.iterdir() if d.is_dir()]
-            log(f"📚 Found {len(top_dirs)} directories in {SHOWS_DIR}")
+            log(f"📚 Found {len(top_dirs)} channels in {SHOWS_DIR}")
             if not top_dirs:
                 log_err(f"❌ {SHOWS_DIR} is empty! Volume mount may have failed.")
                 _index_status["scanning"] = False
                 return
-            log(f"   First 5: {top_dirs[:5]}")
 
             total_videos = 0
             total_channels = 0
@@ -513,12 +512,34 @@ def run_index(force=False):
             for i, channel_dir in enumerate(channel_dirs, 1):
                 try:
                     ch_start = time.time()
+                    # Quick skip: if channel dir mtime hasn't changed since last index, skip
+                    if not force:
+                        existing_ch = conn.execute(
+                            "SELECT updated_at, video_count FROM channels WHERE name = ?",
+                            (channel_dir.name,)
+                        ).fetchone()
+                        if existing_ch and existing_ch['video_count'] > 0:
+                            try:
+                                dir_mtime = os.path.getmtime(str(channel_dir))
+                                last_update = existing_ch['updated_at']
+                                if last_update:
+                                    last_dt = datetime.fromisoformat(last_update)
+                                    dir_dt = datetime.utcfromtimestamp(dir_mtime)
+                                    # If dir hasn't been modified since last scan, skip
+                                    if dir_dt < last_dt:
+                                        total_videos += existing_ch['video_count']
+                                        total_channels += 1
+                                        continue
+                            except (ValueError, OSError):
+                                pass
+
                     log(f"  [{i}/{num_dirs}] Scanning: {channel_dir.name}")
                     vcount, _ = _scan_channel(conn, channel_dir)
                     ch_elapsed = time.time() - ch_start
                     total_videos += vcount
                     total_channels += 1
-                    log(f"  [{i}/{num_dirs}] ✅ {channel_dir.name}: {vcount} videos ({ch_elapsed:.1f}s)")
+                    if ch_elapsed > 2:
+                        log(f"  [{i}/{num_dirs}] ✅ {channel_dir.name}: {vcount} videos ({ch_elapsed:.1f}s)")
                     # Commit per channel so data is visible immediately
                     conn.commit()
                 except Exception as e:
