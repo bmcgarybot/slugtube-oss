@@ -59,12 +59,19 @@ def init_db():
             name TEXT UNIQUE NOT NULL,
             path TEXT NOT NULL,
             has_poster INTEGER DEFAULT 0,
+            has_banner INTEGER DEFAULT 0,
             has_nfo INTEGER DEFAULT 0,
             video_count INTEGER DEFAULT 0,
             total_size_bytes INTEGER DEFAULT 0,
             updated_at TEXT
         );
-
+    """)
+    # Migrate: add has_banner column if missing
+    try:
+        conn.execute("SELECT has_banner FROM channels LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE channels ADD COLUMN has_banner INTEGER DEFAULT 0")
+    conn.executescript("""
         CREATE TABLE IF NOT EXISTS videos (
             id TEXT PRIMARY KEY,
             channel_name TEXT NOT NULL,
@@ -223,6 +230,7 @@ def _scan_channel(conn, channel_dir):
 
     # Check poster/nfo using the file set we'll build, not stat calls
     has_poster = False
+    has_banner = False
     has_nfo = False
 
     video_count = 0
@@ -235,18 +243,19 @@ def _scan_channel(conn, channel_dir):
 
     # Insert channel record FIRST so video FOREIGN KEYs can reference it
     conn.execute("""
-        INSERT OR IGNORE INTO channels (name, path, has_poster, has_nfo, video_count, total_size_bytes, updated_at)
-        VALUES (?, ?, ?, ?, 0, 0, ?)
-    """, (channel_name, channel_path, int(has_poster), int(has_nfo), now))
+        INSERT OR IGNORE INTO channels (name, path, has_poster, has_banner, has_nfo, video_count, total_size_bytes, updated_at)
+        VALUES (?, ?, ?, ?, ?, 0, 0, ?)
+    """, (channel_name, channel_path, int(has_poster), int(has_banner), int(has_nfo), now))
 
     # Walk all season dirs and loose files
     for root, dirs, files in os.walk(channel_path):
         # Build a set of filenames for O(1) in-memory lookups (no filesystem calls)
         file_set = set(files)
 
-        # Check for poster/nfo in channel root
+        # Check for poster/nfo/banner in channel root
         if root == channel_path:
             has_poster = 'poster.jpg' in file_set or 'folder.jpg' in file_set
+            has_banner = 'banner.jpg' in file_set or 'fanart.jpg' in file_set
             has_nfo = 'tvshow.nfo' in file_set
 
         json_files = [f for f in files if f.endswith('.info.json')]
@@ -468,9 +477,9 @@ def _scan_channel(conn, channel_dir):
 
     # Update channel record
     conn.execute("""
-        INSERT OR REPLACE INTO channels (name, path, has_poster, has_nfo, video_count, total_size_bytes, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (channel_name, channel_path, int(has_poster), int(has_nfo), video_count, total_size, now))
+        INSERT OR REPLACE INTO channels (name, path, has_poster, has_banner, has_nfo, video_count, total_size_bytes, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (channel_name, channel_path, int(has_poster), int(has_banner), int(has_nfo), video_count, total_size, now))
 
     return video_count, total_size
 

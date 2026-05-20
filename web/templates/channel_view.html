@@ -4,7 +4,8 @@
 {% block content %}
 
 <!-- Channel Header -->
-<div class="ch-header">
+<div class="ch-header" {% if channel_info and channel_info.has_banner %}style="background-image:url('/media/banner/{{ channel_name | urlencode }}');background-size:cover;background-position:center;"{% endif %}>
+    <div class="ch-header-overlay">
     <div class="ch-header-left">
         <div class="ch-poster">
             {% if channel_info and channel_info.has_poster %}
@@ -47,6 +48,7 @@
         <div class="ch-latest-meta">{{ latest_video.upload_date or '' }} · {{ format_size(latest_video.file_size) }}</div>
     </a>
     {% endif %}
+    </div>
 </div>
 
 <!-- Video Grid -->
@@ -92,16 +94,8 @@
 
 <style>
     /* ── Channel Header ── */
-    .ch-header {
-        display: flex;
-        gap: 24px;
-        align-items: stretch;
-        margin-bottom: 24px;
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 20px;
-    }
+    .ch-header{display:flex;gap:24px;align-items:stretch;margin-bottom:24px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;position:relative}
+    .ch-header-overlay{display:flex;gap:24px;align-items:stretch;width:100%;padding:20px;background:linear-gradient(90deg,rgba(13,17,23,0.92) 0%,rgba(13,17,23,0.85) 60%,rgba(13,17,23,0.7) 100%)}
     .ch-header-left {
         display: flex;
         gap: 20px;
@@ -328,7 +322,7 @@
 
     /* ── Mobile ── */
     @media (max-width: 768px) {
-        .ch-header { flex-direction: column; }
+        .ch-header-overlay { flex-direction: column; }
         .ch-latest {
             width: 100%;
             border-left: none;

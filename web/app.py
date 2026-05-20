@@ -593,6 +593,27 @@ def run(mode):
             thread.start()
         return redirect(request.referrer or url_for("settings"))
 
+    if mode == "banners":
+        if jobs["status"] != "running":
+            def _run_banners():
+                jobs["status"] = "running"
+                jobs["mode"] = "banners"
+                jobs["started"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                try:
+                    result = subprocess.run(["/app/scripts/fetch-banners.sh"],
+                        capture_output=True, text=True, timeout=3600)
+                    jobs["log"] = result.stdout[-3000:] if result.stdout else "Done"
+                    jobs["status"] = "done"
+                except subprocess.TimeoutExpired:
+                    jobs["status"] = "timeout"
+                    jobs["log"] = "Banner fetch timed out"
+                except Exception as e:
+                    jobs["status"] = "error"
+                    jobs["log"] = str(e)
+            thread = threading.Thread(target=_run_banners, daemon=True)
+            thread.start()
+        return redirect(request.referrer or url_for("settings"))
+
     if mode not in ("fast", "full"):
         return "Invalid mode", 400
     if jobs["status"] == "running":
@@ -980,6 +1001,18 @@ def serve_poster(channel_name):
     channel_name = unquote(channel_name)
     # Try common poster filenames
     for fname in ['poster.jpg', 'folder.jpg', 'poster.png']:
+        path = os.path.join(SHOWS_DIR, channel_name, fname)
+        if os.path.isfile(path):
+            return send_file(path)
+    abort(404)
+
+
+@app.route("/media/banner/<path:channel_name>")
+def serve_banner(channel_name):
+    """Serve channel banner/fanart image."""
+    from urllib.parse import unquote
+    channel_name = unquote(channel_name)
+    for fname in ['banner.jpg', 'fanart.jpg', 'banner.png']:
         path = os.path.join(SHOWS_DIR, channel_name, fname)
         if os.path.isfile(path):
             return send_file(path)
