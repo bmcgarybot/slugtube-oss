@@ -281,6 +281,8 @@ def _scan_channel(conn, channel_dir):
         json_files = [f for f in files if f.endswith('.info.json')]
         video_files = {f for f in files if os.path.splitext(f)[1].lower() in VIDEO_EXTS}
 
+        log(f"    📁 {os.path.basename(root)}: {len(json_files)} json, {len(video_files)} videos, {len(files)} total files")
+
         # Track which video files get indexed via .info.json
         indexed_videos = set()
 
@@ -294,6 +296,7 @@ def _scan_channel(conn, channel_dir):
             return None
 
         # ── Pass 1: Index from .info.json (rich metadata) ──
+        json_processed = 0
         for fname in json_files:
             json_path = os.path.join(root, fname)
             base_name = fname[:-len('.info.json')]  # strip .info.json
@@ -421,11 +424,14 @@ def _scan_channel(conn, channel_dir):
                         INSERT OR REPLACE INTO video_playlists (video_id, playlist_id, playlist_index)
                         VALUES (?, ?, ?)
                     """, (video_id, pl_id, pl_index if isinstance(pl_index, int) else 0))
-                except Exception:
-                    pass
+                except Exception as pe:
+                    log_warn(f"    ⚠️ Playlist insert error: {pe}")
 
             video_count += 1
             total_size += file_size
+            json_processed += 1
+            if json_processed % 100 == 0:
+                log(f"    ... processed {json_processed}/{len(json_files)} info.json files")
 
         # ── Pass 2: Index video files WITHOUT .info.json ──
         for vfname in video_files:
