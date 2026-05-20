@@ -100,6 +100,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_videos_title ON videos(title);
         CREATE INDEX IF NOT EXISTS idx_videos_duration ON videos(duration);
         CREATE INDEX IF NOT EXISTS idx_videos_size ON videos(file_size DESC);
+        CREATE INDEX IF NOT EXISTS idx_videos_jsonpath ON videos(json_path);
 
         CREATE VIRTUAL TABLE IF NOT EXISTS videos_fts USING fts5(
             id UNINDEXED,
@@ -308,19 +309,15 @@ def _scan_channel(conn, channel_dir):
 
             # Check if already indexed and unchanged
             existing = conn.execute(
-                "SELECT json_mtime FROM videos WHERE json_path = ?",
+                "SELECT json_mtime, file_path, file_size FROM videos WHERE json_path = ?",
                 (json_path,)
             ).fetchone()
 
             if existing and abs(existing['json_mtime'] - json_mtime) < 1:
-                row = conn.execute(
-                    "SELECT file_path, file_size FROM videos WHERE json_path = ?",
-                    (json_path,)
-                ).fetchone()
-                if row:
+                if existing['file_path']:
                     video_count += 1
-                    total_size += row['file_size'] or 0
-                    indexed_videos.add(os.path.basename(row['file_path']))
+                    total_size += existing['file_size'] or 0
+                    indexed_videos.add(os.path.basename(existing['file_path']))
                 continue
 
             # Parse info.json
