@@ -117,6 +117,26 @@ def init_db():
             last_watched TEXT,
             FOREIGN KEY (video_id) REFERENCES videos(id)
         );
+
+        CREATE TABLE IF NOT EXISTS playlists (
+            id TEXT PRIMARY KEY,
+            channel_name TEXT NOT NULL,
+            title TEXT NOT NULL,
+            video_count INTEGER DEFAULT 0,
+            updated_at TEXT,
+            FOREIGN KEY (channel_name) REFERENCES channels(name)
+        );
+
+        CREATE TABLE IF NOT EXISTS video_playlists (
+            video_id TEXT NOT NULL,
+            playlist_id TEXT NOT NULL,
+            playlist_index INTEGER DEFAULT 0,
+            PRIMARY KEY (video_id, playlist_id),
+            FOREIGN KEY (video_id) REFERENCES videos(id),
+            FOREIGN KEY (playlist_id) REFERENCES playlists(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_video_playlists_playlist ON video_playlists(playlist_id);
     """)
     conn.commit()
     conn.close()
@@ -387,6 +407,23 @@ def _scan_channel(conn, channel_dir):
                 SELECT rowid, id, title, description, channel_name FROM videos WHERE id = ?
             """, (video_id,))
 
+            # ── Playlist metadata ──
+            pl_id = info.get('playlist_id') or ''
+            pl_title = info.get('playlist_title') or ''
+            pl_index = info.get('playlist_index') or 0
+            if pl_id and pl_title:
+                try:
+                    conn.execute("""
+                        INSERT OR IGNORE INTO playlists (id, channel_name, title, video_count, updated_at)
+                        VALUES (?, ?, ?, 0, ?)
+                    """, (pl_id, channel_name, pl_title, now))
+                    conn.execute("""
+                        INSERT OR REPLACE INTO video_playlists (video_id, playlist_id, playlist_index)
+                        VALUES (?, ?, ?)
+                    """, (video_id, pl_id, pl_index if isinstance(pl_index, int) else 0))
+                except Exception:
+                    pass
+
             video_count += 1
             total_size += file_size
 
@@ -480,6 +517,17 @@ def _scan_channel(conn, channel_dir):
         INSERT OR REPLACE INTO channels (name, path, has_poster, has_banner, has_nfo, video_count, total_size_bytes, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (channel_name, channel_path, int(has_poster), int(has_banner), int(has_nfo), video_count, total_size, now))
+
+    # Update playlist video counts
+    try:
+        conn.execute("""
+            UPDATE playlists SET video_count = (
+                SELECT COUNT(*) FROM video_playlists WHERE playlist_id = playlists.id
+            ), updated_at = ?
+            WHERE channel_name = ?
+        """, (now, channel_name))
+    except Exception:
+        pass
 
     return video_count, total_size
 
@@ -729,3 +777,57 @@ def get_library_stats():
 
     conn.close()
     return stats
+
+
+def get_channel_playlists(channel_name):
+    """Get all playlists for a channel, ordered by title."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT id, channel_name, title, video_count, updated_at
+        FROM playlists
+        WHERE channel_name = ?
+        ORDER BY title COLLATE NOCASE
+    """, (channel_name,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_playlist_videos(playlist_id, sort='playlist_index', limit=200, offset=0):
+    """Get videos in a playlist with sort and pagination."""
+    order_map = {
+        'playlist_index': 'vp.playlist_index ASC, v.title ASC',
+        'newest': 'v.upload_date DESC, v.title ASC',
+        'oldest': 'v.upload_date ASC, v.title ASC',
+        'title': 'v.title COLLATE NOCASE ASC',
+        'largest': 'v.file_size DESC',
+        'longest': 'v.duration DESC',
+        'most_viewed': 'v.view_count DESC',
+    }
+    order = order_map.get(sort, 'vp.playlist_index ASC, v.title ASC')
+
+    conn = get_db()
+    rows = conn.execute(f"""
+        SELECT v.*, wh.position_seconds, wh.watched, wh.last_watched, vp.playlist_index
+        FROM video_playlists vp
+        JOIN videos v ON v.id = vp.video_id
+        LEFT JOIN watch_history wh ON v.id = wh.video_id
+        WHERE vp.playlist_id = ?
+        ORDER BY {order}
+        LIMIT ? OFFSET ?
+    """, (playlist_id, limit, offset)).fetchall()
+
+    total = conn.execute(
+        "SELECT COUNT(*) as cnt FROM video_playlists WHERE playlist_id = ?",
+        (playlist_id,)
+    ).fetchone()['cnt']
+
+    conn.close()
+    return [dict(r) for r in rows], total
+
+
+def get_playlist(playlist_id):
+    """Get a single playlist by ID."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM playlists WHERE id = ?", (playlist_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None

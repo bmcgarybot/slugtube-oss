@@ -21,8 +21,22 @@
                 <div class="ch-stat"><span class="ch-stat-val">{{ total }}</span> videos</div>
                 <div class="ch-stat"><span class="ch-stat-val">{{ "%.1f"|format((channel_info.total_size_bytes or 0) / 1073741824) }}</span> GB</div>
             </div>
-            <div class="ch-sort">
+            <div class="ch-controls">
+                {% if playlists %}
+                <div class="playlist-pills">
+                    <a href="/library/{{ channel_name | urlencode }}?sort=newest"
+                       class="playlist-pill {% if not active_playlist %}active{% endif %}">All Videos</a>
+                    {% for pl in playlists %}
+                    <a href="/library/{{ channel_name | urlencode }}/playlist/{{ pl.id }}?sort=playlist_index"
+                       class="playlist-pill {% if active_playlist and active_playlist.id == pl.id %}active{% endif %}"
+                       title="{{ pl.title }}">{{ pl.title }} <span class="pill-count">{{ pl.video_count }}</span></a>
+                    {% endfor %}
+                </div>
+                {% endif %}
                 <select id="sort-select" onchange="updateSort()">
+                    {% if active_playlist %}
+                    <option value="playlist_index" {% if sort=='playlist_index' %}selected{% endif %}>Playlist Order</option>
+                    {% endif %}
                     <option value="newest" {% if sort=='newest' %}selected{% endif %}>Newest</option>
                     <option value="oldest" {% if sort=='oldest' %}selected{% endif %}>Oldest</option>
                     <option value="title" {% if sort=='title' %}selected{% endif %}>Title A-Z</option>
@@ -50,6 +64,15 @@
     {% endif %}
     </div>
 </div>
+
+<!-- Playlist Title Banner -->
+{% if active_playlist %}
+<div class="playlist-banner">
+    <span class="playlist-banner-icon">📋</span>
+    <span class="playlist-banner-title">{{ active_playlist.title }}</span>
+    <span class="playlist-banner-count">{{ total }} videos</span>
+</div>
+{% endif %}
 
 <!-- Video Grid -->
 <div class="video-grid">
@@ -80,11 +103,20 @@
 
 {% if total > videos|length %}
 <div style="text-align:center;padding:24px;">
-    {% if offset > 0 %}
-    <a href="/library/{{ channel_name | urlencode }}?sort={{ sort }}&offset={{ offset - limit }}" class="btn btn-sm">← Previous</a>
-    {% endif %}
-    {% if offset + limit < total %}
-    <a href="/library/{{ channel_name | urlencode }}?sort={{ sort }}&offset={{ offset + limit }}" class="btn btn-sm">Next →</a>
+    {% if active_playlist %}
+        {% if offset > 0 %}
+        <a href="/library/{{ channel_name | urlencode }}/playlist/{{ active_playlist.id }}?sort={{ sort }}&offset={{ offset - limit }}" class="btn btn-sm">← Previous</a>
+        {% endif %}
+        {% if offset + limit < total %}
+        <a href="/library/{{ channel_name | urlencode }}/playlist/{{ active_playlist.id }}?sort={{ sort }}&offset={{ offset + limit }}" class="btn btn-sm">Next →</a>
+        {% endif %}
+    {% else %}
+        {% if offset > 0 %}
+        <a href="/library/{{ channel_name | urlencode }}?sort={{ sort }}&offset={{ offset - limit }}" class="btn btn-sm">← Previous</a>
+        {% endif %}
+        {% if offset + limit < total %}
+        <a href="/library/{{ channel_name | urlencode }}?sort={{ sort }}&offset={{ offset + limit }}" class="btn btn-sm">Next →</a>
+        {% endif %}
     {% endif %}
     <div style="color:var(--text-dimmer);font-size:12px;margin-top:8px;">
         Showing {{ offset + 1 }}-{{ [offset + limit, total] | min }} of {{ total }}
@@ -161,7 +193,13 @@
         color: var(--accent);
         font-size: 16px;
     }
-    .ch-sort select {
+    .ch-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+    }
+    .ch-controls select {
         background: var(--bg);
         border: 1px solid var(--border);
         border-radius: 6px;
@@ -169,6 +207,76 @@
         padding: 6px 12px;
         font-size: 13px;
         cursor: pointer;
+    }
+
+    /* ── Playlist Pills ── */
+    .playlist-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        max-width: 500px;
+    }
+    .playlist-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-dim);
+        background: var(--bg);
+        border: 1px solid var(--border);
+        text-decoration: none;
+        white-space: nowrap;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: all 0.15s;
+    }
+    .playlist-pill:hover {
+        border-color: var(--accent);
+        color: var(--text);
+    }
+    .playlist-pill.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+        font-weight: 600;
+    }
+    .playlist-pill.active .pill-count {
+        color: rgba(255,255,255,0.8);
+    }
+    .pill-count {
+        font-size: 10px;
+        color: var(--text-dimmer);
+        font-weight: 400;
+    }
+
+    /* ── Playlist Banner ── */
+    .playlist-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--accent);
+        border-radius: 8px;
+    }
+    .playlist-banner-icon {
+        font-size: 18px;
+    }
+    .playlist-banner-title {
+        font-weight: 600;
+        font-size: 15px;
+        color: var(--text);
+    }
+    .playlist-banner-count {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-left: auto;
     }
 
     /* ── Latest Video (right side of header) ── */
@@ -332,13 +440,19 @@
         }
         .ch-poster { width: 80px; height: 80px; }
         .ch-name { font-size: 18px; }
+        .playlist-pills { max-width: 100%; }
+        .ch-controls { flex-direction: column; align-items: flex-start; }
     }
 </style>
 
 <script>
 function updateSort() {
     const sort = document.getElementById('sort-select').value;
+    {% if active_playlist %}
+    window.location.href = '/library/{{ channel_name | urlencode }}/playlist/{{ active_playlist.id }}?sort=' + sort;
+    {% else %}
     window.location.href = '/library/{{ channel_name | urlencode }}?sort=' + sort;
+    {% endif %}
 }
 </script>
 {% endblock %}

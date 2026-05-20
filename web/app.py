@@ -877,7 +877,7 @@ def watch_history():
 
 @app.route("/library/<path:channel_name>")
 def channel_view(channel_name):
-    from indexer import get_channel_videos, get_index_status, get_db
+    from indexer import get_channel_videos, get_index_status, get_db, get_channel_playlists
     from urllib.parse import unquote
 
     channel_name = unquote(channel_name)
@@ -904,6 +904,9 @@ def channel_view(channel_name):
     latest_video = dict(latest_row) if latest_row else None
     conn.close()
 
+    # Get playlists for this channel
+    playlists = get_channel_playlists(channel_name)
+
     return render_template("channel_view.html",
         page="library",
         channel_name=channel_name,
@@ -914,6 +917,51 @@ def channel_view(channel_name):
         sort=sort,
         offset=offset,
         limit=limit,
+        playlists=playlists,
+        active_playlist=None,
+        index_status=get_index_status(),
+        job=jobs,
+        paused=is_paused(),
+    )
+
+
+@app.route("/library/<path:channel_name>/playlist/<playlist_id>")
+def playlist_view(channel_name, playlist_id):
+    from indexer import get_playlist_videos, get_playlist, get_index_status, get_db, get_channel_playlists
+    from urllib.parse import unquote
+
+    channel_name = unquote(channel_name)
+    sort = request.args.get("sort", "playlist_index")
+    offset = request.args.get("offset", 0, type=int)
+    limit = 60
+
+    playlist = get_playlist(playlist_id)
+    if not playlist:
+        abort(404)
+
+    videos, total = get_playlist_videos(playlist_id, sort=sort, limit=limit, offset=offset)
+
+    # Get channel record for header
+    conn = get_db()
+    ch_row = conn.execute("SELECT * FROM channels WHERE name = ?", (channel_name,)).fetchone()
+    channel_info = dict(ch_row) if ch_row else {}
+    conn.close()
+
+    # Get playlists for this channel
+    playlists = get_channel_playlists(channel_name)
+
+    return render_template("channel_view.html",
+        page="library",
+        channel_name=channel_name,
+        channel_info=channel_info,
+        latest_video=None,
+        videos=videos,
+        total=total,
+        sort=sort,
+        offset=offset,
+        limit=limit,
+        playlists=playlists,
+        active_playlist=playlist,
         index_status=get_index_status(),
         job=jobs,
         paused=is_paused(),
@@ -995,6 +1043,7 @@ def delete_video(video_id):
     try:
         conn = get_db()
         conn.execute("DELETE FROM watch_history WHERE video_id = ?", (video_id,))
+        conn.execute("DELETE FROM video_playlists WHERE video_id = ?", (video_id,))
         conn.execute("DELETE FROM videos WHERE id = ?", (video_id,))
         conn.commit()
         conn.close()
