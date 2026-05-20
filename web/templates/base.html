@@ -355,7 +355,7 @@
 </div>
 {% endif %}
 
-{% if job.status == 'running' %}
+{% if job.status == 'running' and request.path == '/' %}
 <script>setTimeout(() => location.reload(), 8000);</script>
 {% endif %}
 

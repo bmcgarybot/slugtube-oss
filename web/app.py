@@ -22,6 +22,18 @@ PAUSE_FILE = "/config/paused"
 # Track running jobs
 jobs = {"status": "idle", "mode": None, "started": None, "log": ""}
 
+def check_stale_job():
+    """Reset jobs stuck in 'running' for more than 5 hours."""
+    if jobs["status"] == "running" and jobs.get("started"):
+        try:
+            from datetime import datetime
+            started = datetime.strptime(jobs["started"], "%Y-%m-%d %H:%M:%S")
+            if (datetime.now() - started).total_seconds() > 18000:
+                jobs["status"] = "error"
+                jobs["log"] = "Job timed out (stale). Reset automatically."
+        except Exception:
+            pass
+
 # Cache for channel stats (scanning 16TB is slow — runs in background)
 _stats_cache = {"data": [], "updated": 0, "scanning": False}
 STATS_CACHE_TTL = 300  # 5 minutes
@@ -69,6 +81,10 @@ def format_size(bytes_val):
 # Register as Jinja globals so templates can use them
 app.jinja_env.globals['format_duration'] = format_duration
 app.jinja_env.globals['format_size'] = format_size
+
+@app.before_request
+def _check_stale():
+    check_stale_job()
 
 
 def load_config():
