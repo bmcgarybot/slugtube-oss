@@ -118,7 +118,10 @@ def init_db():
             FOREIGN KEY (video_id) REFERENCES videos(id)
         );
 
-        CREATE TABLE IF NOT EXISTS playlists (
+        DROP TABLE IF EXISTS video_playlists;
+        DROP TABLE IF EXISTS playlists;
+
+        CREATE TABLE playlists (
             id TEXT PRIMARY KEY,
             channel_name TEXT NOT NULL,
             title TEXT NOT NULL,
@@ -126,7 +129,7 @@ def init_db():
             updated_at TEXT
         );
 
-        CREATE TABLE IF NOT EXISTS video_playlists (
+        CREATE TABLE video_playlists (
             video_id TEXT NOT NULL,
             playlist_id TEXT NOT NULL,
             playlist_index INTEGER DEFAULT 0,
@@ -595,10 +598,14 @@ def run_index(force=False):
                     log(f"  [{i}/{num_dirs}] ✅ {channel_dir.name}: {vcount} videos ({ch_elapsed:.1f}s)")
                     # Commit per channel so data is visible immediately
                     conn.commit()
-                except Exception as e:
-                    log_warn(f"  [{i}/{num_dirs}] ⚠️ Error indexing {channel_dir.name}: {e}")
+                except BaseException as e:
+                    log_warn(f"  [{i}/{num_dirs}] ⚠️ Error indexing {channel_dir.name}: {type(e).__name__}: {e}")
                     import traceback
                     log_warn(traceback.format_exc())
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
                     continue
 
             # Clean up videos whose files no longer exist
@@ -621,8 +628,10 @@ def run_index(force=False):
             _index_status["last_scan"] = time.time()
             log(f"📚 Indexer done — {total_videos} videos across {total_channels} channels ({elapsed:.1f}s)")
 
-        except Exception as e:
-            log_err(f"❌ Indexer error: {e}")
+        except BaseException as e:
+            import traceback
+            log_err(f"❌ Indexer error: {type(e).__name__}: {e}")
+            log_err(traceback.format_exc())
         finally:
             _index_status["scanning"] = False
 
