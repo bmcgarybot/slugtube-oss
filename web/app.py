@@ -336,31 +336,43 @@ def run_single_channel(url, folder_name=None):
         cmd = ["/app/scripts/download.sh", "--single", url]
         if folder_name:
             cmd.extend(["--folder", folder_name])
-        result = subprocess.run(
-            cmd,
-            capture_output=True, text=True, timeout=14400
-        )
-        # Combine stdout + stderr (yt-dlp puts progress/errors on stderr)
-        combined = (result.stdout or "") + (result.stderr or "")
-        jobs["log"] = combined[-5000:] if combined else "No output"
-        jobs["status"] = "done" if result.returncode == 0 else "error"
 
-        # Also write to log file so it shows on the Logs page
-        try:
-            os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-            with open(LOG_FILE, "a") as f:
+        # Stream output in real-time to log file + jobs["log"]
+        os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+        log_lines = []
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        with open(LOG_FILE, "a") as logf:
+            logf.write(f"\n{ts} [download] 🐌 Single channel download: {url}\n")
+            if folder_name:
+                logf.write(f"{ts} [download] 📁 Folder: {folder_name}\n")
+            logf.flush()
+
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
+            for line in proc.stdout:
+                line = line.rstrip('\n')
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                f.write(f"\n{ts} [download] 🐌 Single channel download: {url}\n")
-                if folder_name:
-                    f.write(f"{ts} [download] 📁 Folder: {folder_name}\n")
-                # Write last 2000 chars of combined output to log
-                log_tail = combined[-2000:] if combined else "No output"
-                for line in log_tail.splitlines():
-                    f.write(f"{ts} [download] {line}\n")
-                status = "✅ Done" if result.returncode == 0 else f"❌ Error (exit {result.returncode})"
-                f.write(f"{ts} [download] {status}\n")
-        except Exception:
-            pass
+                logf.write(f"{ts} [download] {line}\n")
+                logf.flush()
+                log_lines.append(line)
+                # Keep only last 200 lines in memory for dashboard
+                if len(log_lines) > 200:
+                    log_lines.pop(0)
+                jobs["log"] = "\n".join(log_lines[-100:])
+
+            proc.wait()
+            status = "✅ Done" if proc.returncode == 0 else f"❌ Error (exit {proc.returncode})"
+            logf.write(f"{ts} [download] {status}\n")
+            logf.flush()
+
+        jobs["log"] = "\n".join(log_lines[-100:]) if log_lines else "No output"
+        jobs["status"] = "done" if proc.returncode == 0 else "error"
 
         # Trigger re-index after downloads complete
         try:
