@@ -781,7 +781,7 @@ def watch_history():
 
 @app.route("/library/<path:channel_name>")
 def channel_view(channel_name):
-    from indexer import get_channel_videos, get_index_status
+    from indexer import get_channel_videos, get_index_status, get_db
     from urllib.parse import unquote
 
     channel_name = unquote(channel_name)
@@ -791,9 +791,28 @@ def channel_view(channel_name):
 
     videos, total = get_channel_videos(channel_name, sort=sort, limit=limit, offset=offset)
 
+    # Get channel record for header
+    conn = get_db()
+    ch_row = conn.execute("SELECT * FROM channels WHERE name = ?", (channel_name,)).fetchone()
+    channel_info = dict(ch_row) if ch_row else {}
+
+    # Get the latest video for the featured spot
+    latest_row = conn.execute("""
+        SELECT v.*, wh.position_seconds, wh.watched
+        FROM videos v
+        LEFT JOIN watch_history wh ON v.id = wh.video_id
+        WHERE v.channel_name = ?
+        ORDER BY v.upload_date DESC
+        LIMIT 1
+    """, (channel_name,)).fetchone()
+    latest_video = dict(latest_row) if latest_row else None
+    conn.close()
+
     return render_template("channel_view.html",
         page="library",
         channel_name=channel_name,
+        channel_info=channel_info,
+        latest_video=latest_video,
         videos=videos,
         total=total,
         sort=sort,

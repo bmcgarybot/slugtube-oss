@@ -2,28 +2,57 @@
 {% block title_extra %} — {{ channel_name }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div style="display:flex;align-items:center;gap:16px;">
-        <a href="/library" style="color:var(--text-dim);text-decoration:none;font-size:20px;">←</a>
-        <h1>{{ channel_name }}</h1>
-        <span class="badge badge-blue">{{ total }} videos</span>
+
+<!-- Channel Header -->
+<div class="ch-header">
+    <div class="ch-header-left">
+        <div class="ch-poster">
+            {% if channel_info and channel_info.has_poster %}
+            <img src="/media/poster/{{ channel_name | urlencode }}" alt="{{ channel_name }}">
+            {% else %}
+            <div class="ch-poster-placeholder">{{ channel_name[:2] | upper }}</div>
+            {% endif %}
+        </div>
+        <div class="ch-header-info">
+            <a href="/library" class="ch-back">← Library</a>
+            <h1 class="ch-name">{{ channel_name }}</h1>
+            <div class="ch-stats-row">
+                <div class="ch-stat"><span class="ch-stat-val">{{ total }}</span> videos</div>
+                <div class="ch-stat"><span class="ch-stat-val">{{ "%.1f"|format((channel_info.total_size_bytes or 0) / 1073741824) }}</span> GB</div>
+            </div>
+            <div class="ch-sort">
+                <select id="sort-select" onchange="updateSort()">
+                    <option value="newest" {% if sort=='newest' %}selected{% endif %}>Newest</option>
+                    <option value="oldest" {% if sort=='oldest' %}selected{% endif %}>Oldest</option>
+                    <option value="title" {% if sort=='title' %}selected{% endif %}>Title A-Z</option>
+                    <option value="largest" {% if sort=='largest' %}selected{% endif %}>Largest</option>
+                    <option value="longest" {% if sort=='longest' %}selected{% endif %}>Longest</option>
+                    <option value="most_viewed" {% if sort=='most_viewed' %}selected{% endif %}>Most Viewed</option>
+                </select>
+            </div>
+        </div>
     </div>
-    <div class="btn-group">
-        <select id="sort-select" class="btn btn-sm" onchange="updateSort()" style="cursor:pointer;">
-            <option value="newest" {% if sort=='newest' %}selected{% endif %}>📅 Newest</option>
-            <option value="oldest" {% if sort=='oldest' %}selected{% endif %}>📅 Oldest</option>
-            <option value="title" {% if sort=='title' %}selected{% endif %}>🔤 Title A-Z</option>
-            <option value="largest" {% if sort=='largest' %}selected{% endif %}>📦 Largest</option>
-            <option value="smallest" {% if sort=='smallest' %}selected{% endif %}>📦 Smallest</option>
-            <option value="longest" {% if sort=='longest' %}selected{% endif %}>⏱️ Longest</option>
-            <option value="shortest" {% if sort=='shortest' %}selected{% endif %}>⏱️ Shortest</option>
-            <option value="most_viewed" {% if sort=='most_viewed' %}selected{% endif %}>👁️ Most Viewed</option>
-        </select>
-    </div>
+    {% if latest_video %}
+    <a href="/watch/{{ latest_video.id }}" class="ch-latest">
+        <div class="ch-latest-label">Latest</div>
+        <div class="ch-latest-thumb">
+            {% if latest_video.thumbnail_path %}
+            <img src="/media/thumb/{{ latest_video.id }}" alt="{{ latest_video.title }}" loading="lazy">
+            {% else %}
+            <div class="thumb-placeholder">🎬</div>
+            {% endif %}
+            <span class="video-duration">{{ format_duration(latest_video.duration) }}</span>
+        </div>
+        <div class="ch-latest-title">{{ latest_video.title }}</div>
+        <div class="ch-latest-meta">{{ latest_video.upload_date or '' }} · {{ format_size(latest_video.file_size) }}</div>
+    </a>
+    {% endif %}
 </div>
 
+<!-- Video Grid -->
 <div class="video-grid">
     {% for v in videos %}
+    {% if not (latest_video and v.id == latest_video.id and offset == 0) %}
     <a href="/watch/{{ v.id }}" class="video-card">
         <div class="video-thumb">
             {% if v.thumbnail_path %}
@@ -43,6 +72,7 @@
             {% if v.view_count %}<div class="video-meta">{{ "{:,}".format(v.view_count) }} views</div>{% endif %}
         </div>
     </a>
+    {% endif %}
     {% endfor %}
 </div>
 
@@ -61,6 +91,143 @@
 {% endif %}
 
 <style>
+    /* ── Channel Header ── */
+    .ch-header {
+        display: flex;
+        gap: 24px;
+        align-items: stretch;
+        margin-bottom: 24px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 20px;
+    }
+    .ch-header-left {
+        display: flex;
+        gap: 20px;
+        flex: 1;
+        min-width: 0;
+    }
+    .ch-poster {
+        width: 120px;
+        height: 120px;
+        border-radius: 10px;
+        overflow: hidden;
+        flex-shrink: 0;
+        background: var(--bg);
+    }
+    .ch-poster img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .ch-poster-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        font-weight: 700;
+        color: var(--text-dim);
+        background: var(--bg-hover);
+    }
+    .ch-header-info {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-width: 0;
+    }
+    .ch-back {
+        font-size: 12px;
+        color: var(--text-dimmer);
+        text-decoration: none;
+        margin-bottom: 4px;
+    }
+    .ch-back:hover { color: var(--accent); }
+    .ch-name {
+        font-size: 24px;
+        font-weight: 700;
+        margin: 0 0 8px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .ch-stats-row {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 10px;
+    }
+    .ch-stat {
+        font-size: 13px;
+        color: var(--text-dim);
+    }
+    .ch-stat-val {
+        font-weight: 700;
+        color: var(--accent);
+        font-size: 16px;
+    }
+    .ch-sort select {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        padding: 6px 12px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    /* ── Latest Video (right side of header) ── */
+    .ch-latest {
+        width: 300px;
+        flex-shrink: 0;
+        text-decoration: none;
+        color: var(--text);
+        border-left: 1px solid var(--border);
+        padding-left: 24px;
+        display: flex;
+        flex-direction: column;
+        transition: opacity 0.2s;
+    }
+    .ch-latest:hover { opacity: 0.85; }
+    .ch-latest-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--accent);
+        margin-bottom: 8px;
+    }
+    .ch-latest-thumb {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16/9;
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--bg);
+    }
+    .ch-latest-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .ch-latest-title {
+        font-weight: 600;
+        font-size: 13px;
+        line-height: 1.4;
+        margin-top: 8px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .ch-latest-meta {
+        font-size: 11px;
+        color: var(--text-dim);
+        margin-top: 4px;
+    }
+
+    /* ── Video Grid ── */
     .video-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -157,6 +324,20 @@
         font-size: 11px;
         color: var(--text-dim);
         margin-top: 4px;
+    }
+
+    /* ── Mobile ── */
+    @media (max-width: 768px) {
+        .ch-header { flex-direction: column; }
+        .ch-latest {
+            width: 100%;
+            border-left: none;
+            border-top: 1px solid var(--border);
+            padding-left: 0;
+            padding-top: 16px;
+        }
+        .ch-poster { width: 80px; height: 80px; }
+        .ch-name { font-size: 18px; }
     }
 </style>
 
