@@ -646,6 +646,32 @@ def start_background_index(force=False):
     return thread
 
 
+def reindex_single_channel(channel_name):
+    """Re-index a single channel directory."""
+    shows = pathlib.Path(SHOWS_DIR)
+    channel_dir = shows / channel_name
+    if not channel_dir.is_dir():
+        log_warn(f"⚠️ Channel directory not found: {channel_name}")
+        return False
+
+    try:
+        conn = get_db()
+        init_db()
+        log(f"📚 Re-indexing single channel: {channel_name}")
+        ch_start = time.time()
+        vcount, _ = _scan_channel(conn, channel_dir)
+        conn.commit()
+        elapsed = time.time() - ch_start
+        log(f"📚 ✅ {channel_name}: {vcount} videos ({elapsed:.1f}s)")
+        conn.close()
+        return True
+    except BaseException as e:
+        import traceback
+        log_err(f"❌ Error re-indexing {channel_name}: {type(e).__name__}: {e}")
+        log_err(traceback.format_exc())
+        return False
+
+
 def get_index_status():
     return dict(_index_status)
 

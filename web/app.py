@@ -1219,6 +1219,22 @@ def api_index_status():
     return jsonify(get_index_status())
 
 
+@app.route("/api/reindex/<path:channel_name>", methods=["POST"])
+def api_reindex_channel(channel_name):
+    """Re-index a single channel."""
+    from indexer import reindex_single_channel
+    from urllib.parse import unquote
+    import threading
+
+    channel_name = unquote(channel_name)
+    thread = threading.Thread(target=reindex_single_channel, args=(channel_name,), daemon=True)
+    thread.start()
+
+    if request.referrer:
+        return redirect(request.referrer)
+    return jsonify({"status": "started", "channel": channel_name})
+
+
 # ── Startup ──
 
 if __name__ == "__main__":
