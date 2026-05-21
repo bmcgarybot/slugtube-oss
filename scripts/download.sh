@@ -22,6 +22,29 @@ LOG_FILE="/config/logs/slugtube.log"
 # Ensure dirs exist
 mkdir -p "$TEMP_DIR" "$OUTPUT_DIR" /config/logs /config/archive
 
+# ── Lock file (prevent concurrent downloads) ──
+LOCK_FILE="/config/slugtube.lock"
+
+cleanup_lock() {
+    rm -f "$LOCK_FILE"
+}
+
+if [ -f "$LOCK_FILE" ]; then
+    LOCK_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
+    # Check if the process that created the lock is still running
+    if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
+        echo "🔒 Another download is already running (PID $LOCK_PID). Skipping."
+        echo "   Delete /config/slugtube.lock manually if this is stale."
+        exit 0
+    else
+        echo "🔓 Stale lock found (PID $LOCK_PID not running). Cleaning up."
+        rm -f "$LOCK_FILE"
+    fi
+fi
+
+echo $$ > "$LOCK_FILE"
+trap cleanup_lock EXIT
+
 # ── Check pause state ──
 if [ -f "$PAUSE_FILE" ]; then
     echo "⏸️ Downloads are PAUSED. Skipping. Resume from the web UI."
