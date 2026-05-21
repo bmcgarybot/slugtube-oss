@@ -753,10 +753,31 @@ def run(mode):
 
     if mode not in ("fast", "full"):
         return "Invalid mode", 400
-    if jobs["status"] == "running":
-        return redirect(request.referrer or url_for("dashboard"))
     if is_paused():
         set_paused(False)
+
+    if jobs["status"] == "running":
+        # Queue via download.sh's lock/queue system instead of silently dropping
+        def _queue_job():
+            proc = subprocess.Popen(
+                ["/app/scripts/download.sh", f"--{mode}"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+            output = proc.communicate()[0]
+            # Log the queue message
+            if output:
+                try:
+                    with open(LOG_FILE, "a") as f:
+                        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        for line in output.strip().split('\n'):
+                            f.write(f"{ts} [queue] {line}\n")
+                except Exception:
+                    pass
+        thread = threading.Thread(target=_queue_job, daemon=True)
+        thread.start()
+        return redirect(request.referrer or url_for("dashboard"))
 
     thread = threading.Thread(target=run_download, args=(mode,), daemon=True)
     thread.start()
@@ -778,6 +799,23 @@ def run_single():
     if not url:
         return "Missing URL", 400
     if jobs["status"] == "running":
+        # Queue via download.sh lock/queue system
+        def _queue_single():
+            cmd = ["/app/scripts/download.sh", "--single", url]
+            if folder_name:
+                cmd.extend(["--folder", folder_name])
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            output = proc.communicate()[0]
+            if output:
+                try:
+                    with open(LOG_FILE, "a") as f:
+                        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        for line in output.strip().split('\n'):
+                            f.write(f"{ts} [queue] {line}\n")
+                except Exception:
+                    pass
+        thread = threading.Thread(target=_queue_single, daemon=True)
+        thread.start()
         return redirect(request.referrer or url_for("channels"))
     if is_paused():
         set_paused(False)
@@ -800,6 +838,23 @@ def run_fast_single():
     if not url:
         return "Missing URL", 400
     if jobs["status"] == "running":
+        # Queue via download.sh lock/queue system
+        def _queue_fast_single():
+            cmd = ["/app/scripts/download.sh", "--fast-single", url]
+            if folder_name:
+                cmd.extend(["--folder", folder_name])
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            output = proc.communicate()[0]
+            if output:
+                try:
+                    with open(LOG_FILE, "a") as f:
+                        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        for line in output.strip().split('\n'):
+                            f.write(f"{ts} [queue] {line}\n")
+                except Exception:
+                    pass
+        thread = threading.Thread(target=_queue_fast_single, daemon=True)
+        thread.start()
         return redirect(request.referrer or url_for("channels"))
     if is_paused():
         set_paused(False)
