@@ -20,6 +20,9 @@
         <form method="POST" action="/run/full" style="display:inline">
             <button type="submit" class="btn btn-purple" {% if job.status == 'running' %}disabled{% endif %}>📚 Full Index</button>
         </form>
+        <form method="POST" action="/run/cancel" style="display:inline" onsubmit="return confirm('Cancel running download and clear the queue?');">
+            <button type="submit" class="btn" style="border-color:var(--red);color:var(--red);" {% if job.status != 'running' %}disabled{% endif %}>⛔ Cancel All</button>
+        </form>
         <button type="button" class="btn btn-sm" onclick="refreshStats(this)" title="Refresh library stats">🔄 Refresh Stats</button>
     </div>
 </div>

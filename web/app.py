@@ -20,7 +20,7 @@ CONFIG_FILE = "/config/slugtube-config.json"
 PAUSE_FILE = "/config/paused"
 
 # Track running jobs
-jobs = {"status": "idle", "mode": None, "started": None, "log": ""}
+jobs = {"status": "idle", "mode": None, "started": None, "log": "", "proc": None}
 
 def check_stale_job():
     """Reset jobs stuck in 'running' for more than 5 hours."""
@@ -357,6 +357,7 @@ def run_single_channel(url, folder_name=None, fast=False):
                 text=True,
                 bufsize=1
             )
+            jobs["proc"] = proc
             for line in proc.stdout:
                 line = line.rstrip('\n')
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -406,6 +407,7 @@ def run_download(mode):
             stderr=subprocess.STDOUT,
             text=True
         )
+        jobs["proc"] = proc
 
         log_lines = []
         log_file = open(LOG_FILE, "a") if LOG_FILE else None
@@ -663,6 +665,60 @@ def pause():
 def resume():
     set_paused(False)
     jobs["status"] = "idle"
+    return redirect(request.referrer or url_for("dashboard"))
+
+
+@app.route("/run/cancel", methods=["POST"])
+def cancel_all():
+    """Kill running download and clear the queue."""
+    import signal, glob
+
+    cancelled = []
+
+    # 1. Kill running subprocess
+    proc = jobs.get("proc")
+    if proc and proc.poll() is None:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        cancelled.append(f"Killed running download (PID {proc.pid})")
+
+    # 2. Kill any download.sh by lock file PID
+    lock_file = "/config/slugtube.lock"
+    if os.path.exists(lock_file):
+        try:
+            with open(lock_file) as f:
+                lock_pid = int(f.read().strip())
+            os.kill(lock_pid, signal.SIGTERM)
+            cancelled.append(f"Killed lock holder (PID {lock_pid})")
+        except (ValueError, ProcessLookupError, PermissionError):
+            pass
+        try:
+            os.remove(lock_file)
+        except OSError:
+            pass
+
+    # 3. Clear the queue
+    queue_dir = "/config/queue"
+    queued_files = glob.glob(os.path.join(queue_dir, "*.job"))
+    for qf in queued_files:
+        try:
+            os.remove(qf)
+        except OSError:
+            pass
+    if queued_files:
+        cancelled.append(f"Cleared {len(queued_files)} queued job(s)")
+
+    # 4. Reset job state
+    jobs["status"] = "idle"
+    jobs["mode"] = None
+    jobs["proc"] = None
+    jobs["log"] = "⛔ Cancelled. " + " | ".join(cancelled) if cancelled else "Nothing was running."
+
     return redirect(request.referrer or url_for("dashboard"))
 
 
