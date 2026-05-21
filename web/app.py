@@ -1374,18 +1374,29 @@ def api_index_status():
 
 @app.route("/api/reindex/<path:channel_name>", methods=["POST"])
 def api_reindex_channel(channel_name):
-    """Re-index a single channel."""
+    """Re-index a single channel (synchronous — waits for result)."""
     from indexer import reindex_single_channel
     from urllib.parse import unquote
-    import threading
+    import pathlib
 
     channel_name = unquote(channel_name)
-    thread = threading.Thread(target=reindex_single_channel, args=(channel_name,), daemon=True)
-    thread.start()
+    shows = pathlib.Path("/shows")
+    channel_dir = shows / channel_name
+
+    app.logger.info(f"Re-index requested for: {channel_name!r} → {channel_dir}")
+
+    if not channel_dir.is_dir():
+        app.logger.warning(f"Channel dir NOT FOUND: {channel_dir}")
+        if request.referrer:
+            return redirect(request.referrer)
+        return jsonify({"status": "error", "message": f"Directory not found: {channel_name}"}), 404
+
+    # Run synchronously so the redirect shows updated counts
+    result = reindex_single_channel(channel_name)
 
     if request.referrer:
         return redirect(request.referrer)
-    return jsonify({"status": "started", "channel": channel_name})
+    return jsonify({"status": "done" if result else "error", "channel": channel_name})
 
 
 # ── Startup ──
