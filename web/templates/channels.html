@@ -49,9 +49,13 @@
                             {% endif %}
                         {% endfor %}
                         {% if matched_url.val %}
+                        <form method="POST" action="/run/fast-single" style="display:inline">
+                            <input type="hidden" name="url" value="{{ matched_url.val }}">
+                            <button type="submit" class="btn btn-sm" {% if job.status == 'running' %}disabled{% endif %} title="Fast check {{ ch.name }} (latest 50)" style="border-color:var(--accent);color:var(--accent);">⚡</button>
+                        </form>
                         <form method="POST" action="/run/single" style="display:inline">
                             <input type="hidden" name="url" value="{{ matched_url.val }}">
-                            <button type="submit" class="btn btn-blue btn-sm" {% if job.status == 'running' %}disabled{% endif %} title="Download {{ ch.name }}">⬇️</button>
+                            <button type="submit" class="btn btn-blue btn-sm" {% if job.status == 'running' %}disabled{% endif %} title="Download ALL {{ ch.name }}">⬇️</button>
                         </form>
                         {% endif %}
                         <form method="POST" action="/api/reindex/{{ ch.name | urlencode }}" style="display:inline">
@@ -87,10 +91,15 @@
                     <td><a href="{{ ch.url }}" target="_blank" class="channel-url">{{ ch.url | truncate(60) }}</a></td>
                     <td><span class="badge badge-blue">{{ ch.section }}</span></td>
                     <td style="text-align:center; white-space: nowrap;">
+                        <form method="POST" action="/run/fast-single" style="display:inline">
+                            <input type="hidden" name="url" value="{{ ch.url }}">
+                            <input type="hidden" name="folder" value="{{ ch.name }}">
+                            <button type="submit" class="btn btn-sm" {% if job.status == 'running' %}disabled{% endif %} title="Fast check {{ ch.name }} (latest 50)" style="border-color:var(--accent);color:var(--accent);">⚡</button>
+                        </form>
                         <form method="POST" action="/run/single" style="display:inline">
                             <input type="hidden" name="url" value="{{ ch.url }}">
                             <input type="hidden" name="folder" value="{{ ch.name }}">
-                            <button type="submit" class="btn btn-blue btn-sm" {% if job.status == 'running' %}disabled{% endif %} title="Download {{ ch.name }}">⬇️</button>
+                            <button type="submit" class="btn btn-blue btn-sm" {% if job.status == 'running' %}disabled{% endif %} title="Download ALL {{ ch.name }}">⬇️</button>
                         </form>
                         <form method="POST" action="/api/reindex/{{ ch.name | urlencode }}" style="display:inline">
                             <button type="submit" class="btn btn-sm" title="Re-index {{ ch.name }}" style="border-color:var(--green);color:var(--green);">📂</button>

@@ -76,10 +76,15 @@ case "$QUALITY" in
 esac
 
 # ── Single channel mode ──
-if [ "$MODE" = "--single" ] && [ -n "$SINGLE_URL" ]; then
+if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_URL" ]; then
     # Debug: show exactly what arguments were received
     echo "[DEBUG] All arguments: $@"
     echo "[DEBUG] \$1=$1  \$2=$2  \$3=${3:-EMPTY}  \$4=${4:-EMPTY}"
+
+    FAST_SINGLE=false
+    if [ "$MODE" = "--fast-single" ]; then
+        FAST_SINGLE=true
+    fi
 
     # Check for --folder argument
     FOLDER_OVERRIDE=""
@@ -140,6 +145,12 @@ if [ "$MODE" = "--single" ] && [ -n "$SINGLE_URL" ]; then
     fi
     if [ "$SKIP_SHORTS" = "true" ]; then
         YT_OPTS+=(--match-filter "duration > 60")
+    fi
+
+    # Fast-single mode: only check latest 50 videos
+    if [ "$FAST_SINGLE" = "true" ]; then
+        YT_OPTS+=(--playlist-end 50 --break-on-existing --break-on-reject)
+        echo "⚡ Fast mode: checking latest 50 videos only"
     fi
 
     echo "📺 Channel: $SINGLE_URL"
