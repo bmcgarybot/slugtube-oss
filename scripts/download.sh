@@ -24,17 +24,47 @@ mkdir -p "$TEMP_DIR" "$OUTPUT_DIR" /config/logs /config/archive
 
 # ── Lock file (prevent concurrent downloads) ──
 LOCK_FILE="/config/slugtube.lock"
+QUEUE_DIR="/config/queue"
+mkdir -p "$QUEUE_DIR"
 
 cleanup_lock() {
     rm -f "$LOCK_FILE"
+}
+
+process_queue() {
+    # After finishing, check for queued jobs and run the next one
+    local next_job
+    next_job=$(ls -1t "$QUEUE_DIR"/*.job 2>/dev/null | head -1)
+    if [ -n "$next_job" ] && [ -f "$next_job" ]; then
+        local job_args
+        job_args=$(cat "$next_job")
+        rm -f "$next_job"
+        echo ""
+        echo "📋 Running queued job: $job_args"
+        echo ""
+        # Release lock, then re-run ourselves with the queued args
+        rm -f "$LOCK_FILE"
+        exec /app/scripts/download.sh $job_args
+    fi
 }
 
 if [ -f "$LOCK_FILE" ]; then
     LOCK_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
     # Check if the process that created the lock is still running
     if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
-        echo "🔒 Another download is already running (PID $LOCK_PID). Skipping."
-        echo "   Delete /config/slugtube.lock manually if this is stale."
+        # Queue this job instead of skipping
+        JOB_KEY="$MODE"
+        [ -n "$SINGLE_URL" ] && JOB_KEY="${MODE}_${SINGLE_URL}"
+        QUEUE_FILE="$QUEUE_DIR/$(date +%s)_$(echo "$JOB_KEY" | tr '/:@' '___').job"
+        # Don't queue duplicates of the same mode (fast/full)
+        if [ "$MODE" = "--fast" ] || [ "$MODE" = "--full" ]; then
+            if ls "$QUEUE_DIR"/*"${MODE}"*.job 2>/dev/null | grep -q .; then
+                echo "🔒 Download running (PID $LOCK_PID). Already queued: $MODE. Skipping duplicate."
+                exit 0
+            fi
+        fi
+        echo "$@" > "$QUEUE_FILE"
+        echo "🔒 Download running (PID $LOCK_PID). Queued: $MODE → will run when current job finishes."
         exit 0
     else
         echo "🔓 Stale lock found (PID $LOCK_PID not running). Cleaning up."
@@ -43,7 +73,7 @@ if [ -f "$LOCK_FILE" ]; then
 fi
 
 echo $$ > "$LOCK_FILE"
-trap cleanup_lock EXIT
+trap 'process_queue; cleanup_lock' EXIT
 
 # ── Check pause state ──
 if [ -f "$PAUSE_FILE" ]; then
