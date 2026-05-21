@@ -815,6 +815,11 @@ def clear_logs():
             f.truncate(0)
     except Exception as e:
         print(f"Error clearing logs: {e}")
+    # Also clear the in-memory job status so the error banner goes away
+    if jobs["status"] != "running":
+        jobs["status"] = "idle"
+        jobs["log"] = ""
+        jobs["mode"] = None
     return redirect(url_for("logs"))
 
 
