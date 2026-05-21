@@ -648,7 +648,7 @@ def start_background_index(force=False):
 
 def reindex_single_channel(channel_name):
     """Re-index a single channel directory."""
-    shows = pathlib.Path(SHOWS_DIR)
+    shows = Path(SHOWS_DIR)
     channel_dir = shows / channel_name
     if not channel_dir.is_dir():
         log_warn(f"⚠️ Channel directory not found: {channel_name}")
