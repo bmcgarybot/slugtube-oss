@@ -119,10 +119,7 @@ def init_db():
             FOREIGN KEY (video_id) REFERENCES videos(id)
         );
 
-        DROP TABLE IF EXISTS video_playlists;
-        DROP TABLE IF EXISTS playlists;
-
-        CREATE TABLE playlists (
+        CREATE TABLE IF NOT EXISTS playlists (
             id TEXT PRIMARY KEY,
             channel_name TEXT NOT NULL,
             title TEXT NOT NULL,
@@ -130,7 +127,7 @@ def init_db():
             updated_at TEXT
         );
 
-        CREATE TABLE video_playlists (
+        CREATE TABLE IF NOT EXISTS video_playlists (
             video_id TEXT NOT NULL,
             playlist_id TEXT NOT NULL,
             playlist_index INTEGER DEFAULT 0,
@@ -535,6 +532,171 @@ def _scan_channel(conn, channel_dir):
     return video_count, total_size
 
 
+def index_channel_playlists(channel_url, channel_name):
+    """Fetch real playlists from YouTube for a channel and populate the DB.
+
+    Uses yt-dlp to:
+    1. List all curated playlists on the channel's /playlists tab
+    2. For each playlist, get the video IDs
+    3. Match against already-downloaded videos in the DB
+    4. Replace existing playlist data for this channel
+    """
+    import subprocess as _sp
+
+    # Derive the /playlists URL from the channel URL
+    # e.g. https://www.youtube.com/@MeatCanyon/videos -> https://www.youtube.com/@MeatCanyon/playlists
+    base_url = channel_url.split('/videos')[0].split('/playlists')[0].rstrip('/')
+    playlists_url = base_url + '/playlists'
+
+    log(f"🎵 Fetching playlists for {channel_name} from {playlists_url}")
+
+    # Step 1: Enumerate playlists
+    try:
+        result = _sp.run(
+            ['yt-dlp', '--no-check-certificates', '--flat-playlist', '--dump-json', playlists_url],
+            capture_output=True, text=True, timeout=120
+        )
+        if result.returncode != 0:
+            log_warn(f"  ⚠️ yt-dlp playlists listing failed for {channel_name}: {result.stderr[:500]}")
+            return
+    except _sp.TimeoutExpired:
+        log_warn(f"  ⚠️ yt-dlp playlists listing timed out for {channel_name}")
+        return
+    except Exception as e:
+        log_err(f"  ❌ yt-dlp playlists listing error for {channel_name}: {e}")
+        return
+
+    # Parse playlist entries
+    raw_playlists = []
+    for line in result.stdout.strip().split('\n'):
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+            pl_id = entry.get('id', '')
+            pl_title = entry.get('title', '')
+            pl_url = entry.get('url') or entry.get('webpage_url', '')
+
+            # Filter out auto-generated playlists:
+            # - UU prefix = uploads playlist
+            # - FL prefix = favorites/liked
+            # - LL prefix = liked videos
+            # - "- Videos" suffix = auto-generated uploads title
+            if not pl_id or not pl_title:
+                continue
+            if pl_id.startswith('UU') or pl_id.startswith('FL') or pl_id.startswith('LL'):
+                log(f"  ⏭️ Skipping auto-generated playlist: {pl_title} ({pl_id})")
+                continue
+            if pl_title.endswith(' - Videos') or pl_title.lower() in ('videos', 'shorts', 'live'):
+                log(f"  ⏭️ Skipping auto-generated playlist: {pl_title} ({pl_id})")
+                continue
+
+            raw_playlists.append({'id': pl_id, 'title': pl_title, 'url': pl_url})
+        except json.JSONDecodeError:
+            continue
+
+    log(f"  📋 Found {len(raw_playlists)} curated playlists for {channel_name}")
+
+    if not raw_playlists:
+        return
+
+    # Step 2: For each playlist, get video IDs
+    now = datetime.utcnow().isoformat()
+    playlist_data = []  # list of (pl_id, pl_title, [(video_id, playlist_index), ...])
+
+    for i, pl in enumerate(raw_playlists):
+        pl_id = pl['id']
+        pl_title = pl['title']
+        pl_url = pl['url'] or f"https://www.youtube.com/playlist?list={pl_id}"
+
+        log(f"  [{i+1}/{len(raw_playlists)}] Fetching videos for: {pl_title}")
+
+        try:
+            vresult = _sp.run(
+                ['yt-dlp', '--no-check-certificates', '--flat-playlist', '--dump-json', pl_url],
+                capture_output=True, text=True, timeout=120
+            )
+        except _sp.TimeoutExpired:
+            log_warn(f"    ⚠️ Timed out fetching playlist: {pl_title}")
+            continue
+        except Exception as e:
+            log_warn(f"    ⚠️ Error fetching playlist {pl_title}: {e}")
+            continue
+
+        if vresult.returncode != 0:
+            log_warn(f"    ⚠️ yt-dlp failed for playlist {pl_title}: {vresult.stderr[:300]}")
+            continue
+
+        video_entries = []
+        for vline in vresult.stdout.strip().split('\n'):
+            if not vline.strip():
+                continue
+            try:
+                ventry = json.loads(vline)
+                vid = ventry.get('id', '')
+                vidx = ventry.get('playlist_index') or ventry.get('playlist_autonumber', 0)
+                if vid:
+                    video_entries.append((vid, vidx if isinstance(vidx, int) else 0))
+            except json.JSONDecodeError:
+                continue
+
+        log(f"    Found {len(video_entries)} videos in playlist")
+        playlist_data.append((pl_id, pl_title, video_entries))
+
+        # Sleep between requests to avoid rate limiting
+        if i < len(raw_playlists) - 1:
+            time.sleep(2)
+
+    # Step 3: Write to DB
+    try:
+        conn = get_db()
+
+        # Clear existing playlist data for this channel
+        existing_pls = conn.execute(
+            "SELECT id FROM playlists WHERE channel_name = ?", (channel_name,)
+        ).fetchall()
+        for row in existing_pls:
+            conn.execute("DELETE FROM video_playlists WHERE playlist_id = ?", (row['id'],))
+        conn.execute("DELETE FROM playlists WHERE channel_name = ?", (channel_name,))
+
+        total_matched = 0
+
+        for pl_id, pl_title, video_entries in playlist_data:
+            # Insert playlist record
+            conn.execute("""
+                INSERT OR REPLACE INTO playlists (id, channel_name, title, video_count, updated_at)
+                VALUES (?, ?, ?, 0, ?)
+            """, (pl_id, channel_name, pl_title, now))
+
+            matched = 0
+            for vid, vidx in video_entries:
+                # Check if this video exists in our library
+                exists = conn.execute("SELECT id FROM videos WHERE id = ?", (vid,)).fetchone()
+                if exists:
+                    conn.execute("""
+                        INSERT OR REPLACE INTO video_playlists (video_id, playlist_id, playlist_index)
+                        VALUES (?, ?, ?)
+                    """, (vid, pl_id, vidx))
+                    matched += 1
+
+            # Update playlist video count (matched only)
+            conn.execute("""
+                UPDATE playlists SET video_count = ? WHERE id = ?
+            """, (matched, pl_id))
+
+            total_matched += matched
+            log(f"    ✅ {pl_title}: {matched}/{len(video_entries)} videos matched in library")
+
+        conn.commit()
+        conn.close()
+        log(f"  🎵 Playlist indexing complete for {channel_name}: {len(playlist_data)} playlists, {total_matched} total matches")
+
+    except Exception as e:
+        import traceback
+        log_err(f"  ❌ DB error during playlist indexing for {channel_name}: {e}")
+        log_err(traceback.format_exc())
+
+
 def run_index(force=False):
     """Full index scan. Incremental — only re-indexes changed .info.json files."""
     if _index_status["scanning"]:
@@ -639,9 +801,30 @@ def run_index(force=False):
             _index_status["scanning"] = False
 
 
-def start_background_index(force=False):
-    """Run indexer in a background thread."""
-    thread = threading.Thread(target=run_index, args=(force,), daemon=True)
+def start_background_index(force=False, playlist_channels=None):
+    """Run indexer in a background thread.
+
+    Args:
+        force: Force full re-scan even if nothing changed
+        playlist_channels: List of dicts with 'url' and 'name' keys for channels
+                          that should also have their playlists indexed after the
+                          main video index completes.
+    """
+    def _run():
+        run_index(force=force)
+        # After video indexing, run playlist indexing for flagged channels
+        if playlist_channels:
+            log(f"🎵 Starting playlist indexing for {len(playlist_channels)} channels...")
+            for ch in playlist_channels:
+                try:
+                    index_channel_playlists(ch['url'], ch['name'])
+                except Exception as e:
+                    import traceback
+                    log_err(f"❌ Playlist indexing failed for {ch['name']}: {e}")
+                    log_err(traceback.format_exc())
+            log("🎵 Playlist indexing complete for all flagged channels")
+
+    thread = threading.Thread(target=_run, daemon=True)
     thread.start()
     return thread
 

@@ -11,6 +11,10 @@
     <div class="card-body">
         <form method="POST" action="/add" class="add-form">
             <input type="url" name="url" placeholder="https://www.youtube.com/@ChannelName/videos" required>
+            <input type="text" name="name" placeholder="Display Name (optional)" style="max-width:200px;">
+            <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--text-dim);cursor:pointer;">
+                <input type="checkbox" name="playlists"> 📋 Playlists
+            </label>
             <button type="submit" class="btn btn-primary">+ Add Channel</button>
         </form>
     </div>
@@ -87,7 +91,7 @@
             <tbody>
                 {% for ch in channels %}
                 <tr>
-                    <td class="channel-name">{{ ch.name }}</td>
+                    <td class="channel-name">{{ ch.name }}{% if ch.index_playlists %} <span title="Playlist indexing enabled" style="cursor:help;">📋</span>{% endif %}</td>
                     <td><a href="{{ ch.url }}" target="_blank" class="channel-url">{{ ch.url | truncate(60) }}</a></td>
                     <td><span class="badge badge-blue">{{ ch.section }}</span></td>
                     <td style="text-align:center; white-space: nowrap;">
@@ -103,6 +107,9 @@
                         </form>
                         <form method="POST" action="/api/reindex/{{ ch.name | urlencode }}" style="display:inline">
                             <button type="submit" class="btn btn-sm" title="Re-index {{ ch.name }}" style="border-color:var(--green);color:var(--green);">📂</button>
+                        </form>
+                        <form method="POST" action="/api/toggle-playlists/{{ ch.name | urlencode }}" style="display:inline">
+                            <button type="submit" class="btn btn-sm" title="{% if ch.index_playlists %}Disable{% else %}Enable{% endif %} playlist indexing" style="border-color:{% if ch.index_playlists %}var(--accent){% else %}var(--text-dimmer){% endif %};color:{% if ch.index_playlists %}var(--accent){% else %}var(--text-dimmer){% endif %};">📋</button>
                         </form>
                         <form method="POST" action="/remove" style="display:inline">
                             <input type="hidden" name="url" value="{{ ch.url }}">

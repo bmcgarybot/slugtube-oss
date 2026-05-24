@@ -22,6 +22,11 @@
                 <div class="ch-stat"><span class="ch-stat-val">{{ "%.1f"|format((channel_info.total_size_bytes or 0) / 1073741824) }}</span> GB</div>
             </div>
             <div class="ch-controls">
+                {% if channel_url %}
+                <form method="POST" action="/api/reindex-playlists/{{ channel_name | urlencode }}" style="display:inline">
+                    <button type="submit" class="btn btn-sm" title="Fetch playlists from YouTube for this channel" style="border-color:var(--accent);color:var(--accent);font-size:12px;">🎵 Reindex Playlists</button>
+                </form>
+                {% endif %}
                 {% if playlists %}
                 <div class="playlist-pills">
                     <a href="/library/{{ channel_name | urlencode }}?sort=newest"

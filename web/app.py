@@ -150,11 +150,16 @@ def get_channels():
                     continue
                 else:
                     raw = line.strip()
-                    # Handle pipe separator: URL|DisplayName
+                    index_playlists = False
+                    # Handle pipe separator: URL|DisplayName or URL|DisplayName|playlists
                     if "|" in raw:
-                        url, name = raw.split("|", 1)
-                        url = url.strip()
-                        name = name.strip()
+                        parts = raw.split("|")
+                        url = parts[0].strip()
+                        name = parts[1].strip() if len(parts) > 1 else url
+                        # Check for |playlists flag (third field or any field after name)
+                        for extra in parts[2:]:
+                            if extra.strip().lower() == 'playlists':
+                                index_playlists = True
                     else:
                         url = raw
                         name = url
@@ -168,7 +173,7 @@ def get_channels():
                             name = url.split("/channel/")[1].split("/")[0][:20]
                     # Clean up URL-encoded names
                     name = name.replace("%20", " ").replace("+", " ")
-                    channels.append({"url": url, "name": name, "section": current_section, "type": "channel"})
+                    channels.append({"url": url, "name": name, "section": current_section, "type": "channel", "index_playlists": index_playlists})
     except FileNotFoundError:
         pass
     return channels
@@ -232,6 +237,18 @@ def get_channel_stats():
         thread = threading.Thread(target=_scan_channel_stats, daemon=True)
         thread.start()
     return _stats_cache["data"]
+
+
+def _get_playlist_channels():
+    """Return list of channel dicts that have the |playlists flag set."""
+    return [ch for ch in get_channels() if ch.get('index_playlists')]
+
+
+def _trigger_background_index(force=False):
+    """Start background index, automatically including playlist channels."""
+    from indexer import start_background_index
+    pl_channels = _get_playlist_channels()
+    start_background_index(force=force, playlist_channels=pl_channels if pl_channels else None)
 
 
 def get_disk_usage():
@@ -379,8 +396,7 @@ def run_single_channel(url, folder_name=None, fast=False):
 
         # Trigger re-index after downloads complete
         try:
-            from indexer import start_background_index
-            start_background_index()
+            _trigger_background_index()
         except:
             pass
     except subprocess.TimeoutExpired:
@@ -431,8 +447,7 @@ def run_download(mode):
         save_state(state)
         # Trigger re-index after downloads complete
         try:
-            from indexer import start_background_index
-            start_background_index()
+            _trigger_background_index()
         except:
             pass
     except Exception as e:
@@ -633,9 +648,23 @@ def save_settings():
 @app.route("/add", methods=["POST"])
 def add_channel():
     url = request.form.get("url", "").strip()
+    name = request.form.get("name", "").strip()
+    playlists = request.form.get("playlists") == "on"
     if url and ("youtube.com" in url or "youtu.be" in url):
+        entry = url
+        if name:
+            entry = f"{url}|{name}"
+            if playlists:
+                entry += "|playlists"
+        elif playlists:
+            # Need a name to add the playlists flag
+            if "/@" in url:
+                auto_name = url.split("/@")[1].split("/")[0]
+            else:
+                auto_name = url
+            entry = f"{url}|{auto_name}|playlists"
         with open(CHANNELS_FILE, "a") as f:
-            f.write(f"\n{url}\n")
+            f.write(f"\n{entry}\n")
     return redirect(request.referrer or url_for("channels"))
 
 
@@ -1060,6 +1089,18 @@ def channel_view(channel_name):
     # Get playlists for this channel
     playlists = get_channel_playlists(channel_name)
 
+    # Check if channel has playlist indexing enabled in channels.txt
+    channel_has_playlist_flag = any(
+        ch['name'] == channel_name and ch.get('index_playlists')
+        for ch in get_channels()
+    )
+    # Also find the channel URL for the reindex button
+    channel_url = None
+    for ch in get_channels():
+        if ch['name'] == channel_name:
+            channel_url = ch['url']
+            break
+
     return render_template("channel_view.html",
         page="library",
         channel_name=channel_name,
@@ -1072,6 +1113,8 @@ def channel_view(channel_name):
         limit=limit,
         playlists=playlists,
         active_playlist=None,
+        channel_has_playlist_flag=channel_has_playlist_flag,
+        channel_url=channel_url,
         index_status=get_index_status(),
         job=jobs,
         paused=is_paused(),
@@ -1103,6 +1146,17 @@ def playlist_view(channel_name, playlist_id):
     # Get playlists for this channel
     playlists = get_channel_playlists(channel_name)
 
+    # Check if channel has playlist indexing enabled
+    channel_has_playlist_flag = any(
+        ch['name'] == channel_name and ch.get('index_playlists')
+        for ch in get_channels()
+    )
+    channel_url = None
+    for ch in get_channels():
+        if ch['name'] == channel_name:
+            channel_url = ch['url']
+            break
+
     return render_template("channel_view.html",
         page="library",
         channel_name=channel_name,
@@ -1115,6 +1169,8 @@ def playlist_view(channel_name, playlist_id):
         limit=limit,
         playlists=playlists,
         active_playlist=playlist,
+        channel_has_playlist_flag=channel_has_playlist_flag,
+        channel_url=channel_url,
         index_status=get_index_status(),
         job=jobs,
         paused=is_paused(),
@@ -1349,7 +1405,7 @@ def api_watch_progress():
 @app.route("/api/reindex", methods=["POST"])
 def api_reindex():
     """Trigger a library re-index."""
-    from indexer import start_background_index, get_index_status
+    from indexer import get_index_status
 
     status = get_index_status()
     if status['scanning']:
@@ -1358,7 +1414,7 @@ def api_reindex():
         return jsonify({"status": "already scanning"})
 
     force = request.args.get('force', 'false').lower() == 'true'
-    start_background_index(force=force)
+    _trigger_background_index(force=force)
 
     # If called from browser (form submit), redirect back
     if request.referrer:
@@ -1399,6 +1455,88 @@ def api_reindex_channel(channel_name):
     return jsonify({"status": "done" if result else "error", "channel": channel_name})
 
 
+@app.route("/api/reindex-playlists/<path:channel_name>", methods=["POST"])
+def api_reindex_playlists(channel_name):
+    """Re-index playlists for a single channel (runs in background)."""
+    from indexer import index_channel_playlists
+    from urllib.parse import unquote
+
+    channel_name = unquote(channel_name)
+
+    # Find the channel URL from channels.txt
+    channel_url = None
+    for ch in get_channels():
+        if ch['name'] == channel_name:
+            channel_url = ch['url']
+            break
+
+    if not channel_url:
+        if request.referrer:
+            return redirect(request.referrer)
+        return jsonify({"status": "error", "message": f"Channel not found in channels.txt: {channel_name}"}), 404
+
+    def _run_playlist_index():
+        try:
+            index_channel_playlists(channel_url, channel_name)
+        except Exception as e:
+            import traceback
+            print(f"❌ Playlist reindex failed for {channel_name}: {e}")
+            traceback.print_exc()
+
+    thread = threading.Thread(target=_run_playlist_index, daemon=True)
+    thread.start()
+
+    if request.referrer:
+        return redirect(request.referrer)
+    return jsonify({"status": "started", "channel": channel_name})
+
+
+@app.route("/api/toggle-playlists/<path:channel_name>", methods=["POST"])
+def api_toggle_playlists(channel_name):
+    """Toggle the |playlists flag for a channel in channels.txt."""
+    from urllib.parse import unquote
+    channel_name = unquote(channel_name)
+
+    try:
+        with open(CHANNELS_FILE, "r") as f:
+            lines = f.readlines()
+
+        new_lines = []
+        toggled = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("#") or not stripped:
+                new_lines.append(line)
+                continue
+
+            parts = stripped.split("|")
+            url = parts[0].strip()
+            name = parts[1].strip() if len(parts) > 1 else ""
+
+            # Match by name
+            if name == channel_name:
+                has_playlists = any(p.strip().lower() == 'playlists' for p in parts[2:])
+                if has_playlists:
+                    # Remove the playlists flag
+                    new_parts = [p for p in parts if p.strip().lower() != 'playlists']
+                    new_lines.append("|".join(new_parts) + "\n")
+                else:
+                    # Add the playlists flag
+                    new_lines.append(stripped + "|playlists\n")
+                toggled = True
+            else:
+                new_lines.append(line)
+
+        if toggled:
+            with open(CHANNELS_FILE, "w") as f:
+                f.writelines(new_lines)
+
+    except Exception as e:
+        print(f"Error toggling playlists for {channel_name}: {e}")
+
+    return redirect(request.referrer or url_for("channels"))
+
+
 # ── Startup ──
 
 if __name__ == "__main__":
@@ -1412,9 +1550,9 @@ if __name__ == "__main__":
 
     # Start background indexer on boot
     try:
-        from indexer import init_db, start_background_index
+        from indexer import init_db
         init_db()
-        start_background_index()
+        _trigger_background_index()
         print("📚 Background indexer started")
     except Exception as e:
         print(f"⚠️ Indexer init failed: {e}")
