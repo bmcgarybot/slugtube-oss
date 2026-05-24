@@ -56,40 +56,56 @@ while IFS= read -r -d '' channeldir; do
     # ── Download channel avatar as poster ──
     if $NEED_POSTER; then
         echo "   📸 Fetching channel avatar..."
-        # Use yt-dlp to grab channel/playlist thumbnail
+
+        # Method 1: Use --playlist-items 1 (more reliable than 0)
+        ART_OK=false
         if yt-dlp \
             --cookies "$COOKIES_FILE" \
             --write-thumbnail \
             --skip-download \
-            --playlist-items 0 \
+            --playlist-items 1 \
             --convert-thumbnails jpg \
             -o "$TEMP_DIR/%(channel)s" \
             "$CHANNEL_URL" 2>/dev/null; then
 
-            # Find the downloaded thumbnail
-            THUMB=$(find "$TEMP_DIR" -name "*.jpg" -o -name "*.webp" -o -name "*.png" 2>/dev/null | head -1)
+            THUMB=$(find "$TEMP_DIR" -name "*.jpg" 2>/dev/null | head -1)
             if [ -n "$THUMB" ] && [ -f "$THUMB" ]; then
                 cp "$THUMB" "$channeldir/poster.jpg"
-                # Also use as fanart if missing
                 [ ! -f "$channeldir/fanart.jpg" ] && cp "$THUMB" "$channeldir/fanart.jpg"
-                echo "   ✅ poster.jpg saved"
+                echo "   ✅ poster.jpg saved (method 1)"
                 ((FIXED++)) || true
-            else
-                echo "   ⚠️  Thumbnail download succeeded but file not found"
-            fi
-        else
-            # Fallback: try to extract avatar from video thumbnail array in info.json
-            if [ -n "$SAMPLE_JSON" ] && [ -f "$SAMPLE_JSON" ]; then
-                AVATAR_URL=$(jq -r '
-                    .thumbnails[-1].url //
-                    .channel_follower_count // empty
-                ' "$SAMPLE_JSON" 2>/dev/null)
-                # Not reliable, just note it
-                echo "   ⚠️  Could not fetch channel thumbnail"
+                ART_OK=true
             fi
         fi
-        # Clean temp
         rm -rf "$TEMP_DIR"/*
+
+        # Method 2: Fallback — grab avatar from channel page directly
+        if ! $ART_OK; then
+            echo "   📸 Trying fallback method..."
+            # Extract avatar URL from any .info.json in the channel
+            if [ -n "$SAMPLE_JSON" ] && [ -f "$SAMPLE_JSON" ]; then
+                AVATAR_URL=$(jq -r '
+                    (.thumbnails // [])[] | select(.id == "avatar_uncropped" or (.url // "" | test("yt3.ggpht|yt3.googleusercontent"))) | .url
+                ' "$SAMPLE_JSON" 2>/dev/null | head -1)
+
+                if [ -n "$AVATAR_URL" ] && [ "$AVATAR_URL" != "null" ]; then
+                    if curl -sL -o "$TEMP_DIR/avatar.jpg" "$AVATAR_URL" 2>/dev/null; then
+                        if [ -s "$TEMP_DIR/avatar.jpg" ]; then
+                            cp "$TEMP_DIR/avatar.jpg" "$channeldir/poster.jpg"
+                            [ ! -f "$channeldir/fanart.jpg" ] && cp "$TEMP_DIR/avatar.jpg" "$channeldir/fanart.jpg"
+                            echo "   ✅ poster.jpg saved (method 2 - from info.json)"
+                            ((FIXED++)) || true
+                            ART_OK=true
+                        fi
+                    fi
+                fi
+            fi
+        fi
+        rm -rf "$TEMP_DIR"/*
+
+        if ! $ART_OK; then
+            echo "   ⚠️  Could not fetch channel artwork for $CHANNEL_NAME"
+        fi
     fi
 
     # ── Generate tvshow.nfo if missing ──
