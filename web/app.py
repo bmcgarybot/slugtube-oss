@@ -1567,6 +1567,7 @@ def api_fetch_art(channel_name):
 
     def _fetch_art():
         import sqlite3 as _sqlite3
+        from indexer import DB_PATH  # Single source of truth for DB location
         try:
             poster_path = os.path.join(channel_path, "poster")
             # Method 1: yt-dlp with --playlist-items 1
@@ -1585,8 +1586,7 @@ def api_fetch_art(channel_name):
             if os.path.isfile(poster_file):
                 print(f"🎨 ✅ Fetched art for {channel_name}", flush=True)
                 # Update DB directly (thread-safe, no Flask context needed)
-                db_path = "/config/slugtube-index.db"
-                conn = _sqlite3.connect(db_path, timeout=10)
+                conn = _sqlite3.connect(DB_PATH, timeout=10)
                 conn.execute("UPDATE channels SET has_poster = 1 WHERE name = ?", (channel_name,))
                 conn.commit()
                 conn.close()
