@@ -22,6 +22,11 @@
                 <div class="ch-stat"><span class="ch-stat-val">{{ "%.1f"|format((channel_info.total_size_bytes or 0) / 1073741824) }}</span> GB</div>
             </div>
             <div class="ch-controls">
+                {% if not (channel_info and channel_info.has_poster) %}
+                <form method="POST" action="/api/fetch-art/{{ channel_name | urlencode }}" style="display:inline">
+                    <button type="submit" class="btn btn-sm" title="Download channel poster artwork from YouTube" style="border-color:#f0883e;color:#f0883e;font-size:12px;">🎨 Fetch Art</button>
+                </form>
+                {% endif %}
                 {% if channel_url %}
                 <form method="POST" action="/api/reindex-playlists/{{ channel_name | urlencode }}" style="display:inline">
                     <button type="submit" class="btn btn-sm" title="Fetch playlists from YouTube for this channel" style="border-color:var(--accent);color:var(--accent);font-size:12px;">🎵 Reindex Playlists</button>

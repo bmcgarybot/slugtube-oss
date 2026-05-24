@@ -1542,6 +1542,64 @@ def api_reindex_playlists(channel_name):
     return jsonify({"status": "started", "channel": channel_name})
 
 
+@app.route("/api/fetch-art/<path:channel_name>", methods=["POST"])
+def api_fetch_art(channel_name):
+    """Fetch channel poster artwork from YouTube."""
+    from urllib.parse import unquote
+    import subprocess
+
+    channel_name = unquote(channel_name)
+
+    # Find the channel URL from channels.txt
+    channel_url = None
+    for ch in get_channels():
+        if ch['name'] == channel_name:
+            channel_url = ch['url']
+            break
+
+    if not channel_url:
+        if request.referrer:
+            return redirect(request.referrer)
+        return jsonify({"status": "error", "message": f"Channel not found: {channel_name}"}), 404
+
+    channel_path = os.path.join(SHOWS_DIR, channel_name)
+    cookies = "/config/Cookie/cookies.txt"
+
+    def _fetch_art():
+        try:
+            poster_path = os.path.join(channel_path, "poster")
+            # Method 1: yt-dlp with --playlist-items 1
+            result = subprocess.run([
+                "yt-dlp",
+                "--cookies", cookies,
+                "--write-thumbnail",
+                "--skip-download",
+                "--playlist-items", "1",
+                "--convert-thumbnails", "jpg",
+                "-o", poster_path,
+                channel_url
+            ], capture_output=True, text=True, timeout=120)
+
+            poster_file = os.path.join(channel_path, "poster.jpg")
+            if os.path.isfile(poster_file):
+                print(f"🎨 ✅ Fetched art for {channel_name}")
+                # Update DB
+                conn = get_db()
+                conn.execute("UPDATE channels SET has_poster = 1 WHERE name = ?", (channel_name,))
+                conn.commit()
+            else:
+                print(f"🎨 ⚠️ Could not fetch art for {channel_name}: {result.stderr[:200]}")
+        except Exception as e:
+            print(f"🎨 ❌ Fetch art failed for {channel_name}: {e}")
+
+    thread = threading.Thread(target=_fetch_art, daemon=True)
+    thread.start()
+
+    if request.referrer:
+        return redirect(request.referrer)
+    return jsonify({"status": "started", "channel": channel_name})
+
+
 @app.route("/api/toggle-playlists/<path:channel_name>", methods=["POST"])
 def api_toggle_playlists(channel_name):
     """Toggle the |playlists flag for a channel in channels.txt."""
