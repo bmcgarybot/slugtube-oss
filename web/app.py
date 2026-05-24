@@ -1566,6 +1566,7 @@ def api_fetch_art(channel_name):
     cookies = "/config/Cookie/cookies.txt"
 
     def _fetch_art():
+        import sqlite3 as _sqlite3
         try:
             poster_path = os.path.join(channel_path, "poster")
             # Method 1: yt-dlp with --playlist-items 1
@@ -1582,15 +1583,19 @@ def api_fetch_art(channel_name):
 
             poster_file = os.path.join(channel_path, "poster.jpg")
             if os.path.isfile(poster_file):
-                print(f"🎨 ✅ Fetched art for {channel_name}")
-                # Update DB
-                conn = get_db()
+                print(f"🎨 ✅ Fetched art for {channel_name}", flush=True)
+                # Update DB directly (thread-safe, no Flask context needed)
+                db_path = "/config/slugtube.db"
+                conn = _sqlite3.connect(db_path, timeout=10)
                 conn.execute("UPDATE channels SET has_poster = 1 WHERE name = ?", (channel_name,))
                 conn.commit()
+                conn.close()
             else:
-                print(f"🎨 ⚠️ Could not fetch art for {channel_name}: {result.stderr[:200]}")
+                print(f"🎨 ⚠️ Could not fetch art for {channel_name}: {result.stderr[:200]}", flush=True)
         except Exception as e:
-            print(f"🎨 ❌ Fetch art failed for {channel_name}: {e}")
+            import traceback
+            print(f"🎨 ❌ Fetch art failed for {channel_name}: {e}", flush=True)
+            traceback.print_exc()
 
     thread = threading.Thread(target=_fetch_art, daemon=True)
     thread.start()
