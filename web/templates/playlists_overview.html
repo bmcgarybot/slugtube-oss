@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title_extra %} — {{ channel_name }} — Playlists{% endblock %}
+
+{% block content %}
+
+<!-- Channel Header -->
+<div class="pl-page-header">
+    <div class="pl-nav-row">
+        <a href="/library/{{ channel_name | urlencode }}" class="pl-back">← {{ channel_name }}</a>
+        {% if channel_url %}
+        <form method="POST" action="/api/reindex-playlists/{{ channel_name | urlencode }}" style="display:inline">
+            <button type="submit" class="btn btn-sm" style="border-color:var(--accent);color:var(--accent);font-size:12px;">🎵 Reindex Playlists</button>
+        </form>
+        {% endif %}
+    </div>
+    <h1 class="pl-page-title">📋 Playlists</h1>
+    <p class="pl-page-subtitle">{{ playlists | length }} playlists from {{ channel_name }}</p>
+</div>
+
+{% if playlists %}
+<!-- Playlist Grid -->
+<div class="playlist-grid">
+    {% for pl in playlists %}
+    <a href="/library/{{ channel_name | urlencode }}/playlist/{{ pl.id }}?sort=playlist_index" class="playlist-card">
+        <div class="playlist-thumb">
+            {% if pl.thumb_video_id %}
+            <img src="/media/thumb/{{ pl.thumb_video_id }}" alt="{{ pl.title }}" loading="lazy">
+            {% else %}
+            <div class="playlist-thumb-placeholder">📋</div>
+            {% endif %}
+            <div class="playlist-count-badge">{{ pl.video_count }} videos</div>
+        </div>
+        <div class="playlist-card-info">
+            <div class="playlist-card-title">{{ pl.title }}</div>
+            <div class="playlist-card-meta">{{ pl.video_count }} videos in your library</div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="pl-empty">
+    <div class="pl-empty-icon">📋</div>
+    <p>No playlists indexed for this channel yet.</p>
+    {% if channel_url %}
+    <p style="color:var(--text-dimmer);font-size:13px;">Hit "🎵 Reindex Playlists" above to fetch them from YouTube.</p>
+    {% endif %}
+</div>
+{% endif %}
+
+<style>
+    /* ── Page Header ── */
+    .pl-page-header {
+        margin-bottom: 24px;
+    }
+    .pl-nav-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+    }
+    .pl-back {
+        font-size: 13px;
+        color: var(--text-dim);
+        text-decoration: none;
+        transition: color 0.15s;
+    }
+    .pl-back:hover { color: var(--accent); }
+    .pl-page-title {
+        font-size: 28px;
+        font-weight: 700;
+        margin: 0 0 4px;
+    }
+    .pl-page-subtitle {
+        font-size: 14px;
+        color: var(--text-dim);
+        margin: 0;
+    }
+
+    /* ── Playlist Grid ── */
+    .playlist-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 20px;
+    }
+    .playlist-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        text-decoration: none;
+        color: var(--text);
+        transition: all 0.2s;
+    }
+    .playlist-card:hover {
+        border-color: var(--accent);
+        transform: translateY(-3px);
+        box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+    }
+
+    /* ── Playlist Thumbnail ── */
+    .playlist-thumb {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16/9;
+        overflow: hidden;
+        background: var(--bg);
+    }
+    .playlist-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .playlist-thumb-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 48px;
+        background: var(--bg-hover);
+    }
+    .playlist-count-badge {
+        position: absolute;
+        bottom: 8px;
+        right: 8px;
+        background: rgba(0,0,0,0.85);
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    /* ── Card Info ── */
+    .playlist-card-info {
+        padding: 14px 16px;
+    }
+    .playlist-card-title {
+        font-weight: 600;
+        font-size: 15px;
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .playlist-card-meta {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-top: 6px;
+    }
+
+    /* ── Empty State ── */
+    .pl-empty {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-dim);
+    }
+    .pl-empty-icon {
+        font-size: 48px;
+        margin-bottom: 12px;
+    }
+
+    /* ── Mobile ── */
+    @media (max-width: 768px) {
+        .playlist-grid {
+            grid-template-columns: 1fr;
+        }
+        .pl-page-title { font-size: 22px; }
+    }
+</style>
+{% endblock %}

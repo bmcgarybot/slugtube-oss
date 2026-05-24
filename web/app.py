@@ -1121,6 +1121,57 @@ def channel_view(channel_name):
     )
 
 
+@app.route("/library/<path:channel_name>/playlists")
+def playlists_overview(channel_name):
+    """Full page showing all playlists for a channel as a card grid."""
+    from indexer import get_channel_playlists, get_index_status, get_db
+    from urllib.parse import unquote
+
+    channel_name = unquote(channel_name)
+    playlists = get_channel_playlists(channel_name)
+
+    # Get channel record for header
+    conn = get_db()
+    ch_row = conn.execute("SELECT * FROM channels WHERE name = ?", (channel_name,)).fetchone()
+    channel_info = dict(ch_row) if ch_row else {}
+
+    # For each playlist, grab the first video's thumbnail as the playlist thumbnail
+    for pl in playlists:
+        thumb_row = conn.execute("""
+            SELECT v.id, v.thumbnail_path, v.title FROM video_playlists vp
+            JOIN videos v ON v.id = vp.video_id
+            WHERE vp.playlist_id = ? AND v.thumbnail_path IS NOT NULL
+            ORDER BY vp.playlist_index ASC LIMIT 1
+        """, (pl['id'],)).fetchone()
+        pl['thumb_video_id'] = thumb_row['id'] if thumb_row else None
+        pl['thumb_video_title'] = thumb_row['title'] if thumb_row else None
+
+    conn.close()
+
+    # Check if channel has playlist indexing enabled
+    channel_has_playlist_flag = any(
+        ch['name'] == channel_name and ch.get('index_playlists')
+        for ch in get_channels()
+    )
+    channel_url = None
+    for ch in get_channels():
+        if ch['name'] == channel_name:
+            channel_url = ch['url']
+            break
+
+    return render_template("playlists_overview.html",
+        page="library",
+        channel_name=channel_name,
+        channel_info=channel_info,
+        playlists=playlists,
+        channel_has_playlist_flag=channel_has_playlist_flag,
+        channel_url=channel_url,
+        index_status=get_index_status(),
+        job=jobs,
+        paused=is_paused(),
+    )
+
+
 @app.route("/library/<path:channel_name>/playlist/<playlist_id>")
 def playlist_view(channel_name, playlist_id):
     from indexer import get_playlist_videos, get_playlist, get_index_status, get_db, get_channel_playlists

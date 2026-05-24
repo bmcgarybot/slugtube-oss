@@ -28,28 +28,7 @@
                 </form>
                 {% endif %}
                 {% if playlists %}
-                <div class="playlist-dropdown-wrap">
-                    <button class="btn btn-sm playlist-dropdown-btn {% if active_playlist %}active{% endif %}" onclick="togglePlaylistMenu()">
-                        📋 {% if active_playlist %}{{ active_playlist.title }}{% else %}Playlists{% endif %} <span class="dropdown-arrow">▾</span>
-                    </button>
-                    <div class="playlist-menu" id="playlist-menu">
-                        <a href="/library/{{ channel_name | urlencode }}?sort=newest"
-                           class="playlist-menu-item {% if not active_playlist %}active{% endif %}">
-                            <span class="pm-icon">📺</span>
-                            <span class="pm-title">All Videos</span>
-                            <span class="pm-count">{{ total }}</span>
-                        </a>
-                        <div class="playlist-menu-divider"></div>
-                        {% for pl in playlists %}
-                        <a href="/library/{{ channel_name | urlencode }}/playlist/{{ pl.id }}?sort=playlist_index"
-                           class="playlist-menu-item {% if active_playlist and active_playlist.id == pl.id %}active{% endif %}">
-                            <span class="pm-icon">📋</span>
-                            <span class="pm-title">{{ pl.title }}</span>
-                            <span class="pm-count">{{ pl.video_count }}</span>
-                        </a>
-                        {% endfor %}
-                    </div>
-                </div>
+                <a href="/library/{{ channel_name | urlencode }}/playlists" class="btn btn-sm playlist-nav-btn">📋 Playlists <span class="pl-nav-count">{{ playlists | length }}</span></a>
                 {% endif %}
                 <select id="sort-select" onchange="updateSort()">
                     {% if active_playlist %}
@@ -227,97 +206,27 @@
         cursor: pointer;
     }
 
-    /* ── Playlist Dropdown Menu ── */
-    .playlist-dropdown-wrap {
-        position: relative;
-    }
-    .playlist-dropdown-btn {
-        border-color: var(--accent);
-        color: var(--accent);
+    /* ── Playlist Navigation Button ── */
+    .playlist-nav-btn {
+        border-color: var(--accent) !important;
+        color: var(--accent) !important;
         font-size: 13px;
-        cursor: pointer;
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        padding: 6px 14px;
-        border-radius: 6px;
-        background: var(--bg);
-        border: 1px solid var(--border);
-        font-weight: 500;
+        text-decoration: none;
         transition: all 0.15s;
     }
-    .playlist-dropdown-btn:hover, .playlist-dropdown-btn.active {
-        border-color: var(--accent);
-        color: var(--accent);
-        background: rgba(88,166,255,0.08);
-    }
-    .dropdown-arrow {
-        font-size: 10px;
-        transition: transform 0.2s;
-    }
-    .playlist-dropdown-btn.open .dropdown-arrow {
-        transform: rotate(180deg);
-    }
-    .playlist-menu {
-        display: none;
-        position: absolute;
-        top: calc(100% + 6px);
-        left: 0;
-        min-width: 320px;
-        max-width: 420px;
-        max-height: 400px;
-        overflow-y: auto;
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-        z-index: 100;
-        padding: 6px 0;
-    }
-    .playlist-menu.show {
-        display: block;
-    }
-    .playlist-menu-item {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 16px;
-        text-decoration: none;
-        color: var(--text);
-        font-size: 13px;
-        transition: background 0.1s;
-    }
-    .playlist-menu-item:hover {
-        background: var(--bg-hover);
-    }
-    .playlist-menu-item.active {
+    .playlist-nav-btn:hover {
         background: rgba(88,166,255,0.1);
-        border-left: 3px solid var(--accent);
     }
-    .pm-icon {
-        font-size: 16px;
-        flex-shrink: 0;
-    }
-    .pm-title {
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-weight: 500;
-    }
-    .pm-count {
+    .pl-nav-count {
         font-size: 11px;
-        color: var(--text-dimmer);
-        background: var(--bg);
-        padding: 2px 8px;
+        background: var(--accent);
+        color: #fff;
+        padding: 1px 7px;
         border-radius: 10px;
-        flex-shrink: 0;
-    }
-    .playlist-menu-divider {
-        height: 1px;
-        background: var(--border);
-        margin: 4px 12px;
+        font-weight: 600;
     }
 
     /* ── Playlist Banner ── */
@@ -513,21 +422,6 @@
 </style>
 
 <script>
-function togglePlaylistMenu() {
-    const menu = document.getElementById('playlist-menu');
-    const btn = document.querySelector('.playlist-dropdown-btn');
-    menu.classList.toggle('show');
-    btn.classList.toggle('open');
-}
-// Close menu when clicking outside
-document.addEventListener('click', function(e) {
-    const wrap = document.querySelector('.playlist-dropdown-wrap');
-    if (wrap && !wrap.contains(e.target)) {
-        document.getElementById('playlist-menu')?.classList.remove('show');
-        document.querySelector('.playlist-dropdown-btn')?.classList.remove('open');
-    }
-});
-
 function updateSort() {
     const sort = document.getElementById('sort-select').value;
     {% if active_playlist %}
