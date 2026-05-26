@@ -113,7 +113,8 @@
                         </form>
                         <form method="POST" action="/remove" style="display:inline">
                             <input type="hidden" name="url" value="{{ ch.url }}">
-                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Remove {{ ch.name }}?')">✕</button>
+                            <input type="hidden" name="name" value="{{ ch.name }}">
+                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Remove {{ ch.name }}? This also removes it from the database.')">✕</button>
                         </form>
                     </td>
                 </tr>

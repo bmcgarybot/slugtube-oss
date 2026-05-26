@@ -671,6 +671,9 @@ def add_channel():
 @app.route("/remove", methods=["POST"])
 def remove_channel():
     url = request.form.get("url", "").strip()
+    name = request.form.get("name", "").strip()
+
+    # 1) Remove from channels.txt (if URL matches)
     if url:
         try:
             with open(CHANNELS_FILE, "r") as f:
@@ -681,6 +684,27 @@ def remove_channel():
                         f.write(line)
         except FileNotFoundError:
             pass
+
+    # 2) Purge from database (by name) — kills ghost entries the indexer left behind
+    if name:
+        try:
+            conn = get_db()
+            # Delete videos, FTS entries, playlists, watch history, then the channel
+            video_ids = [r['id'] for r in conn.execute(
+                "SELECT id FROM videos WHERE channel_name = ?", (name,)
+            ).fetchall()]
+            if video_ids:
+                placeholders = ",".join("?" * len(video_ids))
+                conn.execute(f"DELETE FROM video_playlists WHERE video_id IN ({placeholders})", video_ids)
+                conn.execute(f"DELETE FROM watch_history WHERE video_id IN ({placeholders})", video_ids)
+                conn.execute(f"DELETE FROM videos_fts WHERE channel_name = ?", (name,))
+                conn.execute(f"DELETE FROM videos WHERE channel_name = ?", (name,))
+            conn.execute("DELETE FROM playlists WHERE channel_name = ?", (name,))
+            conn.execute("DELETE FROM channels WHERE name = ?", (name,))
+            conn.commit()
+        except Exception as e:
+            print(f"[remove_channel] DB cleanup error: {e}")
+
     return redirect(request.referrer or url_for("channels"))
 
 
