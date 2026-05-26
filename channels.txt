@@ -38,6 +38,7 @@ https://youtube.com/playlist?list=PLNSWS5qF9_qTsBKRm4KY53_3oSQ1L9y6I|Haunt Tv Pa
 
 # --- True Crime / Crime ---
 https://www.youtube.com/@AbsoluteCrime/videos|Absolute Crime
+https://www.youtube.com/@UnrealTrueCrime/videos|Unreal True Crime
 https://www.youtube.com/@CrimeUpCloseITVS/videos|Crime Up Close
 https://www.youtube.com/@FilmRiseTrueCrime/videos|FilmRise True Crime
 https://www.youtube.com/@TrueCrimeCentral/videos|True Crime Central
@@ -51,6 +52,7 @@ https://www.youtube.com/@NatGeoAnimals/videos|Nat Geo Animals
 https://www.youtube.com/@NatGeo/videos|National Geographic
 https://www.youtube.com/@NaturesTemper/videos|Natures Temper
 https://www.youtube.com/@OnlyHumanDocs/videos|Only Human Documentaries
+https://www.youtube.com/@OurWorld/videos|Our World
 https://www.youtube.com/@RealStories/videos|Real Stories
 https://www.youtube.com/@ShowMeTheWorld/videos|Show Me the World
 https://youtube.com/playlist?list=PLt_h-HAMwfEn0-5zTDKEAyezCX0uvLICi|Nova PBS Full Documentaries
