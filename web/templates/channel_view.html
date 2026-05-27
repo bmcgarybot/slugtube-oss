@@ -86,8 +86,8 @@
         <span id="selected-count" class="bulk-count">0 selected</span>
     </div>
     <div class="bulk-bar-right">
-        <button class="btn btn-danger btn-sm" onclick="bulkDelete()" title="Delete selected videos from disk and prevent re-download">Delete Selected</button>
-        <button class="btn btn-orange btn-sm" onclick="bulkExclude()" title="Block selected from future downloads (keeps existing files)">Exclude from Future</button>
+        <button class="btn btn-purple btn-sm" onclick="showPlaylistDialog()" title="Add selected videos to a custom playlist">Add to Playlist</button>
+        <button class="btn btn-danger btn-sm" onclick="showDeleteDialog()" title="Delete selected videos from disk">Delete Selected</button>
         <button class="btn btn-ghost btn-sm" onclick="toggleSelectMode()">Cancel</button>
     </div>
 </div>
@@ -291,17 +291,107 @@ function getSelectedIds() {
 function bulkDelete() {
     const ids = getSelectedIds();
     if (ids.length === 0) return alert('No videos selected');
-    if (!confirm('Delete ' + ids.length + ' video(s) from disk? They will be blocked from re-downloading.')) return;
+    showDeleteDialog();
+}
+
+function showDeleteDialog() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return alert('No videos selected');
+
+    // Create modal overlay
+    var overlay = document.createElement('div');
+    overlay.id = 'delete-modal-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:999;display:flex;align-items:center;justify-content:center;';
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:420px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,0.5);';
+
+    modal.innerHTML = '<h3 style="margin:0 0 12px;font-size:16px;color:var(--text);">Delete ' + ids.length + ' video(s)?</h3>'
+        + '<p style="font-size:13px;color:var(--text-dim);margin-bottom:16px;">This will permanently remove the selected files from disk.</p>'
+        + '<label style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer;margin-bottom:20px;">'
+        + '<input type="checkbox" id="delete-exclude-cb" class="form-checkbox" checked>'
+        + '<div><span style="font-size:13px;font-weight:600;color:var(--text);">Also exclude from future downloads</span>'
+        + '<div style="font-size:12px;color:var(--text-dimmer);margin-top:2px;">Prevents these videos from being re-downloaded</div></div></label>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+        + '<button class="btn btn-ghost" onclick="closeDeleteDialog()">Cancel</button>'
+        + '<button class="btn btn-danger" onclick="confirmDelete()">Delete</button></div>';
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeDeleteDialog(); });
+}
+
+function closeDeleteDialog() {
+    var overlay = document.getElementById('delete-modal-overlay');
+    if (overlay) overlay.remove();
+}
+
+function confirmDelete() {
+    const ids = getSelectedIds();
+    const alsoExclude = document.getElementById('delete-exclude-cb').checked;
+    closeDeleteDialog();
 
     fetch('/api/bulk-delete', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({video_ids: ids})
+        body: JSON.stringify({video_ids: ids, exclude: alsoExclude})
     })
     .then(r => r.json())
     .then(data => {
         if (data.status === 'ok') {
-            alert('Deleted ' + data.deleted + ' video(s). ' + data.excluded + ' added to block list.');
+            alert('Deleted ' + data.deleted + ' video(s).' + (alsoExclude ? ' Excluded from future downloads.' : ''));
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown'));
+        }
+    })
+    .catch(err => alert('Request failed: ' + err));
+}
+
+function showPlaylistDialog() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return alert('No videos selected');
+
+    var overlay = document.createElement('div');
+    overlay.id = 'playlist-modal-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:999;display:flex;align-items:center;justify-content:center;';
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:420px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,0.5);';
+
+    modal.innerHTML = '<h3 style="margin:0 0 12px;font-size:16px;color:var(--text);">Add ' + ids.length + ' video(s) to playlist</h3>'
+        + '<p style="font-size:13px;color:var(--text-dim);margin-bottom:16px;">Create a new custom playlist or add to an existing one.</p>'
+        + '<input type="text" id="playlist-name-input" placeholder="Playlist name" style="width:100%;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:14px;margin-bottom:16px;">'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+        + '<button class="btn btn-ghost" onclick="closePlaylistDialog()">Cancel</button>'
+        + '<button class="btn btn-primary" onclick="confirmPlaylist()">Create Playlist</button></div>';
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closePlaylistDialog(); });
+    setTimeout(function() { document.getElementById('playlist-name-input').focus(); }, 100);
+}
+
+function closePlaylistDialog() {
+    var overlay = document.getElementById('playlist-modal-overlay');
+    if (overlay) overlay.remove();
+}
+
+function confirmPlaylist() {
+    const ids = getSelectedIds();
+    const name = document.getElementById('playlist-name-input').value.trim();
+    if (!name) return alert('Please enter a playlist name');
+    closePlaylistDialog();
+
+    fetch('/api/create-playlist', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({video_ids: ids, playlist_name: name, channel_name: '{{ channel_name }}'})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            alert('Created playlist "' + name + '" with ' + data.added + ' video(s).');
             location.reload();
         } else {
             alert('Error: ' + (data.error || 'Unknown'));
