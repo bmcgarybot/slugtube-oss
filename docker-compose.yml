@@ -28,9 +28,11 @@ services:
       - G:/Youtube/shows:/shows
       # SlugTube config, cookies, archive, logs, database
       - C:/SlugTube:/config
-      # Live code mount — update files without rebuilding
-      - C:/SlugTube/app/scripts:/app/scripts
-      - C:/SlugTube/app/web:/app/web
+      # Live code mount — git pull in C:\SlugTube-new, restart, done
+      - C:/SlugTube-new/scripts:/app/scripts
+      - C:/SlugTube-new/web:/app/web
+      # Channel list from git repo (overrides C:\SlugTube\channels.txt)
+      - C:/SlugTube-new/channels.txt:/config/channels.txt
     logging:
       driver: json-file
       options:
