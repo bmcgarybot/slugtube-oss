@@ -872,6 +872,28 @@ def remove_channel():
         except Exception as e:
             print(f"[remove_channel] DB cleanup error: {e}")
 
+    # 3) Delete empty folder from disk (prevents ghost re-indexing)
+    if name:
+        import shutil
+        channel_dir = Path(SHOWS_DIR) / name
+        if channel_dir.is_dir():
+            # Only auto-delete if folder has no video files (empty or just metadata)
+            video_extensions = {'.mp4', '.mkv', '.webm', '.avi', '.mov'}
+            has_videos = False
+            for root, dirs, files in os.walk(str(channel_dir)):
+                for f in files:
+                    if os.path.splitext(f)[1].lower() in video_extensions:
+                        has_videos = True
+                        break
+                if has_videos:
+                    break
+            if not has_videos:
+                try:
+                    shutil.rmtree(str(channel_dir))
+                    print(f"[remove_channel] Deleted empty folder: {channel_dir}")
+                except Exception as e:
+                    print(f"[remove_channel] Failed to delete folder {channel_dir}: {e}")
+
     return redirect(request.referrer or url_for("channels"))
 
 
