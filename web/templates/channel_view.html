@@ -3,6 +3,11 @@
 
 {% block content %}
 
+<!-- Channel Hero Banner -->
+<div class="ch-hero" id="ch-hero" style="display:none;">
+    <img id="ch-hero-img" alt="" style="display:none;">
+</div>
+
 <!-- Channel Header -->
 <div class="ch-header" {% if channel_info and channel_info.has_banner %}style="background-image:url('/media/banner/{{ channel_name | urlencode }}');background-size:cover;background-position:center;"{% endif %}>
     <div class="ch-header-overlay">
@@ -146,9 +151,30 @@
 {% endif %}
 
 <style>
+    /* ── Channel Hero Banner ── */
+    .ch-hero {
+        width: 100%;
+        height: 200px;
+        background-size: cover;
+        background-position: center;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        position: relative;
+        overflow: hidden;
+    }
+    .ch-hero::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 60%;
+        background: linear-gradient(transparent, var(--bg));
+    }
+
     /* ── Channel Header ── */
-    .ch-header { display: flex; gap: 24px; align-items: stretch; margin-bottom: 24px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; position: relative; }
-    .ch-header-overlay { display: flex; gap: 24px; align-items: stretch; width: 100%; padding: 20px; background: linear-gradient(90deg, rgba(13,17,23,0.92) 0%, rgba(13,17,23,0.85) 60%, rgba(13,17,23,0.7) 100%); }
+    .ch-header { display: flex; gap: 24px; align-items: stretch; margin-bottom: 24px; background: var(--bg-card); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; overflow: hidden; position: relative; }
+    .ch-header-overlay { display: flex; gap: 24px; align-items: stretch; width: 100%; padding: 20px; background: linear-gradient(90deg, rgba(13,17,23,0.92) 0%, rgba(13,17,23,0.85) 60%, rgba(13,17,23,0.7) 100%); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
     .ch-header-left { display: flex; gap: 20px; flex: 1; min-width: 0; }
     .ch-poster { width: 120px; height: 120px; border-radius: 10px; overflow: hidden; flex-shrink: 0; background: var(--bg); }
     .ch-poster img { width: 100%; height: 100%; object-fit: cover; }
@@ -183,8 +209,8 @@
 
     /* ── Video Grid ── */
     .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
-    .video-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; text-decoration: none; color: var(--text); transition: all 0.2s; }
-    .video-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+    .video-card { background: rgba(22, 27, 34, 0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; overflow: hidden; text-decoration: none; color: var(--text); transition: all 0.2s ease; }
+    .video-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
     .video-thumb { position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; background: var(--bg); }
     .video-thumb img { width: 100%; height: 100%; object-fit: cover; }
     .thumb-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 36px; background: var(--bg-hover); }
@@ -421,5 +447,16 @@ function bulkExclude() {
     })
     .catch(err => alert('Request failed: ' + err));
 }
+
+// Hero banner: try to load and show only if it exists
+(function() {
+    var hero = document.getElementById('ch-hero');
+    var img = new Image();
+    img.onload = function() {
+        hero.style.backgroundImage = 'url(' + img.src + ')';
+        hero.style.display = 'block';
+    };
+    img.src = '/media/banner/{{ channel_name | urlencode }}';
+})();
 </script>
 {% endblock %}
