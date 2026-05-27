@@ -728,7 +728,7 @@ def run_index(force=False):
             total_videos = 0
             total_channels = 0
 
-            channel_dirs = sorted([d for d in shows.iterdir() if d.is_dir()])
+            channel_dirs = sorted([d for d in shows.iterdir() if d.is_dir() and '#' not in d.name])
             num_dirs = len(channel_dirs)
 
             for i, channel_dir in enumerate(channel_dirs, 1):
