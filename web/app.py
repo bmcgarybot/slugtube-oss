@@ -536,6 +536,16 @@ def channels():
     idx_channels = get_all_channels()
     idx_status = get_index_status()
 
+    # Auto-create folders for subscribed channels that don't have one yet
+    for ch in channels_list:
+        ch_dir = Path(SHOWS_DIR) / ch['name']
+        if not ch_dir.is_dir():
+            try:
+                ch_dir.mkdir(parents=True, exist_ok=True)
+                app.logger.info(f"Created folder for subscribed channel: {ch['name']}")
+            except Exception as e:
+                app.logger.error(f"Failed to create folder for {ch['name']}: {e}")
+
     # Auto-purge ghost DB entries: channels whose folder no longer exists on disk
     from indexer import get_db as idx_get_db
     try:
@@ -790,6 +800,16 @@ def add_channel():
             entry = f"{url}|{auto_name}|playlists"
         with open(CHANNELS_FILE, "a") as f:
             f.write(f"\n{entry}\n")
+        # Create folder immediately so channel shows as Active
+        folder_name = name
+        if not folder_name:
+            if "/@" in url:
+                folder_name = url.split("/@")[1].split("/")[0]
+            else:
+                folder_name = url
+        if folder_name:
+            ch_dir = Path(SHOWS_DIR) / folder_name
+            ch_dir.mkdir(parents=True, exist_ok=True)
     return redirect(request.referrer or url_for("channels"))
 
 
