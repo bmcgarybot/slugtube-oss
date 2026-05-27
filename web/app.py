@@ -872,6 +872,28 @@ def remove_channel():
         except Exception as e:
             print(f"[remove_channel] DB cleanup error: {e}")
 
+    # 3) Delete empty folder from disk (prevents ghost re-indexing)
+    if name:
+        import shutil
+        channel_dir = Path(SHOWS_DIR) / name
+        if channel_dir.is_dir():
+            # Only auto-delete if folder has no video files (empty or just metadata)
+            video_extensions = {'.mp4', '.mkv', '.webm', '.avi', '.mov'}
+            has_videos = False
+            for root, dirs, files in os.walk(str(channel_dir)):
+                for f in files:
+                    if os.path.splitext(f)[1].lower() in video_extensions:
+                        has_videos = True
+                        break
+                if has_videos:
+                    break
+            if not has_videos:
+                try:
+                    shutil.rmtree(str(channel_dir))
+                    print(f"[remove_channel] Deleted empty folder: {channel_dir}")
+                except Exception as e:
+                    print(f"[remove_channel] Failed to delete folder {channel_dir}: {e}")
+
     return redirect(request.referrer or url_for("channels"))
 
 
@@ -1982,9 +2004,10 @@ def api_bulk_delete():
         except Exception as e:
             app.logger.error(f"Error deleting {vid_id} from DB: {e}")
 
-        # Add youtube ID to archive to block re-download
+        # Add youtube ID to archive to block re-download (only if exclude requested)
+        also_exclude = data.get('exclude', True)  # Default true for backward compat
         yt_id = video.get('youtube_id', vid_id)
-        if yt_id:
+        if yt_id and also_exclude:
             try:
                 os.makedirs("/config/archive", exist_ok=True)
                 with open(ARCHIVE_FILE, "a") as f:
@@ -2022,6 +2045,59 @@ def api_bulk_exclude():
                 app.logger.error(f"Error excluding {yt_id}: {e}")
 
     return jsonify({"status": "ok", "excluded": excluded})
+
+
+@app.route('/api/create-playlist', methods=['POST'])
+def api_create_playlist():
+    """Create a custom playlist from selected videos."""
+    from indexer import get_db
+    data = request.get_json()
+    if not data or not data.get("video_ids") or not data.get("playlist_name"):
+        return jsonify({"status": "error", "error": "video_ids and playlist_name required"}), 400
+
+    video_ids = data["video_ids"]
+    playlist_name = data["playlist_name"].strip()
+    channel_name = data.get("channel_name", "Custom")
+
+    # Generate a unique playlist ID from the name
+    playlist_id = "custom_" + re.sub(r'[^a-zA-Z0-9]', '_', playlist_name.lower())
+
+    try:
+        conn = get_db()
+
+        # Create or update the playlist entry
+        conn.execute("""
+            INSERT OR REPLACE INTO playlists (id, channel_name, title, video_count, updated_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+        """, (playlist_id, channel_name, playlist_name, len(video_ids)))
+
+        # Add videos to the playlist
+        added = 0
+        for idx, vid_id in enumerate(video_ids):
+            try:
+                conn.execute("""
+                    INSERT OR REPLACE INTO video_playlists (video_id, playlist_id, playlist_index)
+                    VALUES (?, ?, ?)
+                """, (vid_id, playlist_id, idx + 1))
+                added += 1
+            except Exception as e:
+                app.logger.error(f"Error adding {vid_id} to playlist: {e}")
+
+        # Update video count
+        conn.execute("""
+            UPDATE playlists SET video_count = (
+                SELECT COUNT(*) FROM video_playlists WHERE playlist_id = ?
+            ) WHERE id = ?
+        """, (playlist_id, playlist_id))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({"status": "ok", "added": added, "playlist_id": playlist_id})
+
+    except Exception as e:
+        app.logger.error(f"Error creating playlist: {e}")
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 
 # ── Import Routes ──────────────────────────────────
