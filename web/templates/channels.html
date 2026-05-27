@@ -7,15 +7,15 @@
 </div>
 
 <!-- Add Channel -->
-<div class="card" style="margin-bottom: 20px;">
+<div class="card mb-20">
     <div class="card-body">
         <form method="POST" action="/add" class="add-form">
             <input type="url" name="url" placeholder="https://www.youtube.com/@ChannelName/videos" required>
-            <input type="text" name="name" placeholder="Display Name (optional)" style="max-width:200px;">
-            <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--text-dim);cursor:pointer;">
-                <input type="checkbox" name="playlists"> 📋 Playlists
+            <input type="text" name="name" placeholder="Display Name (optional)" class="add-form-name">
+            <label class="add-form-playlist-label">
+                <input type="checkbox" name="playlists"> Playlists
             </label>
-            <button type="submit" class="btn btn-primary">+ Add Channel</button>
+            <button type="submit" class="btn btn-primary">Add Channel</button>
         </form>
     </div>
 </div>
@@ -23,85 +23,101 @@
 <!-- Unified Channel Table -->
 <div class="card">
     <div class="card-header">
-        📺 All Channels — {{ unified | length }} total
-        ({{ unified | selectattr('subscribed') | list | length }} subscribed,
-        {{ unified | selectattr('on_disk') | list | length }} on disk)
+        All Channels — {{ unified | length }} total
+        <span class="text-dim text-sm" style="font-weight:400;">
+            {{ unified | selectattr('subscribed') | list | length }} subscribed ·
+            {{ unified | selectattr('on_disk') | list | length }} on disk
+        </span>
     </div>
     <div class="card-body" style="padding: 0; overflow-x: auto;">
-        <!-- Desktop Table -->
         <table class="channels-table">
             <thead>
                 <tr>
                     <th>Channel</th>
-                    <th style="text-align:center">Status</th>
-                    <th style="text-align:center">Videos</th>
-                    <th style="text-align:right">Size</th>
-                    <th style="text-align:center">NFO</th>
-                    <th style="text-align:center">Art</th>
+                    <th class="text-center">Status</th>
+                    <th class="text-center">Videos</th>
+                    <th class="text-right">Size</th>
+                    <th class="text-center">NFO</th>
+                    <th class="text-center">Art</th>
                     <th>Category</th>
-                    <th style="text-align:center; min-width: 140px;"></th>
+                    <th class="text-center ch-actions-th">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for ch in unified | sort(attribute='name') %}
                 <tr>
                     <td class="channel-name" data-label="Channel">
-                        {% if ch.url %}<a href="{{ ch.url }}" target="_blank" style="color: inherit; text-decoration: none;">{{ ch.name }}</a>{% else %}{{ ch.name }}{% endif %}
-                        {% if ch.index_playlists %} <span title="Playlist indexing enabled" style="cursor:help;">📋</span>{% endif %}
+                        {% if ch.url %}<a href="{{ ch.url }}" target="_blank" class="channel-name-link">{{ ch.name }}</a>{% else %}{{ ch.name }}{% endif %}
+                        {% if ch.index_playlists %} <span title="Playlist indexing enabled" class="ch-playlist-icon">📋</span>{% endif %}
                     </td>
-                    <td style="text-align:center; white-space: nowrap;" data-label="Status">
+                    <td class="text-center nowrap" data-label="Status">
                         {% if ch.subscribed and ch.on_disk %}
                             <span class="badge badge-green" title="Subscribed + on disk">✅ Active</span>
                         {% elif ch.subscribed %}
                             <span class="badge badge-blue" title="Subscribed but no files on disk yet">📋 Sub'd</span>
                         {% else %}
-                            <span class="badge" style="background:rgba(255,165,0,0.15);color:#ffa500;border-color:rgba(255,165,0,0.3);" title="Files on disk but not in channels.txt">📁 Library</span>
+                            <span class="badge badge-orange" title="Files on disk but not in channels.txt">📁 Library</span>
                         {% endif %}
                     </td>
-                    <td style="text-align:center" data-label="Videos">
+                    <td class="text-center" data-label="Videos">
                         {% if ch.on_disk %}<span class="badge badge-green">{{ ch.video_count }}</span>{% else %}—{% endif %}
                     </td>
-                    <td style="text-align:right; color: var(--text-dim);" data-label="Size">
+                    <td class="text-right text-dim" data-label="Size">
                         {% if ch.on_disk %}{{ "%.1f"|format((ch.total_size_bytes or 0) / 1073741824) }} GB{% else %}—{% endif %}
                     </td>
-                    <td style="text-align:center" data-label="NFO">{% if ch.on_disk %}{% if ch.has_nfo %}✅{% else %}—{% endif %}{% else %}—{% endif %}</td>
-                    <td style="text-align:center" data-label="Art">{% if ch.on_disk %}{% if ch.has_poster %}🖼️{% else %}—{% endif %}{% else %}—{% endif %}</td>
+                    <td class="text-center" data-label="NFO">{% if ch.on_disk %}{% if ch.has_nfo %}✅{% else %}—{% endif %}{% else %}—{% endif %}</td>
+                    <td class="text-center" data-label="Art">{% if ch.on_disk %}{% if ch.has_poster %}🖼️{% else %}—{% endif %}{% else %}—{% endif %}</td>
                     <td data-label="Category"><span class="badge badge-blue">{{ ch.section }}</span></td>
-                    <td class="ch-actions" data-label="Actions" style="text-align:center; white-space: nowrap;">
-                        {% if ch.url %}
-                        <form method="POST" action="/run/fast-single" style="display:inline">
-                            <input type="hidden" name="url" value="{{ ch.url }}">
-                            <input type="hidden" name="folder" value="{{ ch.name }}">
-                            <button type="submit" class="btn btn-sm" {% if job.status == 'running' %}disabled{% endif %} title="Fast check {{ ch.name }} (latest 50)" style="border-color:var(--accent);color:var(--accent);">⚡</button>
-                        </form>
-                        <form method="POST" action="/run/single" style="display:inline">
-                            <input type="hidden" name="url" value="{{ ch.url }}">
-                            <input type="hidden" name="folder" value="{{ ch.name }}">
-                            <button type="submit" class="btn btn-blue btn-sm" {% if job.status == 'running' %}disabled{% endif %} title="Download ALL {{ ch.name }}">⬇️</button>
-                        </form>
-                        {% endif %}
-                        {% if ch.on_disk %}
-                        <form method="POST" action="/api/reindex/{{ ch.name | urlencode }}" style="display:inline">
-                            <button type="submit" class="btn btn-sm" title="Re-index {{ ch.name }}" style="border-color:var(--green);color:var(--green);">📂</button>
-                        </form>
-                        {% endif %}
-                        {% if ch.subscribed %}
-                        <form method="POST" action="/api/toggle-playlists/{{ ch.name | urlencode }}" style="display:inline">
-                            <button type="submit" class="btn btn-sm" title="{% if ch.index_playlists %}Disable{% else %}Enable{% endif %} playlist indexing" style="border-color:{% if ch.index_playlists %}var(--accent){% else %}var(--text-dimmer){% endif %};color:{% if ch.index_playlists %}var(--accent){% else %}var(--text-dimmer){% endif %};">📋</button>
-                        </form>
-                        {% endif %}
-                        {% if ch.subscribed %}
-                        <form method="POST" action="/remove" style="display:inline">
-                            <input type="hidden" name="url" value="{{ ch.url }}">
-                            <input type="hidden" name="name" value="{{ ch.name }}">
-                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Unsubscribe from {{ ch.name }}? This removes it from channels.txt and the database.')" title="Unsubscribe">✕</button>
-                        </form>
-                        {% endif %}
-                        {% if ch.on_disk %}
-                        <form method="POST" action="/api/delete-folder/{{ ch.name | urlencode }}" style="display:inline">
-                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('DELETE the entire {{ ch.name }} folder from disk? This removes all downloaded videos permanently!')" title="Delete folder from disk">🗑️</button>
-                        </form>
-                        {% endif %}
+                    <td class="ch-actions" data-label="Actions">
+                        <div class="ch-actions-row">
+                            <!-- Primary actions: always visible -->
+                            {% if ch.url %}
+                            <form method="POST" action="/run/fast-single" class="form-inline">
+                                <input type="hidden" name="url" value="{{ ch.url }}">
+                                <input type="hidden" name="folder" value="{{ ch.name }}">
+                                <button type="submit" class="btn btn-accent btn-sm" {% if job.status == 'running' %}disabled{% endif %} title="Fast check {{ ch.name }} (latest 50)">Quick Check</button>
+                            </form>
+                            <form method="POST" action="/run/single" class="form-inline">
+                                <input type="hidden" name="url" value="{{ ch.url }}">
+                                <input type="hidden" name="folder" value="{{ ch.name }}">
+                                <button type="submit" class="btn btn-blue btn-sm" {% if job.status == 'running' %}disabled{% endif %} title="Download ALL {{ ch.name }}">Download</button>
+                            </form>
+                            {% endif %}
+                            {% if ch.on_disk %}
+                            <form method="POST" action="/api/reindex/{{ ch.name | urlencode }}" class="form-inline">
+                                <button type="submit" class="btn btn-ghost btn-sm" title="Re-index {{ ch.name }}">Reindex</button>
+                            </form>
+                            {% endif %}
+
+                            <!-- Secondary actions: behind ⋮ dropdown -->
+                            {% if ch.subscribed or ch.on_disk %}
+                            <div class="dropdown">
+                                <button type="button" class="dropdown-trigger" title="More actions">⋮</button>
+                                <div class="dropdown-menu">
+                                    {% if ch.subscribed %}
+                                    <form method="POST" action="/api/toggle-playlists/{{ ch.name | urlencode }}">
+                                        <button type="submit" class="dropdown-item">
+                                            {% if ch.index_playlists %}Disable Playlists{% else %}Enable Playlists{% endif %}
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                    {% if ch.subscribed %}
+                                    <div class="dropdown-divider"></div>
+                                    <form method="POST" action="/remove">
+                                        <input type="hidden" name="url" value="{{ ch.url }}">
+                                        <input type="hidden" name="name" value="{{ ch.name }}">
+                                        <button type="submit" class="dropdown-item dropdown-danger" onclick="return confirm('Unsubscribe from {{ ch.name }}? This removes it from channels.txt and the database.')">Unsubscribe</button>
+                                    </form>
+                                    {% endif %}
+                                    {% if ch.on_disk %}
+                                    <form method="POST" action="/api/delete-folder/{{ ch.name | urlencode }}">
+                                        <button type="submit" class="dropdown-item dropdown-danger" onclick="return confirm('DELETE the entire {{ ch.name }} folder from disk? This removes all downloaded videos permanently!')">Delete Folder</button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -111,22 +127,48 @@
 </div>
 
 <style>
+    /* ── Channel-specific styles ── */
+    .channel-name-link { color: inherit; text-decoration: none; }
+    .channel-name-link:hover { color: var(--accent); }
+    .ch-playlist-icon { cursor: help; font-size: 14px; }
+
+    .add-form-name { max-width: 200px; }
+    .add-form-playlist-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 13px;
+        color: var(--text-dim);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    /* Actions column layout */
+    .ch-actions-th { min-width: 240px; }
+    .ch-actions-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        flex-wrap: nowrap;
+    }
+
     /* Responsive channels table */
     .channels-table { width: 100%; border-collapse: collapse; font-size: 14px; }
     .channels-table th, .channels-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
     .channels-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
 
-    /* Medium screens: hide less-important columns, keep table */
+    /* Medium screens: hide less-important columns */
     @media (max-width: 1100px) {
         .channels-table th:nth-child(5),
         .channels-table td:nth-child(5),
         .channels-table th:nth-child(6),
         .channels-table td:nth-child(6) {
-            display: none; /* Hide NFO + Art columns */
+            display: none;
         }
     }
 
-    /* Small screens: flip to card layout */
+    /* Small screens: card layout */
     @media (max-width: 768px) {
         .channels-table thead { display: none; }
         .channels-table tbody tr {
@@ -173,13 +215,10 @@
             margin-top: 4px;
         }
         .channels-table tbody td.ch-actions::before { display: none; }
-        /* Hide NFO + Art on mobile too */
+        .ch-actions-row { flex-wrap: wrap; justify-content: flex-end; }
         .channels-table tbody td:nth-child(5),
         .channels-table tbody td:nth-child(6) { display: none; }
-    }
 
-    /* Add form responsive */
-    @media (max-width: 768px) {
         .add-form {
             flex-direction: column !important;
             gap: 8px !important;
