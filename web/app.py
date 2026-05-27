@@ -6,6 +6,10 @@ import json
 import mimetypes
 import re
 import time
+import zipfile
+import sqlite3
+import tempfile
+import fnmatch
 from datetime import datetime
 from pathlib import Path
 
@@ -2018,6 +2022,453 @@ def api_bulk_exclude():
                 app.logger.error(f"Error excluding {yt_id}: {e}")
 
     return jsonify({"status": "ok", "excluded": excluded})
+
+
+# ── Import Routes ──────────────────────────────────
+
+def _normalize_channel_url(url):
+    """Normalize a YouTube channel URL for comparison."""
+    url = url.strip().rstrip('/')
+    # Remove trailing /videos, /playlists, /streams etc.
+    url = re.sub(r'/(videos|playlists|streams|shorts|about|community|channels|featured)$', '', url)
+    return url.lower()
+
+
+def _extract_channel_id(url):
+    """Extract channel ID from URL if present."""
+    m = re.search(r'/channel/([A-Za-z0-9_-]+)', url)
+    return m.group(1) if m else None
+
+
+def _get_existing_channels():
+    """Return set of normalized URLs, lowercase names, and channel IDs already in channels.txt."""
+    channels = get_channels()
+    urls = set()
+    names = set()
+    cids = set()
+    for ch in channels:
+        urls.add(_normalize_channel_url(ch['url']))
+        names.add(ch['name'].lower().strip())
+        cid = _extract_channel_id(ch['url'])
+        if cid:
+            cids.add(cid.lower())
+    return urls, names, cids
+
+
+def _check_already_exists(channel_url, channel_name, existing_urls, existing_names, existing_cids):
+    """Check if a channel already exists by URL, name, or channel ID."""
+    norm_url = _normalize_channel_url(channel_url)
+    if norm_url in existing_urls:
+        return True
+    if channel_name and channel_name.lower().strip() in existing_names:
+        return True
+    cid = _extract_channel_id(channel_url)
+    if cid and cid.lower() in existing_cids:
+        return True
+    return False
+
+
+@app.route('/import/tubearchivist', methods=['POST'])
+def import_tubearchivist():
+    """Accept a TubeArchivist backup ZIP and parse channel data."""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({"error": "No file selected"}), 400
+
+    try:
+        # Save to temp file
+        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
+            f.save(tmp.name)
+            tmp_path = tmp.name
+
+        channels_found = []
+
+        with zipfile.ZipFile(tmp_path, 'r') as zf:
+            # Find channel data files
+            channel_files = []
+            for name in zf.namelist():
+                basename = os.path.basename(name).lower()
+                if (fnmatch.fnmatch(basename, '*channel*data*.json') or
+                    fnmatch.fnmatch(basename, '*ta_channel*.json') or
+                    fnmatch.fnmatch(basename, 'channel*.json')):
+                    channel_files.append(name)
+
+            if not channel_files:
+                os.unlink(tmp_path)
+                return jsonify({"error": "No channel data files found in ZIP. Expected files matching *channel*data*.json or *ta_channel*.json"}), 400
+
+            for cf in channel_files:
+                raw = zf.read(cf).decode('utf-8', errors='replace')
+                parsed = []
+
+                # Try nd-json first (one JSON object per line)
+                lines = [l.strip() for l in raw.split('\n') if l.strip()]
+                ndjson_ok = True
+                for line in lines:
+                    try:
+                        obj = json.loads(line)
+                        if isinstance(obj, dict):
+                            parsed.append(obj)
+                        elif isinstance(obj, list):
+                            # Could be a JSON array on a single line
+                            parsed.extend(obj)
+                            ndjson_ok = False
+                            break
+                    except json.JSONDecodeError:
+                        ndjson_ok = False
+                        break
+
+                # If nd-json didn't work, try standard JSON array
+                if not ndjson_ok or not parsed:
+                    parsed = []
+                    try:
+                        data = json.loads(raw)
+                        if isinstance(data, list):
+                            parsed = data
+                        elif isinstance(data, dict):
+                            parsed = [data]
+                    except json.JSONDecodeError:
+                        continue  # Skip this file
+
+                for entry in parsed:
+                    if not isinstance(entry, dict):
+                        continue
+
+                    # Only include subscribed channels (if field exists)
+                    if 'channel_subscribed' in entry and not entry['channel_subscribed']:
+                        continue
+
+                    channel_id = entry.get('channel_id', '')
+                    channel_name = entry.get('channel_name', '')
+
+                    if not channel_id and not channel_name:
+                        continue
+
+                    # Build URL
+                    if channel_id:
+                        url = f"https://www.youtube.com/channel/{channel_id}/videos"
+                    else:
+                        url = entry.get('channel_url', '')
+                        if url and not url.endswith('/videos'):
+                            url = url.rstrip('/') + '/videos'
+
+                    if not url:
+                        continue
+
+                    channels_found.append({
+                        "name": channel_name or channel_id,
+                        "url": url,
+                        "channel_id": channel_id,
+                    })
+
+        os.unlink(tmp_path)
+
+        # Deduplicate by channel_id / URL
+        seen = set()
+        unique = []
+        for ch in channels_found:
+            key = ch.get('channel_id', '').lower() or _normalize_channel_url(ch['url'])
+            if key not in seen:
+                seen.add(key)
+                unique.append(ch)
+
+        # Check against existing
+        existing_urls, existing_names, existing_cids = _get_existing_channels()
+        for ch in unique:
+            ch['already_exists'] = _check_already_exists(
+                ch['url'], ch['name'], existing_urls, existing_names, existing_cids
+            )
+
+        new_count = sum(1 for ch in unique if not ch['already_exists'])
+        existing_count = sum(1 for ch in unique if ch['already_exists'])
+
+        return jsonify({
+            "channels": unique,
+            "total": len(unique),
+            "new_count": new_count,
+            "existing_count": existing_count,
+        })
+
+    except zipfile.BadZipFile:
+        return jsonify({"error": "Invalid ZIP file"}), 400
+    except Exception as e:
+        return jsonify({"error": f"Error processing file: {str(e)}"}), 500
+
+
+@app.route('/import/pinchflat', methods=['POST'])
+def import_pinchflat():
+    """Accept a PinchFlat SQLite database and parse channel sources."""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({"error": "No file selected"}), 400
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp:
+            f.save(tmp.name)
+            tmp_path = tmp.name
+
+        channels_found = []
+        conn = sqlite3.connect(tmp_path)
+        conn.row_factory = sqlite3.Row
+
+        # Try different query patterns — PinchFlat schema may vary
+        queries = [
+            "SELECT original_url, custom_name FROM sources",
+            "SELECT original_url, custom_name, collection_type FROM sources",
+            "SELECT url AS original_url, name AS custom_name FROM sources",
+            "SELECT url AS original_url, name AS custom_name FROM channels",
+        ]
+
+        rows = []
+        for q in queries:
+            try:
+                rows = conn.execute(q).fetchall()
+                if rows:
+                    break
+            except sqlite3.OperationalError:
+                continue
+
+        conn.close()
+        os.unlink(tmp_path)
+
+        if not rows:
+            return jsonify({"error": "No channel sources found in database. Expected 'sources' or 'channels' table with URL data."}), 400
+
+        for row in rows:
+            url = row['original_url'] if row['original_url'] else ''
+            name = row['custom_name'] if row['custom_name'] else ''
+
+            if not url:
+                continue
+
+            # Normalize URL — ensure it ends with /videos if it's a channel URL
+            url = url.strip().rstrip('/')
+            if 'youtube.com' in url and '/videos' not in url and 'playlist' not in url:
+                url += '/videos'
+
+            if not name:
+                # Try to extract name from URL
+                if '/@' in url:
+                    name = url.split('/@')[1].split('/')[0]
+                elif '/channel/' in url:
+                    name = url.split('/channel/')[1].split('/')[0][:20]
+                else:
+                    name = url
+
+            channels_found.append({
+                "name": name,
+                "url": url,
+            })
+
+        # Deduplicate
+        seen = set()
+        unique = []
+        for ch in channels_found:
+            key = _normalize_channel_url(ch['url'])
+            if key not in seen:
+                seen.add(key)
+                unique.append(ch)
+
+        # Check against existing
+        existing_urls, existing_names, existing_cids = _get_existing_channels()
+        for ch in unique:
+            ch['already_exists'] = _check_already_exists(
+                ch['url'], ch['name'], existing_urls, existing_names, existing_cids
+            )
+
+        new_count = sum(1 for ch in unique if not ch['already_exists'])
+        existing_count = sum(1 for ch in unique if ch['already_exists'])
+
+        return jsonify({
+            "channels": unique,
+            "total": len(unique),
+            "new_count": new_count,
+            "existing_count": existing_count,
+        })
+
+    except Exception as e:
+        return jsonify({"error": f"Error processing file: {str(e)}"}), 500
+
+
+@app.route('/import/scan-library', methods=['POST'])
+def import_scan_library():
+    """Scan an existing media directory for channel folders with .info.json metadata."""
+    data = request.get_json()
+    if not data or not data.get('path'):
+        return jsonify({"error": "No directory path provided"}), 400
+
+    scan_path = data['path'].strip()
+    if not os.path.isdir(scan_path):
+        return jsonify({"error": f"Directory not found: {scan_path}"}), 400
+
+    channels_found = {}  # keyed by channel_id or folder name to deduplicate
+
+    try:
+        scan_root = Path(scan_path)
+        for channel_dir in sorted(scan_root.iterdir()):
+            if not channel_dir.is_dir():
+                continue
+            # Skip hidden dirs, metadata dirs
+            if channel_dir.name.startswith('.') or channel_dir.name.startswith('_'):
+                continue
+
+            channel_id = None
+            channel_url = None
+            channel_name = None
+            found_info = False
+
+            # Search for first .info.json — check root of channel dir, then one level of subdirs (Season folders)
+            search_dirs = [channel_dir]
+            try:
+                for sub in sorted(channel_dir.iterdir()):
+                    if sub.is_dir() and not sub.name.startswith('.'):
+                        search_dirs.append(sub)
+            except PermissionError:
+                pass
+
+            for search_dir in search_dirs:
+                if found_info:
+                    break
+                try:
+                    for f in sorted(search_dir.iterdir()):
+                        if f.is_file() and f.name.endswith('.info.json'):
+                            try:
+                                with open(f, 'r', errors='replace') as jf:
+                                    info = json.load(jf)
+                                channel_id = info.get('channel_id', '')
+                                channel_url = info.get('channel_url', '')
+                                channel_name = info.get('channel', '') or info.get('uploader', '') or info.get('uploader_id', '')
+                                found_info = True
+                                break  # Only read ONE .info.json per channel folder
+                            except (json.JSONDecodeError, OSError):
+                                continue
+                except PermissionError:
+                    continue
+
+            # Build URL
+            if channel_id and not channel_url:
+                channel_url = f"https://www.youtube.com/channel/{channel_id}"
+
+            if channel_url:
+                channel_url = channel_url.strip().rstrip('/')
+                if '/videos' not in channel_url and 'playlist' not in channel_url:
+                    channel_url += '/videos'
+
+            # Use folder name as fallback display name
+            display_name = channel_name or channel_dir.name
+
+            # Dedup key: prefer channel_id, fall back to folder name
+            dedup_key = (channel_id or '').lower() or channel_dir.name.lower()
+
+            if dedup_key not in channels_found:
+                channels_found[dedup_key] = {
+                    "name": display_name,
+                    "url": channel_url or "",
+                    "channel_id": channel_id or "",
+                    "folder_name": channel_dir.name,
+                    "has_metadata": found_info,
+                }
+
+    except PermissionError:
+        return jsonify({"error": f"Permission denied reading: {scan_path}"}), 400
+    except Exception as e:
+        return jsonify({"error": f"Error scanning directory: {str(e)}"}), 500
+
+    unique = list(channels_found.values())
+
+    if not unique:
+        return jsonify({"error": f"No channel folders found in {scan_path}"}), 400
+
+    # Check against existing
+    existing_urls, existing_names, existing_cids = _get_existing_channels()
+    for ch in unique:
+        if ch['url']:
+            ch['already_exists'] = _check_already_exists(
+                ch['url'], ch['name'], existing_urls, existing_names, existing_cids
+            )
+        else:
+            # No URL — match by name only
+            ch['already_exists'] = ch['name'].lower().strip() in existing_names or ch['folder_name'].lower().strip() in existing_names
+
+    new_count = sum(1 for ch in unique if not ch['already_exists'])
+    existing_count = sum(1 for ch in unique if ch['already_exists'])
+
+    return jsonify({
+        "channels": unique,
+        "total": len(unique),
+        "new_count": new_count,
+        "existing_count": existing_count,
+    })
+
+
+@app.route('/import/confirm', methods=['POST'])
+def import_confirm():
+    """Confirm import: append channels to channels.txt and create folders."""
+    data = request.get_json()
+    if not data or not data.get('channels'):
+        return jsonify({"error": "No channels provided"}), 400
+
+    source = data.get('source', 'import')
+    channels_to_add = data['channels']
+
+    # Re-check existing to avoid duplicates
+    existing_urls, existing_names, existing_cids = _get_existing_channels()
+
+    added = 0
+    skipped = 0
+    section_header = f"# --- Imported from {source.replace('_', ' ').title()} ---"
+
+    lines_to_add = []
+    for ch in channels_to_add:
+        url = ch.get('url', '').strip()
+        name = ch.get('name', '').strip()
+
+        if not url:
+            skipped += 1
+            continue
+
+        if _check_already_exists(url, name, existing_urls, existing_names, existing_cids):
+            skipped += 1
+            continue
+
+        entry = f"{url}|{name}" if name else url
+        lines_to_add.append(entry)
+
+        # Create folder
+        folder_name = name or url
+        if folder_name:
+            ch_dir = Path(SHOWS_DIR) / folder_name
+            try:
+                ch_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                print(f"Failed to create folder for {folder_name}: {e}")
+
+        # Track as existing now to prevent duplicate adds within this batch
+        existing_urls.add(_normalize_channel_url(url))
+        if name:
+            existing_names.add(name.lower().strip())
+        cid = _extract_channel_id(url)
+        if cid:
+            existing_cids.add(cid.lower())
+
+        added += 1
+
+    if lines_to_add:
+        with open(CHANNELS_FILE, "a") as f:
+            f.write(f"\n{section_header}\n")
+            for entry in lines_to_add:
+                f.write(f"{entry}\n")
+
+    return jsonify({
+        "added": added,
+        "skipped": skipped,
+    })
 
 
 # ── Startup ──

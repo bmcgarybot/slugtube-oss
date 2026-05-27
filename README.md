@@ -82,6 +82,44 @@ All configuration is done through environment variables in `.env` (or `docker-co
 
 ## 📺 Adding Channels
 
+### Migrating from TubeArchivist or PinchFlat
+
+SlugTube has built-in import tools on the **Settings** page. Three methods:
+
+#### 1. Scan Existing Library (Recommended)
+
+If you already have a media folder full of downloaded videos (from TubeArchivist, PinchFlat, or plain yt-dlp), just point SlugTube at it:
+
+1. Go to **Settings → Import Channels**
+2. Enter the path to your media folder (e.g. `/youtube/` or `/downloads/shows/`)
+3. Click **Scan** — SlugTube reads `.info.json` files to find channel names and URLs
+4. Review the list, check the ones you want, click **Import Selected**
+
+This works with any yt-dlp-based folder structure. No backup files needed.
+
+#### 2. TubeArchivist Backup ZIP
+
+1. In TubeArchivist: **Settings → Backup → Create Backup**
+2. Download the backup ZIP
+3. In SlugTube: **Settings → Import → TubeArchivist Backup → Upload**
+4. SlugTube extracts your subscribed channels from the metadata
+5. Review and import
+
+#### 3. PinchFlat Database
+
+1. Find your PinchFlat database file: `pinchflat.db` (in your PinchFlat config directory, usually `/config/`)
+2. In SlugTube: **Settings → Import → PinchFlat Database → Upload**
+3. SlugTube reads your sources from the SQLite database
+4. Review and import
+
+All import methods:
+- **Never overwrite** your existing channels — only append new ones
+- **Detect duplicates** by URL, channel name, and channel ID
+- **Auto-create folders** for imported channels
+- Show a preview with checkboxes so you can pick exactly what to import
+
+> **Note on file naming:** TubeArchivist and PinchFlat use different file naming conventions. Imported channels will download NEW videos in SlugTube's format. Existing files from your old app will still be indexed and playable, but won't have the `Season YYYY/` folder structure until re-downloaded.
+
 ### From the Web UI
 
 1. Go to **Channels** page
