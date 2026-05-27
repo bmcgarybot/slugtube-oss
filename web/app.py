@@ -1649,9 +1649,28 @@ def api_delete_folder(channel_name):
     channel_dir = Path(SHOWS_DIR) / channel_name
 
     if not channel_dir.is_dir():
+        # No folder on disk — but still clean from database (e.g. playlists stored under another channel's folder)
+        app.logger.info(f"No folder found for '{channel_name}', cleaning database only")
+        try:
+            conn = get_db()
+            video_ids = [r['id'] for r in conn.execute(
+                "SELECT id FROM videos WHERE channel_name = ?", (channel_name,)
+            ).fetchall()]
+            if video_ids:
+                placeholders = ",".join("?" * len(video_ids))
+                conn.execute(f"DELETE FROM video_playlists WHERE video_id IN ({placeholders})", video_ids)
+                conn.execute(f"DELETE FROM watch_history WHERE video_id IN ({placeholders})", video_ids)
+                conn.execute(f"DELETE FROM videos_fts WHERE channel_name = ?", (channel_name,))
+                conn.execute(f"DELETE FROM videos WHERE channel_name = ?", (channel_name,))
+            conn.execute("DELETE FROM playlists WHERE channel_name = ?", (channel_name,))
+            conn.execute("DELETE FROM channels WHERE name = ?", (channel_name,))
+            conn.commit()
+            app.logger.info(f"Database cleaned for: {channel_name}")
+        except Exception as e:
+            app.logger.error(f"DB cleanup error for {channel_name}: {e}")
         if request.referrer:
             return redirect(request.referrer)
-        return jsonify({"status": "error", "message": f"Directory not found: {channel_name}"}), 404
+        return jsonify({"status": "deleted", "channel": channel_name, "note": "database only, no folder found"})
 
     try:
         shutil.rmtree(str(channel_dir))
