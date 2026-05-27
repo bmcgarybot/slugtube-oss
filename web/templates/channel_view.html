@@ -35,6 +35,7 @@
                 {% if playlists %}
                 <a href="/library/{{ channel_name | urlencode }}/playlists" class="btn btn-sm playlist-nav-btn">📋 Playlists <span class="pl-nav-count">{{ playlists | length }}</span></a>
                 {% endif %}
+                <button class="btn btn-sm" id="toggle-select-btn" onclick="toggleSelectMode()" style="border-color:#8b5cf6;color:#8b5cf6;font-size:12px;" title="Select videos for bulk actions">☑️ Select</button>
                 <select id="sort-select" onchange="updateSort()">
                     {% if active_playlist %}
                     <option value="playlist_index" {% if sort=='playlist_index' %}selected{% endif %}>Playlist Order</option>
@@ -43,7 +44,9 @@
                     <option value="oldest" {% if sort=='oldest' %}selected{% endif %}>Oldest</option>
                     <option value="title" {% if sort=='title' %}selected{% endif %}>Title A-Z</option>
                     <option value="largest" {% if sort=='largest' %}selected{% endif %}>Largest</option>
+                    <option value="smallest" {% if sort=='smallest' %}selected{% endif %}>Smallest</option>
                     <option value="longest" {% if sort=='longest' %}selected{% endif %}>Longest</option>
+                    <option value="shortest" {% if sort=='shortest' %}selected{% endif %}>Shortest</option>
                     <option value="most_viewed" {% if sort=='most_viewed' %}selected{% endif %}>Most Viewed</option>
                 </select>
             </div>
@@ -76,11 +79,26 @@
 </div>
 {% endif %}
 
+<!-- Bulk Action Bar (hidden until select mode) -->
+<div id="bulk-action-bar" class="bulk-bar" style="display:none;">
+    <div class="bulk-bar-left">
+        <label class="bulk-select-all"><input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this)"> Select All</label>
+        <span id="selected-count" class="bulk-count">0 selected</span>
+    </div>
+    <div class="bulk-bar-right">
+        <button class="btn btn-sm bulk-btn-delete" onclick="bulkDelete()" title="Delete selected videos from disk and prevent re-download">🗑️ Delete Selected</button>
+        <button class="btn btn-sm bulk-btn-exclude" onclick="bulkExclude()" title="Block selected from future downloads (keeps existing files)">🚫 Exclude from Future</button>
+        <button class="btn btn-sm" onclick="toggleSelectMode()" style="border-color:var(--text-dim);color:var(--text-dim);">✕ Cancel</button>
+    </div>
+</div>
+
 <!-- Video Grid -->
-<div class="video-grid">
+<div class="video-grid" id="video-grid">
     {% for v in videos %}
     {% if not (latest_video and v.id == latest_video.id and offset == 0) %}
-    <a href="/watch/{{ v.id }}" class="video-card">
+    <div class="video-card-wrapper" data-video-id="{{ v.id }}">
+        <input type="checkbox" class="video-checkbox" data-id="{{ v.id }}" onchange="updateSelectedCount()" style="display:none;">
+        <a href="/watch/{{ v.id }}" class="video-card">
         <div class="video-thumb">
             {% if v.thumbnail_path %}
             <img src="/media/thumb/{{ v.id }}" alt="{{ v.title }}" loading="lazy">
@@ -99,6 +117,7 @@
             {% if v.view_count %}<div class="video-meta">{{ "{:,}".format(v.view_count) }} views</div>{% endif %}
         </div>
     </a>
+    </div>
     {% endif %}
     {% endfor %}
 </div>
@@ -423,10 +442,92 @@
         .ch-name { font-size: 18px; }
         .playlist-pills { max-width: 100%; }
         .ch-controls { flex-direction: column; align-items: flex-start; }
+        .bulk-bar { flex-direction: column; gap: 10px; }
+        .bulk-bar-left, .bulk-bar-right { justify-content: center; }
+    }
+
+    /* ── Bulk Select Mode ── */
+    .bulk-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        background: var(--bg-card);
+        border: 1px solid #8b5cf6;
+        border-radius: 10px;
+        gap: 16px;
+    }
+    .bulk-bar-left {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+    .bulk-bar-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .bulk-select-all {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--text);
+        cursor: pointer;
+        user-select: none;
+    }
+    .bulk-select-all input { width: 16px; height: 16px; cursor: pointer; accent-color: #8b5cf6; }
+    .bulk-count {
+        font-size: 13px;
+        font-weight: 600;
+        color: #8b5cf6;
+    }
+    .bulk-btn-delete {
+        border-color: var(--red) !important;
+        color: var(--red) !important;
+        font-size: 12px !important;
+    }
+    .bulk-btn-delete:hover { background: rgba(248,81,73,0.1); }
+    .bulk-btn-exclude {
+        border-color: #f0883e !important;
+        color: #f0883e !important;
+        font-size: 12px !important;
+    }
+    .bulk-btn-exclude:hover { background: rgba(240,136,62,0.1); }
+
+    /* Checkbox overlay on video cards in select mode */
+    .select-mode .video-checkbox {
+        display: block !important;
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        z-index: 10;
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+        accent-color: #8b5cf6;
+    }
+    .select-mode .video-card-wrapper {
+        position: relative;
+        cursor: pointer;
+    }
+    .select-mode .video-card-wrapper.selected {
+        outline: 2px solid #8b5cf6;
+        border-radius: 10px;
+    }
+    .select-mode .video-card-wrapper.selected .video-card {
+        opacity: 0.85;
+    }
+    .select-mode .video-card {
+        pointer-events: none;
     }
 </style>
 
 <script>
+let selectMode = false;
+
 function updateSort() {
     const sort = document.getElementById('sort-select').value;
     {% if active_playlist %}
@@ -434,6 +535,108 @@ function updateSort() {
     {% else %}
     window.location.href = '/library/{{ channel_name | urlencode }}?sort=' + sort;
     {% endif %}
+}
+
+function toggleSelectMode() {
+    selectMode = !selectMode;
+    const grid = document.getElementById('video-grid');
+    const bar = document.getElementById('bulk-action-bar');
+    const btn = document.getElementById('toggle-select-btn');
+
+    if (selectMode) {
+        grid.classList.add('select-mode');
+        bar.style.display = 'flex';
+        btn.style.borderColor = '#8b5cf6';
+        btn.style.background = 'rgba(139,92,246,0.1)';
+        btn.textContent = '☑️ Selecting...';
+    } else {
+        grid.classList.remove('select-mode');
+        bar.style.display = 'none';
+        btn.style.background = '';
+        btn.textContent = '☑️ Select';
+        // Uncheck all
+        document.querySelectorAll('.video-checkbox').forEach(cb => {
+            cb.checked = false;
+            cb.closest('.video-card-wrapper').classList.remove('selected');
+        });
+        document.getElementById('select-all-cb').checked = false;
+        updateSelectedCount();
+    }
+}
+
+// Click wrapper to toggle checkbox in select mode
+document.addEventListener('click', function(e) {
+    if (!selectMode) return;
+    const wrapper = e.target.closest('.video-card-wrapper');
+    if (!wrapper) return;
+    if (e.target.classList.contains('video-checkbox')) return; // checkbox clicked directly
+    e.preventDefault();
+    const cb = wrapper.querySelector('.video-checkbox');
+    cb.checked = !cb.checked;
+    wrapper.classList.toggle('selected', cb.checked);
+    updateSelectedCount();
+});
+
+function toggleSelectAll(master) {
+    const checkboxes = document.querySelectorAll('.video-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = master.checked;
+        cb.closest('.video-card-wrapper').classList.toggle('selected', master.checked);
+    });
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    const count = document.querySelectorAll('.video-checkbox:checked').length;
+    document.getElementById('selected-count').textContent = count + ' selected';
+}
+
+function getSelectedIds() {
+    return Array.from(document.querySelectorAll('.video-checkbox:checked')).map(cb => cb.dataset.id);
+}
+
+function bulkDelete() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return alert('No videos selected');
+    if (!confirm(`Delete ${ids.length} video(s) from disk? They will be blocked from re-downloading.`)) return;
+
+    fetch('/api/bulk-delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({video_ids: ids})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            alert(`Deleted ${data.deleted} video(s). ${data.excluded} added to block list.`);
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown'));
+        }
+    })
+    .catch(err => alert('Request failed: ' + err));
+}
+
+function bulkExclude() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return alert('No videos selected');
+    if (!confirm(`Exclude ${ids.length} video(s) from future downloads? Files on disk will NOT be deleted.`)) return;
+
+    fetch('/api/bulk-exclude', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({video_ids: ids})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            alert(`${data.excluded} video(s) excluded from future downloads.`);
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown'));
+        }
+    })
+    .catch(err => alert('Request failed: ' + err));
 }
 </script>
 {% endblock %}

@@ -1828,6 +1828,97 @@ def api_toggle_playlists(channel_name):
     return redirect(request.referrer or url_for("channels"))
 
 
+# ── Bulk Video Operations ──
+
+@app.route("/api/bulk-delete", methods=["POST"])
+def api_bulk_delete():
+    """Delete multiple videos from disk and add to archive (block re-download)."""
+    from indexer import get_video, get_db
+    data = request.get_json()
+    if not data or not data.get("video_ids"):
+        return jsonify({"status": "error", "error": "No video_ids provided"}), 400
+
+    video_ids = data["video_ids"]
+    deleted = 0
+    excluded = 0
+
+    for vid_id in video_ids:
+        video = get_video(vid_id)
+        if not video:
+            continue
+
+        # Delete files (video, thumbnail, subtitle, nfo)
+        for key in ['file_path', 'thumbnail_path', 'subtitle_path']:
+            try:
+                path = video.get(key)
+                if path and os.path.isfile(path):
+                    os.remove(path)
+            except Exception as e:
+                app.logger.error(f"Error deleting {key} for {vid_id}: {e}")
+
+        # Delete NFO
+        try:
+            if video.get('file_path'):
+                nfo = os.path.splitext(video['file_path'])[0] + '.nfo'
+                if os.path.isfile(nfo):
+                    os.remove(nfo)
+        except Exception:
+            pass
+
+        # Remove from database
+        try:
+            conn = get_db()
+            conn.execute("DELETE FROM watch_history WHERE video_id = ?", (vid_id,))
+            conn.execute("DELETE FROM video_playlists WHERE video_id = ?", (vid_id,))
+            conn.execute("DELETE FROM videos WHERE id = ?", (vid_id,))
+            conn.commit()
+            conn.close()
+            deleted += 1
+        except Exception as e:
+            app.logger.error(f"Error deleting {vid_id} from DB: {e}")
+
+        # Add youtube ID to archive to block re-download
+        yt_id = video.get('youtube_id', vid_id)
+        if yt_id:
+            try:
+                os.makedirs("/config/archive", exist_ok=True)
+                with open(ARCHIVE_FILE, "a") as f:
+                    f.write(f"youtube {yt_id}\n")
+                excluded += 1
+            except Exception as e:
+                app.logger.error(f"Error adding {yt_id} to archive: {e}")
+
+    return jsonify({"status": "ok", "deleted": deleted, "excluded": excluded})
+
+
+@app.route("/api/bulk-exclude", methods=["POST"])
+def api_bulk_exclude():
+    """Add videos to archive/blocklist without deleting files."""
+    from indexer import get_video
+    data = request.get_json()
+    if not data or not data.get("video_ids"):
+        return jsonify({"status": "error", "error": "No video_ids provided"}), 400
+
+    video_ids = data["video_ids"]
+    excluded = 0
+
+    os.makedirs("/config/archive", exist_ok=True)
+
+    for vid_id in video_ids:
+        video = get_video(vid_id)
+        yt_id = video.get('youtube_id', vid_id) if video else vid_id
+
+        if yt_id:
+            try:
+                with open(ARCHIVE_FILE, "a") as f:
+                    f.write(f"youtube {yt_id}\n")
+                excluded += 1
+            except Exception as e:
+                app.logger.error(f"Error excluding {yt_id}: {e}")
+
+    return jsonify({"status": "ok", "excluded": excluded})
+
+
 # ── Startup ──
 
 if __name__ == "__main__":
