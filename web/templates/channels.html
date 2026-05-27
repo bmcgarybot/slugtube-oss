@@ -4,6 +4,10 @@
 
 <div class="page-header">
     <h1>📺 Channels ({{ unified | length }})</h1>
+    <div class="view-toggle">
+        <button class="btn btn-sm btn-ghost" onclick="setView('table')" id="view-table-btn" title="Table view">☰ Table</button>
+        <button class="btn btn-sm btn-ghost" onclick="setView('grid')" id="view-grid-btn" title="Grid view">⊞ Grid</button>
+    </div>
 </div>
 
 <!-- Add Channel -->
@@ -21,7 +25,7 @@
 </div>
 
 <!-- Unified Channel Table -->
-<div class="card">
+<div class="card" id="channels-table-view">
     <div class="card-header">
         All Channels — {{ unified | length }} total
         <span class="text-dim text-sm" style="font-weight:400;">
@@ -124,6 +128,28 @@
             </tbody>
         </table>
     </div>
+</div>
+
+<!-- Channel Grid View -->
+<div class="channel-grid" id="channels-grid-view" style="display:none;">
+    {% for ch in unified | sort(attribute='name') %}
+    <a href="/library/{{ ch.name | urlencode }}" class="channel-grid-card">
+        <div class="channel-poster-img" style="background-image: url('/media/poster/{{ ch.name | urlencode }}')"></div>
+        <div class="channel-grid-info">
+            <span class="channel-grid-name">{{ ch.name }}</span>
+            <span class="channel-grid-stats">
+                {% if ch.on_disk %}{{ ch.video_count }} videos · {{ "%.1f"|format((ch.total_size_bytes or 0) / 1073741824) }} GB{% else %}Not downloaded{% endif %}
+            </span>
+            {% if ch.subscribed and ch.on_disk %}
+                <span class="badge badge-green">Active</span>
+            {% elif ch.subscribed %}
+                <span class="badge badge-blue">Sub'd</span>
+            {% else %}
+                <span class="badge badge-orange">Library</span>
+            {% endif %}
+        </div>
+    </a>
+    {% endfor %}
 </div>
 
 <style>
@@ -229,5 +255,80 @@
         }
     }
 </style>
+
+<style>
+    /* ── View Toggle ── */
+    .view-toggle { display: flex; gap: 4px; }
+    .view-toggle .btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* ── Channel Grid ── */
+    .channel-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 16px;
+    }
+    .channel-grid-card {
+        border-radius: 10px;
+        overflow: hidden;
+        background: rgba(22, 27, 34, 0.75);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255,255,255,0.06);
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        text-decoration: none;
+        color: var(--text);
+    }
+    .channel-grid-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    }
+    .channel-poster-img {
+        width: 100%;
+        aspect-ratio: 1;
+        background-size: cover;
+        background-position: center;
+        background-color: var(--bg-hover);
+    }
+    .channel-grid-info { padding: 10px 12px; }
+    .channel-grid-name { font-weight: 600; font-size: 13px; display: block; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .channel-grid-stats { font-size: 11px; color: var(--text-dim); display: block; margin-bottom: 6px; }
+
+    /* Light theme grid card override */
+    [data-theme="light"] .channel-grid-card { background: rgba(255,255,255,0.8); border: 1px solid rgba(0,0,0,0.08); }
+    [data-theme="light"] .channel-grid-card:hover { box-shadow: 0 12px 40px rgba(0,0,0,0.12); }
+</style>
+
+<script>
+function setView(mode) {
+    var tableView = document.getElementById('channels-table-view');
+    var gridView = document.getElementById('channels-grid-view');
+    var tableBtn = document.getElementById('view-table-btn');
+    var gridBtn = document.getElementById('view-grid-btn');
+
+    if (mode === 'grid') {
+        tableView.style.display = 'none';
+        gridView.style.display = 'grid';
+        gridBtn.classList.add('active');
+        tableBtn.classList.remove('active');
+    } else {
+        tableView.style.display = '';
+        gridView.style.display = 'none';
+        tableBtn.classList.add('active');
+        gridBtn.classList.remove('active');
+    }
+    localStorage.setItem('slugtube-channel-view', mode);
+}
+
+// Restore saved view preference
+(function() {
+    var saved = localStorage.getItem('slugtube-channel-view') || 'table';
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() { setView(saved); });
+    } else {
+        setView(saved);
+    }
+})();
+</script>
 
 {% endblock %}
