@@ -3,332 +3,150 @@
 {% block content %}
 
 <div class="page-header">
-    <h1>📺 Channels ({{ unified | length }})</h1>
-    <div class="view-toggle">
-        <button class="btn btn-sm btn-ghost" onclick="setView('table')" id="view-table-btn" title="Table view">☰ Table</button>
-        <button class="btn btn-sm btn-ghost" onclick="setView('grid')" id="view-grid-btn" title="Grid view">⊞ Grid</button>
+    <h1>📺 Channels <span class="text-dim text-sm" style="font-weight:400;" id="channel-count">({{ unified | length }})</span></h1>
+    <div class="view-toggle" id="browse-toggle">
+        <button class="btn btn-sm btn-ghost" onclick="setBrowseView('table')" id="browse-table-btn" title="Table view">☰ Table</button>
+        <button class="btn btn-sm btn-ghost" onclick="setBrowseView('grid')" id="browse-grid-btn" title="Grid view">⊞ Grid</button>
+    </div>
+    <div class="view-toggle" id="video-toggle" style="display:none;">
+        <button class="btn btn-sm btn-ghost" onclick="goBackToBrowse()" id="back-btn" title="Back to all channels">← All</button>
+        <button class="btn btn-sm btn-ghost" onclick="setVideoView('grid')" id="video-grid-btn" title="Grid view">⊞ Grid</button>
+        <button class="btn btn-sm btn-ghost" onclick="setVideoView('list')" id="video-list-btn" title="List view">☰ List</button>
     </div>
 </div>
 
-<!-- Add Channel -->
-<div class="card mb-20">
+<div class="card mb-20" id="add-channel-card">
     <div class="card-body">
         <form method="POST" action="/add" class="add-form">
             <input type="url" name="url" placeholder="https://www.youtube.com/@ChannelName/videos" required>
             <input type="text" name="name" placeholder="Display Name (optional)" class="add-form-name">
-            <label class="add-form-playlist-label">
-                <input type="checkbox" name="playlists"> Playlists
-            </label>
+            <label class="add-form-playlist-label"><input type="checkbox" name="playlists"> Playlists</label>
             <button type="submit" class="btn btn-primary">Add Channel</button>
         </form>
     </div>
 </div>
 
-<!-- Unified Channel Table -->
-<div class="card" id="channels-table-view">
-    <div class="card-header">
-        All Channels — {{ unified | length }} total
-        <span class="text-dim text-sm" style="font-weight:400;">
-            {{ unified | selectattr('subscribed') | list | length }} subscribed ·
-            {{ unified | selectattr('on_disk') | list | length }} on disk
-        </span>
+<div class="channel-strip-wrap" id="channel-strip-wrap" style="display:none;">
+    <div class="channel-strip" id="channel-strip">
+        {% for ch in unified | sort(attribute='name') %}
+        <div class="channel-strip-card" data-name="{{ ch.name }}" onclick="selectChannel(this.getAttribute('data-name'))">
+            <div class="poster-wrapper"><div class="poster-fallback"><span class="poster-initial">{{ ch.name[0] | upper }}</span></div>{% if ch.has_poster %}<img class="poster-img" src="/media/poster/{{ ch.name | urlencode }}" onerror="this.style.display='none'" loading="lazy">{% endif %}</div>
+            <span class="strip-name">{{ ch.name }}</span>
+        </div>
+        {% endfor %}
     </div>
-    <div class="card-body" style="padding: 0; overflow-x: auto;">
-        <table class="channels-table">
-            <thead>
-                <tr>
-                    <th>Channel</th>
-                    <th class="text-center">Status</th>
-                    <th class="text-center">Videos</th>
-                    <th class="text-right">Size</th>
-                    <th class="text-center">NFO</th>
-                    <th class="text-center">Art</th>
-                    <th>Category</th>
-                    <th class="text-center ch-actions-th">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for ch in unified | sort(attribute='name') %}
-                <tr>
-                    <td class="channel-name" data-label="Channel">
-                        {% if ch.url %}<a href="{{ ch.url }}" target="_blank" class="channel-name-link">{{ ch.name }}</a>{% else %}{{ ch.name }}{% endif %}
-                        {% if ch.index_playlists %} <span title="Playlist indexing enabled" class="ch-playlist-icon">📋</span>{% endif %}
-                    </td>
-                    <td class="text-center nowrap" data-label="Status">
-                        {% if ch.subscribed and ch.on_disk %}
-                            <span class="badge badge-green" title="Subscribed + on disk">✅ Active</span>
-                        {% elif ch.subscribed %}
-                            <span class="badge badge-blue" title="Subscribed but no files on disk yet">📋 Sub'd</span>
-                        {% else %}
-                            <span class="badge badge-orange" title="Files on disk but not in channels.txt">📁 Library</span>
-                        {% endif %}
-                    </td>
-                    <td class="text-center" data-label="Videos">
-                        {% if ch.on_disk %}<span class="badge badge-green">{{ ch.video_count }}</span>{% else %}—{% endif %}
-                    </td>
-                    <td class="text-right text-dim" data-label="Size">
-                        {% if ch.on_disk %}{{ "%.1f"|format((ch.total_size_bytes or 0) / 1073741824) }} GB{% else %}—{% endif %}
-                    </td>
-                    <td class="text-center" data-label="NFO">{% if ch.on_disk %}{% if ch.has_nfo %}✅{% else %}—{% endif %}{% else %}—{% endif %}</td>
-                    <td class="text-center" data-label="Art">{% if ch.on_disk %}{% if ch.has_poster %}🖼️{% else %}—{% endif %}{% else %}—{% endif %}</td>
-                    <td data-label="Category"><span class="badge badge-blue">{{ ch.section }}</span></td>
-                    <td class="ch-actions" data-label="Actions">
-                        <div class="ch-actions-row">
-                            <!-- Primary actions: always visible -->
-                            {% if ch.url %}
-                            <form method="POST" action="/run/fast-single" class="form-inline">
-                                <input type="hidden" name="url" value="{{ ch.url }}">
-                                <input type="hidden" name="folder" value="{{ ch.name }}">
-                                <button type="submit" class="btn btn-accent btn-sm" {% if job.status == 'running' %}disabled{% endif %} title="Fast check {{ ch.name }} (latest 50)">Quick Check</button>
-                            </form>
-                            <form method="POST" action="/run/single" class="form-inline">
-                                <input type="hidden" name="url" value="{{ ch.url }}">
-                                <input type="hidden" name="folder" value="{{ ch.name }}">
-                                <button type="submit" class="btn btn-blue btn-sm" {% if job.status == 'running' %}disabled{% endif %} title="Download ALL {{ ch.name }}">Download</button>
-                            </form>
-                            {% endif %}
-                            {% if ch.on_disk %}
-                            <form method="POST" action="/api/reindex/{{ ch.name | urlencode }}" class="form-inline">
-                                <button type="submit" class="btn btn-ghost btn-sm" title="Re-index {{ ch.name }}">Reindex</button>
-                            </form>
-                            {% endif %}
+</div>
 
-                            <!-- Secondary actions: behind ⋮ dropdown -->
-                            {% if ch.subscribed or ch.on_disk %}
-                            <div class="dropdown">
-                                <button type="button" class="dropdown-trigger" title="More actions">⋮</button>
-                                <div class="dropdown-menu">
-                                    {% if ch.subscribed %}
-                                    <form method="POST" action="/api/toggle-playlists/{{ ch.name | urlencode }}">
-                                        <button type="submit" class="dropdown-item">
-                                            {% if ch.index_playlists %}Disable Playlists{% else %}Enable Playlists{% endif %}
-                                        </button>
-                                    </form>
-                                    {% endif %}
-                                    {% if ch.subscribed %}
-                                    <div class="dropdown-divider"></div>
-                                    <form method="POST" action="/remove">
-                                        <input type="hidden" name="url" value="{{ ch.url }}">
-                                        <input type="hidden" name="name" value="{{ ch.name }}">
-                                        <button type="submit" class="dropdown-item dropdown-danger" onclick="return confirm('Unsubscribe from {{ ch.name }}? This removes it from channels.txt and the database.')">Unsubscribe</button>
-                                    </form>
-                                    {% endif %}
-                                    {% if ch.on_disk %}
-                                    <form method="POST" action="/api/delete-folder/{{ ch.name | urlencode }}">
-                                        <button type="submit" class="dropdown-item dropdown-danger" onclick="return confirm('DELETE the entire {{ ch.name }} folder from disk? This removes all downloaded videos permanently!')">Delete Folder</button>
-                                    </form>
-                                    {% endif %}
-                                </div>
-                            </div>
-                            {% endif %}
-                        </div>
-                    </td>
-                </tr>
-                {% endfor %}
+<div id="channel-detail" style="display:none;">
+    <div class="detail-hero" id="detail-hero"><div class="detail-hero-gradient"></div></div>
+    <div class="detail-header">
+        <div class="detail-poster-wrap" id="detail-poster-wrap"><div class="detail-poster-fallback" id="detail-poster-fb"><span class="poster-initial" id="detail-poster-initial"></span></div></div>
+        <div class="detail-info"><h2 id="detail-name"></h2><div class="detail-stats" id="detail-stats"></div><div class="detail-playlists" id="detail-playlists"></div></div>
+        <div class="detail-actions" id="detail-actions"></div>
+    </div>
+    <div class="video-toolbar" id="video-toolbar">
+        <select id="video-sort" class="form-select" onchange="sortVideos()"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="title">Title A-Z</option><option value="largest">Largest</option><option value="longest">Longest</option></select>
+        <span class="text-dim text-sm" id="video-count-label"></span>
+    </div>
+    <div id="video-grid" class="video-grid"></div>
+    <div id="video-list-table" class="card" style="display:none;"><div style="overflow-x:auto;"><table class="video-list-tbl"><thead><tr><th>Title</th><th class="text-center">Date</th><th class="text-center">Duration</th><th class="text-right">Size</th><th class="text-center">Watched</th></tr></thead><tbody id="video-list-tbody"></tbody></table></div></div>
+</div>
+
+<div class="channel-grid" id="channels-grid-view">
+    {% for ch in unified | sort(attribute='name') %}
+    <div class="channel-grid-card" data-name="{{ ch.name }}" onclick="selectChannel(this.getAttribute('data-name'))">
+        <div class="poster-wrapper poster-wrapper-grid"><div class="poster-fallback"><span class="poster-initial">{{ ch.name[0] | upper }}</span></div>{% if ch.has_poster %}<img class="poster-img" src="/media/poster/{{ ch.name | urlencode }}" onerror="this.style.display='none'" loading="lazy">{% endif %}</div>
+        <div class="channel-grid-info">
+            <span class="channel-grid-name">{{ ch.name }}</span>
+            <span class="channel-grid-stats">{% if ch.on_disk %}{{ ch.video_count }} videos · {{ "%.1f"|format((ch.total_size_bytes or 0) / 1073741824) }} GB{% else %}Not downloaded{% endif %}</span>
+            {% if ch.subscribed and ch.on_disk %}<span class="badge badge-green">Active</span>{% elif ch.subscribed %}<span class="badge badge-blue">Sub'd</span>{% else %}<span class="badge badge-orange">Library</span>{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="card" id="channels-table-view" style="display:none;">
+    <div class="card-header">All Channels — {{ unified | length }} total <span class="text-dim text-sm" style="font-weight:400;">{{ unified | selectattr('subscribed') | list | length }} subscribed · {{ unified | selectattr('on_disk') | list | length }} on disk</span></div>
+    <div class="card-body" style="padding:0;overflow-x:auto;">
+        <table class="channels-table"><thead><tr><th>Channel</th><th class="text-center">Status</th><th class="text-center">Videos</th><th class="text-right">Size</th><th class="text-center">NFO</th><th class="text-center">Art</th><th>Category</th><th class="text-center ch-actions-th">Actions</th></tr></thead>
+            <tbody>{% for ch in unified | sort(attribute='name') %}
+                <tr style="cursor:pointer;" onclick="selectChannel(this.getAttribute('data-name'))" data-name="{{ ch.name }}">
+                    <td class="channel-name" data-label="Channel">{{ ch.name }}{% if ch.index_playlists %} <span class="ch-playlist-icon" title="Playlist indexing">📋</span>{% endif %}</td>
+                    <td class="text-center nowrap" data-label="Status">{% if ch.subscribed and ch.on_disk %}<span class="badge badge-green">✅ Active</span>{% elif ch.subscribed %}<span class="badge badge-blue">📋 Sub'd</span>{% else %}<span class="badge badge-orange">📁 Library</span>{% endif %}</td>
+                    <td class="text-center" data-label="Videos">{% if ch.on_disk %}<span class="badge badge-green">{{ ch.video_count }}</span>{% else %}—{% endif %}</td>
+                    <td class="text-right text-dim" data-label="Size">{% if ch.on_disk %}{{ "%.1f"|format((ch.total_size_bytes or 0) / 1073741824) }} GB{% else %}—{% endif %}</td>
+                    <td class="text-center" data-label="NFO">{% if ch.on_disk and ch.has_nfo %}✅{% else %}—{% endif %}</td>
+                    <td class="text-center" data-label="Art">{% if ch.on_disk and ch.has_poster %}🖼️{% else %}—{% endif %}</td>
+                    <td data-label="Category"><span class="badge badge-blue">{{ ch.section }}</span></td>
+                    <td class="ch-actions" data-label="Actions" onclick="event.stopPropagation()"><div class="ch-actions-row">{% if ch.url %}<form method="POST" action="/run/fast-single" class="form-inline"><input type="hidden" name="url" value="{{ ch.url }}"><input type="hidden" name="folder" value="{{ ch.name }}"><button type="submit" class="btn btn-accent btn-sm" {% if job.status == 'running' %}disabled{% endif %}>Quick Check</button></form>{% endif %}{% if ch.subscribed or ch.on_disk %}<div class="dropdown"><button type="button" class="dropdown-trigger">⋮</button><div class="dropdown-menu">{% if ch.url %}<form method="POST" action="/run/single" class="form-inline"><input type="hidden" name="url" value="{{ ch.url }}"><input type="hidden" name="folder" value="{{ ch.name }}"><button type="submit" class="dropdown-item" {% if job.status == 'running' %}disabled{% endif %}>Download All</button></form>{% endif %}{% if ch.on_disk %}<form method="POST" action="/api/reindex/{{ ch.name | urlencode }}" class="form-inline"><button type="submit" class="dropdown-item">Reindex</button></form>{% endif %}{% if ch.subscribed %}<form method="POST" action="/api/toggle-playlists/{{ ch.name | urlencode }}"><button type="submit" class="dropdown-item">{% if ch.index_playlists %}Disable{% else %}Enable{% endif %} Playlists</button></form><div class="dropdown-divider"></div><form method="POST" action="/remove"><input type="hidden" name="url" value="{{ ch.url }}"><input type="hidden" name="name" value="{{ ch.name }}"><button type="submit" class="dropdown-item dropdown-danger" onclick="return confirm('Unsubscribe from {{ ch.name }}?')">Unsubscribe</button></form>{% endif %}{% if ch.on_disk %}<form method="POST" action="/api/delete-folder/{{ ch.name | urlencode }}"><button type="submit" class="dropdown-item dropdown-danger" onclick="return confirm('DELETE {{ ch.name }} folder?')">Delete Folder</button></form>{% endif %}</div></div>{% endif %}</div></td>
+                </tr>{% endfor %}
             </tbody>
         </table>
     </div>
 </div>
 
-<!-- Channel Grid View -->
-<div class="channel-grid" id="channels-grid-view" style="display:none;">
-    {% for ch in unified | sort(attribute='name') %}
-    <a href="/library/{{ ch.name | urlencode }}" class="channel-grid-card">
-        <div class="channel-poster-img" style="background-image: url('/media/poster/{{ ch.name | urlencode }}')"></div>
-        <div class="channel-grid-info">
-            <span class="channel-grid-name">{{ ch.name }}</span>
-            <span class="channel-grid-stats">
-                {% if ch.on_disk %}{{ ch.video_count }} videos · {{ "%.1f"|format((ch.total_size_bytes or 0) / 1073741824) }} GB{% else %}Not downloaded{% endif %}
-            </span>
-            {% if ch.subscribed and ch.on_disk %}
-                <span class="badge badge-green">Active</span>
-            {% elif ch.subscribed %}
-                <span class="badge badge-blue">Sub'd</span>
-            {% else %}
-                <span class="badge badge-orange">Library</span>
-            {% endif %}
-        </div>
-    </a>
-    {% endfor %}
-</div>
-
 <style>
-    /* ── Channel-specific styles ── */
-    .channel-name-link { color: inherit; text-decoration: none; }
-    .channel-name-link:hover { color: var(--accent); }
-    .ch-playlist-icon { cursor: help; font-size: 14px; }
-
-    .add-form-name { max-width: 200px; }
-    .add-form-playlist-label {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 13px;
-        color: var(--text-dim);
-        cursor: pointer;
-        white-space: nowrap;
-    }
-
-    /* Actions column layout */
-    .ch-actions-th { min-width: 240px; }
-    .ch-actions-row {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        flex-wrap: nowrap;
-    }
-
-    /* Responsive channels table */
-    .channels-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .channels-table th, .channels-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
-    .channels-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
-
-    /* Medium screens: hide less-important columns */
-    @media (max-width: 1100px) {
-        .channels-table th:nth-child(5),
-        .channels-table td:nth-child(5),
-        .channels-table th:nth-child(6),
-        .channels-table td:nth-child(6) {
-            display: none;
-        }
-    }
-
-    /* Small screens: card layout */
-    @media (max-width: 768px) {
-        .channels-table thead { display: none; }
-        .channels-table tbody tr {
-            display: block;
-            margin-bottom: 12px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 12px 14px;
-        }
-        .channels-table tbody td {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 4px 0;
-            border-bottom: none;
-            text-align: right !important;
-        }
-        .channels-table tbody td::before {
-            content: attr(data-label);
-            font-weight: 600;
-            font-size: 12px;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            margin-right: 12px;
-            text-align: left;
-            flex-shrink: 0;
-        }
-        .channels-table tbody td.channel-name {
-            font-size: 15px;
-            font-weight: 700;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 8px;
-            margin-bottom: 4px;
-        }
-        .channels-table tbody td.channel-name::before { display: none; }
-        .channels-table tbody td.ch-actions {
-            justify-content: flex-end;
-            flex-wrap: wrap;
-            gap: 4px;
-            padding-top: 8px;
-            border-top: 1px solid var(--border);
-            margin-top: 4px;
-        }
-        .channels-table tbody td.ch-actions::before { display: none; }
-        .ch-actions-row { flex-wrap: wrap; justify-content: flex-end; }
-        .channels-table tbody td:nth-child(5),
-        .channels-table tbody td:nth-child(6) { display: none; }
-
-        .add-form {
-            flex-direction: column !important;
-            gap: 8px !important;
-        }
-        .add-form input, .add-form button {
-            width: 100% !important;
-            max-width: 100% !important;
-        }
-    }
+.channel-strip-wrap{margin-bottom:16px;background:rgba(22,27,34,0.5);border-radius:10px;padding:4px 12px;border:1px solid var(--border)}
+.channel-strip{display:flex;gap:10px;overflow-x:auto;padding:10px 0;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.channel-strip::-webkit-scrollbar{height:4px}.channel-strip::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.channel-strip-card{flex-shrink:0;width:80px;cursor:pointer;text-align:center;scroll-snap-align:start;transition:transform .2s,opacity .2s;opacity:.7}
+.channel-strip-card:hover{opacity:1;transform:scale(1.06)}.channel-strip-card.active{opacity:1;transform:scale(1.08)}
+.channel-strip-card.active .poster-wrapper{box-shadow:0 0 0 3px var(--accent);border-radius:10px}
+.strip-name{display:block;font-size:10px;font-weight:600;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-dim)}
+.channel-strip-card.active .strip-name{color:var(--text)}
+.poster-wrapper{position:relative;width:100%;aspect-ratio:1;border-radius:8px;overflow:hidden}
+.poster-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.poster-initial{font-size:28px;font-weight:800;color:rgba(255,255,255,.7);text-shadow:0 2px 8px rgba(0,0,0,.4)}
+.poster-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+.detail-hero{width:100%;height:200px;background-size:cover;background-position:center;border-radius:12px;position:relative;overflow:hidden;margin-bottom:-40px;background-color:var(--bg-card)}
+.detail-hero-gradient{position:absolute;bottom:0;left:0;right:0;height:70%;background:linear-gradient(transparent,var(--bg))}
+.detail-hero.no-banner{height:80px;margin-bottom:-20px}
+.detail-header{display:flex;align-items:flex-start;gap:16px;padding:16px 0;position:relative;z-index:1;flex-wrap:wrap}
+.detail-poster-wrap{width:80px;height:80px;border-radius:10px;overflow:hidden;flex-shrink:0;position:relative;background:var(--bg-card);border:2px solid var(--border)}
+.detail-poster-fallback{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+.detail-poster-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+.detail-info{flex:1;min-width:200px}.detail-info h2{font-size:20px;margin-bottom:4px}
+.detail-stats{font-size:13px;color:var(--text-dim);margin-bottom:4px}
+.detail-playlists{font-size:12px;color:var(--text-dim)}.detail-playlists a{color:var(--accent);text-decoration:none;margin-right:8px}.detail-playlists a:hover{text-decoration:underline}
+.detail-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;flex-shrink:0}
+.video-toolbar{display:flex;align-items:center;gap:12px;margin:12px 0 8px;flex-wrap:wrap}
+.video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-top:8px}
+.video-card{border-radius:8px;overflow:hidden;background:var(--bg-card);border:1px solid var(--border);transition:transform .2s,box-shadow .2s;cursor:pointer;text-decoration:none;color:var(--text);display:block}
+.video-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.video-thumb{width:100%;aspect-ratio:16/9;background-size:cover;background-position:center;background-color:var(--bg-hover);position:relative}
+.video-thumb-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:32px;color:var(--text-dimmer)}
+.video-duration{position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,.8);color:#fff;font-size:11px;padding:2px 6px;border-radius:4px}
+.video-progress-bar{position:absolute;bottom:0;left:0;height:3px;background:var(--accent);border-radius:0 2px 0 0}
+.video-watched-badge{position:absolute;top:6px;right:6px;background:rgba(63,185,80,.9);color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600}
+.video-info{padding:10px}.video-title{font-size:13px;font-weight:500;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:4px;line-height:1.3}
+.video-meta{font-size:11px;color:var(--text-dim)}
+.video-list-tbl{width:100%;border-collapse:collapse;font-size:14px}.video-list-tbl th,.video-list-tbl td{padding:10px 12px;border-bottom:1px solid var(--border)}
+.video-list-tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim)}
+.video-list-tbl tbody tr{cursor:pointer;transition:background .1s}.video-list-tbl tbody tr:hover{background:var(--bg-hover)}
+.video-list-tbl .vl-title{font-weight:500;max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.video-list-tbl .vl-title a{color:var(--text);text-decoration:none}.video-list-tbl .vl-title a:hover{color:var(--accent)}
+.channel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:16px}
+.channel-grid-card{border-radius:10px;overflow:hidden;background:rgba(22,27,34,.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.06);cursor:pointer;transition:transform .2s ease,box-shadow .2s ease;color:var(--text)}
+.channel-grid-card:hover{transform:translateY(-4px);box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.poster-wrapper-grid{aspect-ratio:1}.channel-grid-info{padding:10px 12px}
+.channel-grid-name{font-weight:600;font-size:13px;display:block;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.channel-grid-stats{font-size:11px;color:var(--text-dim);display:block;margin-bottom:6px}
+.channel-name{font-weight:600;color:var(--text)}.ch-playlist-icon{cursor:help;font-size:14px}
+.add-form-name{max-width:200px}
+.add-form-playlist-label{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--text-dim);cursor:pointer;white-space:nowrap}
+.ch-actions-th{min-width:180px}.ch-actions-row{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:nowrap}
+.channels-table{width:100%;border-collapse:collapse;font-size:14px}.channels-table th,.channels-table td{padding:10px 12px;border-bottom:1px solid var(--border)}
+.channels-table th{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim)}
+.view-toggle{display:flex;gap:4px}.view-toggle .btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+[data-theme="light"] .channel-grid-card{background:rgba(255,255,255,.8);border:1px solid rgba(0,0,0,.08)}
+[data-theme="light"] .channel-grid-card:hover{box-shadow:0 12px 40px rgba(0,0,0,.12)}
+[data-theme="light"] .channel-strip-wrap{background:rgba(255,255,255,.5)}
+[data-theme="light"] .video-card{background:rgba(255,255,255,.8);border:1px solid rgba(0,0,0,.08)}
+@media(max-width:1100px){.channels-table th:nth-child(5),.channels-table td:nth-child(5),.channels-table th:nth-child(6),.channels-table td:nth-child(6){display:none}}
+@media(max-width:768px){.channels-table thead{display:none}.channels-table tbody tr{display:block;margin-bottom:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px}.channels-table tbody td{display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:none;text-align:right!important}.channels-table tbody td::before{content:attr(data-label);font-weight:600;font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.3px;margin-right:12px;text-align:left;flex-shrink:0}.channels-table tbody td.channel-name{font-size:15px;font-weight:700;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:4px}.channels-table tbody td.channel-name::before{display:none}.channels-table tbody td.ch-actions{justify-content:flex-end;flex-wrap:wrap;gap:4px;padding-top:8px;border-top:1px solid var(--border);margin-top:4px}.channels-table tbody td.ch-actions::before{display:none}.ch-actions-row{flex-wrap:wrap;justify-content:flex-end}.channels-table tbody td:nth-child(5),.channels-table tbody td:nth-child(6){display:none}.add-form{flex-direction:column!important;gap:8px!important}.add-form input,.add-form button{width:100%!important;max-width:100%!important}.detail-header{flex-direction:column}.detail-actions{width:100%}.channel-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}.video-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}}
 </style>
 
-<style>
-    /* ── View Toggle ── */
-    .view-toggle { display: flex; gap: 4px; }
-    .view-toggle .btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-    /* ── Channel Grid ── */
-    .channel-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-        gap: 16px;
-    }
-    .channel-grid-card {
-        border-radius: 10px;
-        overflow: hidden;
-        background: rgba(22, 27, 34, 0.75);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255,255,255,0.06);
-        cursor: pointer;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-        text-decoration: none;
-        color: var(--text);
-    }
-    .channel-grid-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 12px 40px rgba(0,0,0,0.3);
-    }
-    .channel-poster-img {
-        width: 100%;
-        aspect-ratio: 1;
-        background-size: cover;
-        background-position: center;
-        background-color: var(--bg-hover);
-    }
-    .channel-grid-info { padding: 10px 12px; }
-    .channel-grid-name { font-weight: 600; font-size: 13px; display: block; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .channel-grid-stats { font-size: 11px; color: var(--text-dim); display: block; margin-bottom: 6px; }
-
-    /* Light theme grid card override */
-    [data-theme="light"] .channel-grid-card { background: rgba(255,255,255,0.8); border: 1px solid rgba(0,0,0,0.08); }
-    [data-theme="light"] .channel-grid-card:hover { box-shadow: 0 12px 40px rgba(0,0,0,0.12); }
-</style>
-
-<script>
-function setView(mode) {
-    var tableView = document.getElementById('channels-table-view');
-    var gridView = document.getElementById('channels-grid-view');
-    var tableBtn = document.getElementById('view-table-btn');
-    var gridBtn = document.getElementById('view-grid-btn');
-
-    if (mode === 'grid') {
-        tableView.style.display = 'none';
-        gridView.style.display = 'grid';
-        gridBtn.classList.add('active');
-        tableBtn.classList.remove('active');
-    } else {
-        tableView.style.display = '';
-        gridView.style.display = 'none';
-        tableBtn.classList.add('active');
-        gridBtn.classList.remove('active');
-    }
-    localStorage.setItem('slugtube-channel-view', mode);
-}
-
-// Restore saved view preference
-(function() {
-    var saved = localStorage.getItem('slugtube-channel-view') || 'table';
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() { setView(saved); });
-    } else {
-        setView(saved);
-    }
-})();
-</script>
+<script src="/static/channels.js"></script>
+<script>initChannelsPage({{ 'true' if job.status == 'running' else 'false' }});</script>
 
 {% endblock %}

@@ -1281,68 +1281,83 @@ def watch_history():
     )
 
 
-@app.route("/library/<path:channel_name>")
-def channel_view(channel_name):
-    from indexer import get_channel_videos, get_index_status, get_db, get_channel_playlists
+@app.route("/api/channel/<path:name>")
+def api_channel_detail(name):
+    """Return channel info + videos as JSON for the unified channels page."""
+    from indexer import get_db, get_channel_playlists
     from urllib.parse import unquote
 
-    channel_name = unquote(channel_name)
-    sort = request.args.get("sort", "newest")
-    offset = request.args.get("offset", 0, type=int)
-    limit = 60
-
-    videos, total = get_channel_videos(channel_name, sort=sort, limit=limit, offset=offset)
-
-    # Get channel record for header
+    name = unquote(name)
     conn = get_db()
-    ch_row = conn.execute("SELECT * FROM channels WHERE name = ?", (channel_name,)).fetchone()
-    channel_info = dict(ch_row) if ch_row else {}
 
-    # Get the latest video for the featured spot
-    latest_row = conn.execute("""
-        SELECT v.*, wh.position_seconds, wh.watched
+    # Get channel info
+    channel = conn.execute("SELECT * FROM channels WHERE name = ?", (name,)).fetchone()
+
+    # Get videos with watch history
+    videos = conn.execute("""
+        SELECT v.id, v.title, v.upload_date, v.file_size, v.duration, v.file_path,
+               v.thumbnail_path, v.view_count,
+               wh.position_seconds, wh.watched
         FROM videos v
         LEFT JOIN watch_history wh ON v.id = wh.video_id
         WHERE v.channel_name = ?
         ORDER BY v.upload_date DESC
-        LIMIT 1
-    """, (channel_name,)).fetchone()
-    latest_video = dict(latest_row) if latest_row else None
+    """, (name,)).fetchall()
+
     conn.close()
 
-    # Get playlists for this channel
-    playlists = get_channel_playlists(channel_name)
+    # Get playlists
+    playlists = get_channel_playlists(name)
 
-    # Check if channel has playlist indexing enabled in channels.txt
-    channel_has_playlist_flag = any(
-        ch['name'] == channel_name and ch.get('index_playlists')
-        for ch in get_channels()
-    )
-    # Also find the channel URL for the reindex button
+    # Check for poster/banner existence
+    channel_dir = Path(SHOWS_DIR) / name
+    has_poster = (channel_dir / 'poster.jpg').exists() or (channel_dir / 'poster.png').exists() or (channel_dir / 'folder.jpg').exists()
+    has_banner = (channel_dir / 'banner.jpg').exists() or (channel_dir / 'fanart.jpg').exists() or (channel_dir / 'banner.png').exists()
+
+    # Check subscription status
+    subscribed = any(ch['name'] == name for ch in get_channels())
+
+    # Find channel URL
     channel_url = None
     for ch in get_channels():
-        if ch['name'] == channel_name:
+        if ch['name'] == name:
             channel_url = ch['url']
             break
 
-    return render_template("channel_view.html",
-        page="library",
-        channel_name=channel_name,
-        channel_info=channel_info,
-        latest_video=latest_video,
-        videos=videos,
-        total=total,
-        sort=sort,
-        offset=offset,
-        limit=limit,
-        playlists=playlists,
-        active_playlist=None,
-        channel_has_playlist_flag=channel_has_playlist_flag,
-        channel_url=channel_url,
-        index_status=get_index_status(),
-        job=jobs,
-        paused=is_paused(),
-    )
+    video_list = []
+    for v in videos:
+        video_list.append({
+            'id': v['id'],
+            'title': v['title'],
+            'date': v['upload_date'],
+            'size': v['file_size'],
+            'duration': v['duration'],
+            'view_count': v['view_count'],
+            'has_thumb': bool(v['thumbnail_path']),
+            'watched': bool(v['watched']),
+            'progress': v['position_seconds'] or 0,
+        })
+
+    return jsonify({
+        'name': name,
+        'video_count': len(videos),
+        'total_size': sum(v['file_size'] or 0 for v in videos),
+        'subscribed': subscribed,
+        'has_poster': has_poster,
+        'has_banner': has_banner,
+        'on_disk': channel_dir.is_dir(),
+        'channel_url': channel_url,
+        'videos': video_list,
+        'playlists': [{'id': p['id'], 'title': p['title'], 'video_count': p['video_count']} for p in playlists],
+    })
+
+
+@app.route("/library/<path:channel_name>")
+def channel_view(channel_name):
+    """Redirect old library channel URLs to unified channels page."""
+    from urllib.parse import unquote, quote
+    channel_name = unquote(channel_name)
+    return redirect(f"/channels#{quote(channel_name)}")
 
 
 @app.route("/library/<path:channel_name>/playlists")
