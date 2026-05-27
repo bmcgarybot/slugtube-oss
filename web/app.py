@@ -536,6 +536,36 @@ def channels():
     idx_channels = get_all_channels()
     idx_status = get_index_status()
 
+    # Auto-purge ghost DB entries: channels whose folder no longer exists on disk
+    from indexer import get_db as idx_get_db
+    try:
+        conn = idx_get_db()
+        for ch in idx_channels:
+            ch_path = ch.get('path', '')
+            if ch_path and not os.path.isdir(ch_path):
+                name = ch['name']
+                app.logger.info(f"Auto-purging ghost channel: {name} (path gone: {ch_path})")
+                video_ids = [r['id'] for r in conn.execute(
+                    "SELECT id FROM videos WHERE channel_name = ?", (name,)
+                ).fetchall()]
+                if video_ids:
+                    ph = ",".join("?" * len(video_ids))
+                    conn.execute(f"DELETE FROM video_playlists WHERE video_id IN ({ph})", video_ids)
+                    conn.execute(f"DELETE FROM watch_history WHERE video_id IN ({ph})", video_ids)
+                    conn.execute(f"DELETE FROM videos WHERE channel_name = ?", (name,))
+                try:
+                    conn.execute("DELETE FROM videos_fts WHERE channel_name = ?", (name,))
+                except Exception:
+                    pass
+                conn.execute("DELETE FROM playlists WHERE channel_name = ?", (name,))
+                conn.execute("DELETE FROM channels WHERE name = ?", (name,))
+        conn.commit()
+        conn.close()
+        # Refresh after cleanup
+        idx_channels = get_all_channels()
+    except Exception as e:
+        app.logger.error(f"Ghost channel cleanup error: {e}")
+
     # Build unified channel list: merge subscriptions + library
     sub_names = {ch['name'].lower().replace(' ', ''): ch for ch in channels_list}
     lib_names = {ch['name'].lower().replace(' ', ''): ch for ch in idx_channels}
@@ -1649,23 +1679,37 @@ def api_delete_folder(channel_name):
     channel_dir = Path(SHOWS_DIR) / channel_name
 
     if not channel_dir.is_dir():
-        # No folder on disk — but still clean from database (e.g. playlists stored under another channel's folder)
-        app.logger.info(f"No folder found for '{channel_name}', cleaning database only")
+        # No folder on disk — aggressively clean from database
+        # Use case-insensitive matching and LIKE to catch any variant
+        app.logger.info(f"No folder found for '{channel_name}', aggressive DB cleanup")
         try:
             conn = get_db()
-            video_ids = [r['id'] for r in conn.execute(
-                "SELECT id FROM videos WHERE channel_name = ?", (channel_name,)
-            ).fetchall()]
-            if video_ids:
-                placeholders = ",".join("?" * len(video_ids))
-                conn.execute(f"DELETE FROM video_playlists WHERE video_id IN ({placeholders})", video_ids)
-                conn.execute(f"DELETE FROM watch_history WHERE video_id IN ({placeholders})", video_ids)
-                conn.execute(f"DELETE FROM videos_fts WHERE channel_name = ?", (channel_name,))
-                conn.execute(f"DELETE FROM videos WHERE channel_name = ?", (channel_name,))
-            conn.execute("DELETE FROM playlists WHERE channel_name = ?", (channel_name,))
-            conn.execute("DELETE FROM channels WHERE name = ?", (channel_name,))
+            # Find all possible matching channel entries (case-insensitive, partial match)
+            db_channels = conn.execute(
+                "SELECT name FROM channels WHERE name = ? COLLATE NOCASE OR name LIKE ? COLLATE NOCASE",
+                (channel_name, f"%{channel_name}%")
+            ).fetchall()
+            names_to_delete = [r['name'] for r in db_channels]
+            if channel_name not in names_to_delete:
+                names_to_delete.append(channel_name)
+
+            for dname in names_to_delete:
+                video_ids = [r['id'] for r in conn.execute(
+                    "SELECT id FROM videos WHERE channel_name = ?", (dname,)
+                ).fetchall()]
+                if video_ids:
+                    placeholders = ",".join("?" * len(video_ids))
+                    conn.execute(f"DELETE FROM video_playlists WHERE video_id IN ({placeholders})", video_ids)
+                    conn.execute(f"DELETE FROM watch_history WHERE video_id IN ({placeholders})", video_ids)
+                    conn.execute(f"DELETE FROM videos WHERE channel_name = ?", (dname,))
+                try:
+                    conn.execute("DELETE FROM videos_fts WHERE channel_name = ?", (dname,))
+                except Exception:
+                    pass
+                conn.execute("DELETE FROM playlists WHERE channel_name = ?", (dname,))
+                conn.execute("DELETE FROM channels WHERE name = ?", (dname,))
+                app.logger.info(f"Cleaned DB entries for: {dname}")
             conn.commit()
-            app.logger.info(f"Database cleaned for: {channel_name}")
         except Exception as e:
             app.logger.error(f"DB cleanup error for {channel_name}: {e}")
         if request.referrer:
