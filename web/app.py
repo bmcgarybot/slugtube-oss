@@ -775,7 +775,10 @@ def remove_channel():
                 lines = f.readlines()
             with open(CHANNELS_FILE, "w") as f:
                 for line in lines:
-                    if line.strip() != url:
+                    stripped = line.strip()
+                    # Lines are "URL|FolderName" — match against URL portion
+                    line_url = stripped.split("|")[0].strip()
+                    if stripped and line_url != url and stripped != url:
                         f.write(line)
         except FileNotFoundError:
             pass
