@@ -65,6 +65,9 @@
                         <form method="POST" action="/api/reindex/{{ ch.name | urlencode }}" style="display:inline">
                             <button type="submit" class="btn btn-sm" title="Re-index {{ ch.name }}" style="border-color:var(--green);color:var(--green);">📂</button>
                         </form>
+                        <form method="POST" action="/api/delete-folder/{{ ch.name | urlencode }}" style="display:inline">
+                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('DELETE the entire {{ ch.name }} folder from disk? This removes all downloaded videos permanently!')" title="Delete {{ ch.name }} folder from disk">🗑️</button>
+                        </form>
                     </td>
                 </tr>
                 {% endfor %}

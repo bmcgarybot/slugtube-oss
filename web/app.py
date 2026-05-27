@@ -264,10 +264,33 @@ def get_disk_usage():
         return "N/A"
 
 
-def get_log_tail(lines=100):
+def get_log_tail(lines=100, filter_mode=None):
     try:
-        result = subprocess.run(["tail", "-n", str(lines), LOG_FILE], capture_output=True, text=True, timeout=5)
-        return result.stdout
+        if lines == 0:
+            # Full log
+            with open(LOG_FILE, 'r') as f:
+                text = f.read()
+        else:
+            result = subprocess.run(["tail", "-n", str(lines), LOG_FILE], capture_output=True, text=True, timeout=5)
+            text = result.stdout
+
+        # Apply filter
+        if filter_mode and text:
+            filtered_lines = []
+            for line in text.split('\n'):
+                if filter_mode == 'errors':
+                    if any(kw in line.lower() for kw in ['error', '❌', 'fail', 'traceback', 'exception', 'warning']):
+                        if not any(skip in line.lower() for skip in ['has already been downloaded', 'skipping', 'is not a video']):
+                            filtered_lines.append(line)
+                elif filter_mode == 'downloads':
+                    if any(kw in line for kw in ['✅', 'Downloading', '[download]', 'Merged', 'Downloaded']):
+                        filtered_lines.append(line)
+                elif filter_mode == 'skipped':
+                    if any(kw in line for kw in ['⏭️', 'already been downloaded', 'Skipping', 'skipping']):
+                        filtered_lines.append(line)
+            text = '\n'.join(filtered_lines)
+
+        return text
     except:
         return "No logs yet."
 
@@ -525,7 +548,8 @@ def channels():
 @app.route("/logs")
 def logs():
     lines = request.args.get("lines", 150, type=int)
-    log_text = get_log_tail(lines)
+    filter_mode = request.args.get("filter", "", type=str) or None
+    log_text = get_log_tail(lines, filter_mode=filter_mode)
     log_size = 0
     try:
         log_size = os.path.getsize(LOG_FILE)
@@ -536,6 +560,7 @@ def logs():
         log_text=log_text,
         lines=lines,
         log_size=log_size,
+        filter=filter_mode or '',
         job=jobs,
         paused=is_paused(),
     )
@@ -914,6 +939,17 @@ def run_fast_single():
     thread = threading.Thread(target=run_single_channel, args=(url, folder_name, True), daemon=True)
     thread.start()
     return redirect(request.referrer or url_for("channels"))
+
+
+@app.route("/logs/export")
+def export_logs():
+    """Download the full log file as a .txt file."""
+    if os.path.exists(LOG_FILE):
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return send_file(LOG_FILE, as_attachment=True,
+                         download_name=f"slugtube-log-{ts}.txt",
+                         mimetype="text/plain")
+    return "No log file found.", 404
 
 
 @app.route("/logs/clear", methods=["POST"])
@@ -1528,6 +1564,53 @@ def api_reindex_channel(channel_name):
     if request.referrer:
         return redirect(request.referrer)
     return jsonify({"status": "done" if result else "error", "channel": channel_name})
+
+
+@app.route("/api/delete-folder/<path:channel_name>", methods=["POST"])
+def api_delete_folder(channel_name):
+    """Delete a channel's folder from disk and remove from database."""
+    from urllib.parse import unquote
+    import shutil
+
+    channel_name = unquote(channel_name)
+    channel_dir = Path(SHOWS_DIR) / channel_name
+
+    if not channel_dir.is_dir():
+        if request.referrer:
+            return redirect(request.referrer)
+        return jsonify({"status": "error", "message": f"Directory not found: {channel_name}"}), 404
+
+    try:
+        shutil.rmtree(str(channel_dir))
+        app.logger.info(f"Deleted folder: {channel_dir}")
+    except Exception as e:
+        app.logger.error(f"Failed to delete folder {channel_dir}: {e}")
+        if request.referrer:
+            return redirect(request.referrer)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+    # Also clean from database
+    try:
+        conn = get_db()
+        video_ids = [r['id'] for r in conn.execute(
+            "SELECT id FROM videos WHERE channel_name = ?", (channel_name,)
+        ).fetchall()]
+        if video_ids:
+            placeholders = ",".join("?" * len(video_ids))
+            conn.execute(f"DELETE FROM video_playlists WHERE video_id IN ({placeholders})", video_ids)
+            conn.execute(f"DELETE FROM watch_history WHERE video_id IN ({placeholders})", video_ids)
+            conn.execute(f"DELETE FROM videos_fts WHERE channel_name = ?", (channel_name,))
+            conn.execute(f"DELETE FROM videos WHERE channel_name = ?", (channel_name,))
+        conn.execute("DELETE FROM playlists WHERE channel_name = ?", (channel_name,))
+        conn.execute("DELETE FROM channels WHERE name = ?", (channel_name,))
+        conn.commit()
+        app.logger.info(f"Cleaned database for: {channel_name}")
+    except Exception as e:
+        app.logger.error(f"DB cleanup error for {channel_name}: {e}")
+
+    if request.referrer:
+        return redirect(request.referrer)
+    return jsonify({"status": "deleted", "channel": channel_name})
 
 
 @app.route("/api/reindex-playlists/<path:channel_name>", methods=["POST"])
