@@ -498,6 +498,161 @@
             .page-header { flex-wrap: wrap; gap: 8px; }
             .page-header .btn-group { width: 100%; }
         }
+
+        /* ── Theme: Light ── */
+        [data-theme="light"] {
+            --bg: #f5f5f5;
+            --bg-card: #ffffff;
+            --bg-hover: #eaeaea;
+            --bg-sidebar: #ffffff;
+            --border: #ddd;
+            --text: #1a1a1a;
+            --text-dim: #555555;
+            --text-dimmer: #888888;
+            --accent: #2563eb;
+            --green: #16a34a;
+            --orange: #d97706;
+            --red: #dc2626;
+            --purple: #7c3aed;
+        }
+        [data-theme="light"] .sidebar { box-shadow: 2px 0 8px rgba(0,0,0,0.06); }
+        [data-theme="light"] .card { box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        [data-theme="light"] .stat-card { box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        [data-theme="light"] .badge { color: #333; }
+        [data-theme="light"] .badge-green { background: rgba(22,163,74,0.12); color: #15803d; }
+        [data-theme="light"] .badge-blue { background: rgba(37,99,235,0.12); color: #1d4ed8; }
+        [data-theme="light"] .badge-orange { background: rgba(217,119,6,0.12); color: #b45309; }
+        [data-theme="light"] .badge-dim { background: rgba(0,0,0,0.06); color: #666; }
+        [data-theme="light"] table thead { background: #f0f0f0; }
+        [data-theme="light"] th { color: #444; }
+        [data-theme="light"] .sidebar-nav a:hover { color: #1a1a1a; }
+        [data-theme="light"] .dropdown-menu { box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+        [data-theme="light"] .hamburger { box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+        [data-theme="light"] .sidebar-overlay { background: rgba(0,0,0,0.3); }
+        [data-theme="light"] pre { background: #fff; border-color: #ddd; color: #444; }
+        [data-theme="light"] .btn-primary { background: #16a34a; border-color: rgba(22,163,74,0.4); }
+        [data-theme="light"] .btn-primary:hover { background: #15803d; }
+        [data-theme="light"] .btn-blue { background: #2563eb; border-color: rgba(37,99,235,0.4); }
+        [data-theme="light"] .btn-blue:hover { background: #1d4ed8; }
+        [data-theme="light"] .btn-purple { background: #7c3aed; border-color: rgba(124,58,237,0.4); }
+        [data-theme="light"] .btn-purple:hover { background: #6d28d9; }
+        [data-theme="light"] .job-running { background: rgba(22,163,74,0.06); border-color: rgba(22,163,74,0.25); }
+        [data-theme="light"] .job-done { background: rgba(22,163,74,0.06); border-color: rgba(22,163,74,0.25); }
+        [data-theme="light"] .job-error { background: rgba(220,38,38,0.06); border-color: rgba(220,38,38,0.25); }
+        [data-theme="light"] .alert-success { background: rgba(22,163,74,0.06); border-color: rgba(22,163,74,0.25); }
+        [data-theme="light"] .alert-warning { background: rgba(217,119,6,0.06); border-color: rgba(217,119,6,0.25); }
+        [data-theme="light"] .alert-error { background: rgba(220,38,38,0.06); border-color: rgba(220,38,38,0.25); }
+        [data-theme="light"] .pause-bar { background: rgba(217,119,6,0.08); border-color: rgba(217,119,6,0.25); }
+        [data-theme="light"] .sidebar-footer { color: #aaa; }
+        [data-theme="light"] .sidebar-theme-picker select { background: #f5f5f5; }
+
+        /* ── Theme: Jellyfin ── */
+        [data-theme="jellyfin"] {
+            --bg: #101928;
+            --bg-card: #162234;
+            --bg-hover: #1e2d42;
+            --bg-sidebar: #0c1622;
+            --border: #253345;
+            --text: #e0e0e0;
+            --text-dim: #aab4c4;
+            --text-dimmer: #6b7a8d;
+            --accent: #00a4dc;
+            --green: #4caf50;
+            --orange: #ff9800;
+            --red: #f44336;
+            --purple: #aa5cc3;
+        }
+
+        /* ── Theme: AMOLED ── */
+        [data-theme="amoled"] {
+            --bg: #000000;
+            --bg-card: #0a0a0a;
+            --bg-hover: #1a1a1a;
+            --bg-sidebar: #000000;
+            --border: #222222;
+            --text: #ffffff;
+            --text-dim: #999999;
+            --text-dimmer: #666666;
+            --accent: #bb86fc;
+            --green: #03dac6;
+            --orange: #ffb74d;
+            --red: #cf6679;
+            --purple: #bb86fc;
+        }
+
+        /* ── Theme: Playnite ── */
+        [data-theme="playnite"] {
+            --bg: #1a1b2e;
+            --bg-card: #22243a;
+            --bg-hover: #2d2f48;
+            --bg-sidebar: #141525;
+            --border: #2f3152;
+            --text: #e8e8f0;
+            --text-dim: #9d9dbb;
+            --text-dimmer: #6b6b8a;
+            --accent: #7c4dff;
+            --green: #00e676;
+            --orange: #ffab40;
+            --red: #ff5252;
+            --purple: #7c4dff;
+        }
+
+        /* ── Sidebar Theme Picker ── */
+        .sidebar-theme-picker {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+        }
+        .sidebar-theme-picker select {
+            width: 100%;
+            padding: 6px 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .sidebar-theme-picker select:focus { outline: none; border-color: var(--accent); }
+        .sidebar-theme-picker .picker-label {
+            font-size: 10px;
+            color: var(--text-dimmer);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        /* ── Theme Preview Cards (Settings page) ── */
+        .theme-grid {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .theme-card {
+            width: 120px;
+            cursor: pointer;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: border-color 0.15s, transform 0.15s;
+            background: var(--bg-card);
+        }
+        .theme-card:hover { transform: translateY(-2px); border-color: var(--text-dim); }
+        .theme-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(88,166,255,0.25); }
+        .theme-card-swatches {
+            display: flex;
+            flex-direction: column;
+            height: 48px;
+        }
+        .theme-card-swatches .swatch {
+            flex: 1;
+        }
+        .theme-card-name {
+            padding: 6px 8px;
+            font-size: 12px;
+            font-weight: 600;
+            text-align: center;
+            color: var(--text);
+        }
     </style>
 </head>
 <body>
@@ -530,6 +685,16 @@
             <span class="icon">⚙️</span> Settings
         </a>
     </nav>
+    <div class="sidebar-theme-picker">
+        <div class="picker-label">🎨 Theme</div>
+        <select id="theme-select" onchange="setTheme(this.value)">
+            <option value="midnight">🌙 Midnight</option>
+            <option value="light">☀️ Light</option>
+            <option value="jellyfin">🟦 Jellyfin</option>
+            <option value="amoled">⚫ AMOLED</option>
+            <option value="playnite">🎮 Playnite</option>
+        </select>
+    </div>
     <div class="sidebar-footer">
         Built by Obsidian Slug 🐌<br>
         No UI that breaks.
@@ -585,6 +750,45 @@ document.addEventListener('click', function(e) {
     // Close all dropdowns when clicking outside
     document.querySelectorAll('.dropdown.open').forEach(function(d) { d.classList.remove('open'); });
 });
+</script>
+
+<!-- Theme switcher -->
+<script>
+function setTheme(theme) {
+    if (theme === 'midnight') {
+        document.documentElement.removeAttribute('data-theme');
+    } else {
+        document.documentElement.setAttribute('data-theme', theme);
+    }
+    localStorage.setItem('slugtube-theme', theme);
+    // Update all theme selects on the page
+    document.querySelectorAll('#theme-select, .theme-card').forEach(function(el) {
+        if (el.tagName === 'SELECT') el.value = theme;
+        if (el.classList.contains('theme-card')) {
+            el.classList.toggle('active', el.dataset.theme === theme);
+        }
+    });
+}
+// Load saved theme immediately (before paint)
+(function() {
+    var saved = localStorage.getItem('slugtube-theme') || 'midnight';
+    if (saved !== 'midnight') {
+        document.documentElement.setAttribute('data-theme', saved);
+    }
+    // Set the dropdown to match (after DOM ready)
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() { syncThemeUI(saved); });
+    } else {
+        syncThemeUI(saved);
+    }
+    function syncThemeUI(t) {
+        var sel = document.getElementById('theme-select');
+        if (sel) sel.value = t;
+        document.querySelectorAll('.theme-card').forEach(function(el) {
+            el.classList.toggle('active', el.dataset.theme === t);
+        });
+    }
+})();
 </script>
 
 </body>

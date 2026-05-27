@@ -12,6 +12,55 @@
 </div>
 {% endif %}
 
+<!-- Theme Selector -->
+<div class="card">
+    <div class="card-header">🎨 Theme</div>
+    <div class="card-body">
+        <div class="theme-grid">
+            <div class="theme-card" data-theme="midnight" onclick="setTheme('midnight')">
+                <div class="theme-card-swatches">
+                    <div class="swatch" style="background:#0d1117;flex:2;"></div>
+                    <div class="swatch" style="background:#161b22;flex:1;"></div>
+                    <div class="swatch" style="background:#58a6ff;flex:0.5;"></div>
+                </div>
+                <div class="theme-card-name">🌙 Midnight</div>
+            </div>
+            <div class="theme-card" data-theme="light" onclick="setTheme('light')">
+                <div class="theme-card-swatches">
+                    <div class="swatch" style="background:#ffffff;flex:2;"></div>
+                    <div class="swatch" style="background:#f5f5f5;flex:1;"></div>
+                    <div class="swatch" style="background:#2563eb;flex:0.5;"></div>
+                </div>
+                <div class="theme-card-name">☀️ Light</div>
+            </div>
+            <div class="theme-card" data-theme="jellyfin" onclick="setTheme('jellyfin')">
+                <div class="theme-card-swatches">
+                    <div class="swatch" style="background:#0c1622;flex:2;"></div>
+                    <div class="swatch" style="background:#162234;flex:1;"></div>
+                    <div class="swatch" style="background:#00a4dc;flex:0.5;"></div>
+                </div>
+                <div class="theme-card-name">🟦 Jellyfin</div>
+            </div>
+            <div class="theme-card" data-theme="amoled" onclick="setTheme('amoled')">
+                <div class="theme-card-swatches">
+                    <div class="swatch" style="background:#000000;flex:2;"></div>
+                    <div class="swatch" style="background:#0a0a0a;flex:1;"></div>
+                    <div class="swatch" style="background:#bb86fc;flex:0.5;"></div>
+                </div>
+                <div class="theme-card-name">⚫ AMOLED</div>
+            </div>
+            <div class="theme-card" data-theme="playnite" onclick="setTheme('playnite')">
+                <div class="theme-card-swatches">
+                    <div class="swatch" style="background:#141525;flex:2;"></div>
+                    <div class="swatch" style="background:#22243a;flex:1;"></div>
+                    <div class="swatch" style="background:#7c4dff;flex:0.5;"></div>
+                </div>
+                <div class="theme-card-name">🎮 Playnite</div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <form method="POST" action="/settings/save">
 
 <div class="two-col">
