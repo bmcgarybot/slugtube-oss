@@ -4,7 +4,7 @@
 
 <div class="page-header">
     <h1>Dashboard</h1>
-    <div class="btn-group">
+    <div class="dashboard-actions">
         {% if paused %}
         <form method="POST" action="/resume">
             <button type="submit" class="btn btn-primary">Resume Downloads</button>
@@ -47,93 +47,107 @@
 {% endif %}
 <div class="stat-grid">
     <div class="stat-card">
-        <div class="label">Subscribed Channels</div>
-        <div class="value blue">{{ channel_count }}</div>
-        <div class="sub">Tracking in channels.txt</div>
+        <div class="stat-icon" style="background: rgba(88,166,255,0.15); color: var(--accent);">📺</div>
+        <div class="stat-content">
+            <div class="stat-value">{{ channel_count }}</div>
+            <div class="stat-label">Subscribed Channels</div>
+            <div class="stat-sub">Tracking in channels.txt</div>
+        </div>
     </div>
     <div class="stat-card">
-        <div class="label">Videos in Library</div>
-        <div class="value green">{{ "{:,}".format(total_videos) }}</div>
-        <div class="sub">Across {{ library_count }} channel folders</div>
+        <div class="stat-icon" style="background: rgba(76,175,80,0.15); color: var(--green);">🎬</div>
+        <div class="stat-content">
+            <div class="stat-value">{{ "{:,}".format(total_videos) }}</div>
+            <div class="stat-label">Videos in Library</div>
+            <div class="stat-sub">Across {{ library_count }} channel folders</div>
+        </div>
     </div>
     <div class="stat-card">
-        <div class="label">Archive Entries</div>
-        <div class="value purple">{{ "{:,}".format(archive_count) }}</div>
-        <div class="sub">Videos tracked (never re-downloaded)</div>
+        <div class="stat-icon" style="background: rgba(137,87,229,0.15); color: var(--purple);">📋</div>
+        <div class="stat-content">
+            <div class="stat-value">{{ "{:,}".format(archive_count) }}</div>
+            <div class="stat-label">Archive Entries</div>
+            <div class="stat-sub">Videos tracked (never re-downloaded)</div>
+        </div>
     </div>
     <div class="stat-card">
-        <div class="label">Library Size</div>
-        <div class="value orange">{{ disk_usage }}</div>
-        <div class="sub">yt-dlp v{{ ytdlp_version }}</div>
+        <div class="stat-icon" style="background: rgba(210,153,34,0.15); color: var(--orange);">💾</div>
+        <div class="stat-content">
+            <div class="stat-value">{{ disk_usage }}</div>
+            <div class="stat-label">Library Size</div>
+            <div class="stat-sub">yt-dlp v{{ ytdlp_version }}</div>
+        </div>
     </div>
 </div>
 
-<div class="two-col">
-    <!-- Top Channels -->
+<!-- Quick Status Bar -->
+<div class="status-bar">
+    {% if cookie_health %}
+        {% if cookie_health.status == 'ok' %}
+    <span class="status-item status-ok">🍪 Cookies: OK ({{ cookie_health.age_days }} days)</span>
+        {% elif cookie_health.status == 'warning' %}
+    <span class="status-item status-warn">🍪 Cookies: {{ cookie_health.age_days }} days old</span>
+        {% elif cookie_health.status == 'expired' %}
+    <span class="status-item status-err">🍪 Cookies: Expired!</span>
+        {% elif cookie_health.status == 'missing' %}
+    <span class="status-item status-err">🍪 Cookies: Missing!</span>
+        {% endif %}
+    {% endif %}
+    {% if state.last_fast %}
+    <span class="status-item">⏰ Last check: {{ state.last_fast }}</span>
+    {% endif %}
+    {% if state.last_full %}
+    <span class="status-item">📚 Last full: {{ state.last_full }}</span>
+    {% endif %}
+    <span class="status-item status-ok">📡 yt-dlp: v{{ ytdlp_version }}</span>
+</div>
+
+<!-- Main Two-Column Layout -->
+<div class="dashboard-grid">
+    <!-- Top Channels — Bar Chart -->
     <div class="card">
         <div class="card-header">
             🏆 Largest Channels
             <a href="/channels" style="color: var(--accent); text-decoration: none; font-size: 13px;">View all →</a>
         </div>
-        <div class="card-body" style="padding: 0;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Channel</th>
-                        <th class="text-right">Videos</th>
-                        <th class="text-right">Size</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for ch in top_channels %}
-                    <tr>
-                        <td class="channel-name">{{ ch.name }}</td>
-                        <td class="text-right"><span class="badge badge-green">{{ ch.video_count or ch.get('videos', 0) }}</span></td>
-                        <td class="text-right text-dim">{{ "%.1f"|format((ch.total_size_bytes or 0) / 1073741824) }} GB</td>
-                    </tr>
-                    {% endfor %}
-                    {% if not top_channels %}
-                    <tr><td colspan="3" class="text-center text-dimmer" style="padding: 24px;">No videos yet — run a Full Index to start downloading</td></tr>
-                    {% endif %}
-                </tbody>
-            </table>
+        <div class="card-body">
+            {% if top_channels %}
+                {% set max_size = top_channels[0].total_size_bytes or 1 %}
+                {% for ch in top_channels %}
+                <div class="top-channel-row">
+                    <span class="top-channel-rank">#{{ loop.index }}</span>
+                    <span class="top-channel-name">{{ ch.name }}</span>
+                    <div class="top-channel-bar-wrap">
+                        <div class="top-channel-bar" style="width: {{ ((ch.total_size_bytes or 0) / max_size * 100) | round(1) }}%"></div>
+                    </div>
+                    <span class="top-channel-stats">{{ "{:,}".format(ch.video_count or ch.get('videos', 0)) }} · {{ "%.1f"|format((ch.total_size_bytes or 0) / 1073741824) }} GB</span>
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="text-center text-dimmer" style="padding: 24px;">No videos yet — run a Full Index to start downloading</div>
+            {% endif %}
         </div>
     </div>
 
-    <!-- Recent Activity -->
+    <!-- Recent Activity — Clean Feed -->
     <div class="card">
         <div class="card-header">
             📡 Recent Activity
             <a href="/logs" style="color: var(--accent); text-decoration: none; font-size: 13px;">Full logs →</a>
         </div>
         <div class="card-body">
-            {% if cookie_health %}
-            <div class="activity-item">
-                {% if cookie_health.status == 'ok' %}
-                🍪 Cookies: OK ({{ cookie_health.age_days }} days old)
-                {% elif cookie_health.status == 'warning' %}
-                ⚠️ Cookies: {{ cookie_health.message }}
-                {% elif cookie_health.status == 'expired' %}
-                ❌ Cookies: Expired! ({{ cookie_health.expired_count }}/{{ cookie_health.total_count }} expired)
-                {% elif cookie_health.status == 'missing' %}
-                ❌ Cookies: Missing!
+            <div class="activity-feed" id="activity-feed">
+                {% if not recent and not state.last_fast %}
+                <div class="text-center text-dimmer" style="padding: 24px;">
+                    No activity yet. Downloads will show up here.
+                </div>
+                {% else %}
+                    {# Render raw log lines — JS will parse and style them #}
+                    {% for line in recent %}
+                    <div class="activity-raw" style="display:none;">{{ line }}</div>
+                    {% endfor %}
                 {% endif %}
             </div>
-            {% endif %}
-            {% if state.last_fast %}
-            <div class="activity-item">⚡ Last fast check: <strong>{{ state.last_fast }}</strong></div>
-            {% endif %}
-            {% if state.last_full %}
-            <div class="activity-item">📚 Last full index: <strong>{{ state.last_full }}</strong></div>
-            {% endif %}
-            {% for line in recent %}
-            <div class="activity-item">{{ line }}</div>
-            {% endfor %}
-            {% if not recent and not state.last_fast %}
-            <div class="text-center text-dimmer" style="padding: 24px;">
-                No activity yet. Downloads will show up here.
-            </div>
-            {% endif %}
         </div>
     </div>
 </div>
@@ -171,6 +185,53 @@ function refreshStats(btn) {
         .then(() => { setTimeout(() => location.reload(), 3000); })
         .catch(() => { btn.disabled = false; btn.textContent = 'Refresh Stats'; });
 }
+
+/* Parse raw activity lines into styled feed items */
+(function() {
+    var feed = document.getElementById('activity-feed');
+    if (!feed) return;
+    var rawItems = feed.querySelectorAll('.activity-raw');
+    if (rawItems.length === 0) return;
+
+    rawItems.forEach(function(el) {
+        var text = el.textContent.trim();
+        if (!text) return;
+
+        var iconClass = 'activity-info';
+        var iconChar = 'ℹ';
+
+        var lower = text.toLowerCase();
+        if (lower.indexOf('[download]') !== -1 || lower.indexOf('downloading') !== -1 || lower.indexOf('downloaded') !== -1) {
+            iconClass = 'activity-dl';
+            iconChar = '↓';
+        } else if (lower.indexOf('error') !== -1 || lower.indexOf('fail') !== -1 || lower.indexOf('❌') !== -1) {
+            iconClass = 'activity-err';
+            iconChar = '✕';
+        } else if (lower.indexOf('skip') !== -1 || lower.indexOf('already') !== -1 || lower.indexOf('⚠') !== -1) {
+            iconClass = 'activity-skip';
+            iconChar = '—';
+        } else if (lower.indexOf('[indexer]') !== -1 || lower.indexOf('indexed') !== -1 || lower.indexOf('new video') !== -1 || lower.indexOf('✅') !== -1 || lower.indexOf('✓') !== -1) {
+            iconClass = 'activity-ok';
+            iconChar = '✓';
+        }
+
+        // Try to make channel names bold
+        var displayText = text
+            .replace(/\[indexer\]\s*/gi, '')
+            .replace(/\[download\]\s*/gi, '')
+            .replace(/Indexed\s+(.+?)(\s+[—–-]\s+)/i, 'Indexed <strong>$1</strong>$2');
+
+        var item = document.createElement('div');
+        item.className = 'activity-item';
+        item.innerHTML = '<span class="activity-icon-badge ' + iconClass + '">' + iconChar + '</span>' +
+            '<div class="activity-content"><span class="activity-text">' + displayText + '</span></div>';
+
+        feed.appendChild(item);
+    });
+
+    // Remove raw items after processing
+    rawItems.forEach(function(el) { el.remove(); });
+})();
 </script>
 
 {% endblock %}
