@@ -535,9 +535,79 @@ def channels():
     from indexer import get_all_channels, get_index_status
     idx_channels = get_all_channels()
     idx_status = get_index_status()
+
+    # Build unified channel list: merge subscriptions + library
+    sub_names = {ch['name'].lower().replace(' ', ''): ch for ch in channels_list}
+    lib_names = {ch['name'].lower().replace(' ', ''): ch for ch in idx_channels}
+
+    unified = []
+    seen = set()
+
+    # Start with subscribed channels, merge in library stats
+    for ch in channels_list:
+        key = ch['name'].lower().replace(' ', '')
+        entry = {
+            'name': ch['name'],
+            'url': ch['url'],
+            'section': ch['section'],
+            'index_playlists': ch.get('index_playlists', False),
+            'subscribed': True,
+            'on_disk': False,
+            'video_count': 0,
+            'total_size_bytes': 0,
+            'has_nfo': False,
+            'has_poster': False,
+        }
+        # Match with library data
+        if key in lib_names:
+            lib = lib_names[key]
+            entry['on_disk'] = True
+            entry['video_count'] = lib.get('video_count', 0)
+            entry['total_size_bytes'] = lib.get('total_size_bytes', 0)
+            entry['has_nfo'] = lib.get('has_nfo', False)
+            entry['has_poster'] = lib.get('has_poster', False)
+        else:
+            # Try fuzzy match: check if subscription name appears in any library name
+            for lkey, lib in lib_names.items():
+                if key in lkey or lkey in key or ch['name'].lower() in lib['name'].lower() or lib['name'].lower() in ch['name'].lower():
+                    entry['on_disk'] = True
+                    entry['video_count'] = lib.get('video_count', 0)
+                    entry['total_size_bytes'] = lib.get('total_size_bytes', 0)
+                    entry['has_nfo'] = lib.get('has_nfo', False)
+                    entry['has_poster'] = lib.get('has_poster', False)
+                    seen.add(lkey)
+                    break
+        seen.add(key)
+        unified.append(entry)
+
+    # Add library-only channels (on disk but not subscribed)
+    for ch in idx_channels:
+        key = ch['name'].lower().replace(' ', '')
+        if key not in seen:
+            # Check URL match too
+            matched = False
+            for sub in channels_list:
+                if ch['name'].lower() in sub['url'].lower():
+                    matched = True
+                    break
+            if not matched:
+                unified.append({
+                    'name': ch['name'],
+                    'url': '',
+                    'section': 'Library Only',
+                    'index_playlists': False,
+                    'subscribed': False,
+                    'on_disk': True,
+                    'video_count': ch.get('video_count', 0),
+                    'total_size_bytes': ch.get('total_size_bytes', 0),
+                    'has_nfo': ch.get('has_nfo', False),
+                    'has_poster': ch.get('has_poster', False),
+                })
+
     return render_template("channels.html",
         page="channels",
         channels=channels_list,
+        unified=unified,
         channel_stats=idx_channels,
         job=jobs,
         paused=is_paused(),
