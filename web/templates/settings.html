@@ -228,4 +228,378 @@
     </div>
 </div>
 
+<!-- ── Import Channels ── -->
+<div class="card" style="margin-top: 24px;">
+    <div class="card-header">📥 Import Channels</div>
+    <div class="card-body">
+        <p style="font-size: 13px; color: var(--text-dim); margin-bottom: 20px;">
+            Bring your subscriptions from another app. Channels are appended to your channels.txt — nothing is overwritten.
+        </p>
+
+        <!-- 1. Scan Existing Library (primary) -->
+        <div class="card" style="border-color: var(--accent);">
+            <div class="card-header" style="border-color: var(--accent);">
+                <span>🔍 Scan Existing Library</span>
+                <span class="badge badge-blue">Recommended</span>
+            </div>
+            <div class="card-body">
+                <p style="font-size: 12px; color: var(--text-dimmer); margin-bottom: 12px;">
+                    Point this at your existing TubeArchivist or PinchFlat media folder. SlugTube will find channels by reading video metadata (.info.json files).
+                </p>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="scan-path" placeholder="/youtube or /downloads/shows" style="flex:1; min-width:250px; padding:8px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px;">
+                    <button type="button" class="btn btn-accent" id="scan-analyze-btn" onclick="analyzeScan()">Scan</button>
+                </div>
+                <div id="scan-status" style="margin-top: 10px; font-size: 13px; display: none;"></div>
+                <div id="scan-results" style="margin-top: 12px; display: none;">
+                    <div id="scan-summary" style="margin-bottom: 10px; font-size: 13px; color: var(--text-dim);"></div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <button type="button" class="btn btn-sm btn-ghost" onclick="toggleAll('scan', true)">Select All</button>
+                        <button type="button" class="btn btn-sm btn-ghost" onclick="toggleAll('scan', false)">Deselect All</button>
+                    </div>
+                    <div class="table-wrap" style="max-height: 400px; overflow-y: auto;">
+                        <table>
+                            <thead><tr><th style="width:30px;"></th><th>Channel</th><th>Metadata</th><th>Status</th></tr></thead>
+                            <tbody id="scan-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div style="margin-top: 12px;">
+                        <button type="button" class="btn btn-primary" id="scan-import-btn" onclick="confirmImport('scan_library')">Import Selected</button>
+                    </div>
+                </div>
+                <div id="scan-done" style="margin-top: 10px; display: none;" class="alert alert-success"></div>
+            </div>
+        </div>
+
+        <!-- 2. TubeArchivist Backup ZIP -->
+        <div class="card">
+            <div class="card-header">🗃️ Import from TubeArchivist Backup</div>
+            <div class="card-body">
+                <p style="font-size: 12px; color: var(--text-dimmer); margin-bottom: 12px;">
+                    Upload your TubeArchivist backup ZIP file (Settings &rarr; Backup in TubeArchivist).
+                </p>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <input type="file" id="ta-file" accept=".zip" style="flex:1; min-width:200px; padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px;">
+                    <button type="button" class="btn btn-accent" id="ta-analyze-btn" onclick="analyzeUpload('ta', '/import/tubearchivist')">Analyze</button>
+                </div>
+                <div id="ta-status" style="margin-top: 10px; font-size: 13px; display: none;"></div>
+                <div id="ta-results" style="margin-top: 12px; display: none;">
+                    <div id="ta-summary" style="margin-bottom: 10px; font-size: 13px; color: var(--text-dim);"></div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <button type="button" class="btn btn-sm btn-ghost" onclick="toggleAll('ta', true)">Select All</button>
+                        <button type="button" class="btn btn-sm btn-ghost" onclick="toggleAll('ta', false)">Deselect All</button>
+                    </div>
+                    <div class="table-wrap" style="max-height: 400px; overflow-y: auto;">
+                        <table>
+                            <thead><tr><th style="width:30px;"></th><th>Channel</th><th>Status</th></tr></thead>
+                            <tbody id="ta-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div style="margin-top: 12px;">
+                        <button type="button" class="btn btn-primary" id="ta-import-btn" onclick="confirmImport('tubearchivist')">Import Selected</button>
+                    </div>
+                </div>
+                <div id="ta-done" style="margin-top: 10px; display: none;" class="alert alert-success"></div>
+            </div>
+        </div>
+
+        <!-- 3. PinchFlat Database -->
+        <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">📌 Import from PinchFlat Database</div>
+            <div class="card-body">
+                <p style="font-size: 12px; color: var(--text-dimmer); margin-bottom: 12px;">
+                    Upload your PinchFlat database file (pinchflat.db from your config directory).
+                </p>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <input type="file" id="pf-file" accept=".db,.sqlite,.sqlite3" style="flex:1; min-width:200px; padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px;">
+                    <button type="button" class="btn btn-accent" id="pf-analyze-btn" onclick="analyzeUpload('pf', '/import/pinchflat')">Analyze</button>
+                </div>
+                <div id="pf-status" style="margin-top: 10px; font-size: 13px; display: none;"></div>
+                <div id="pf-results" style="margin-top: 12px; display: none;">
+                    <div id="pf-summary" style="margin-bottom: 10px; font-size: 13px; color: var(--text-dim);"></div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <button type="button" class="btn btn-sm btn-ghost" onclick="toggleAll('pf', true)">Select All</button>
+                        <button type="button" class="btn btn-sm btn-ghost" onclick="toggleAll('pf', false)">Deselect All</button>
+                    </div>
+                    <div class="table-wrap" style="max-height: 400px; overflow-y: auto;">
+                        <table>
+                            <thead><tr><th style="width:30px;"></th><th>Channel</th><th>Status</th></tr></thead>
+                            <tbody id="pf-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div style="margin-top: 12px;">
+                        <button type="button" class="btn btn-primary" id="pf-import-btn" onclick="confirmImport('pinchflat')">Import Selected</button>
+                    </div>
+                </div>
+                <div id="pf-done" style="margin-top: 10px; display: none;" class="alert alert-success"></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+var importData = { scan_library: [], tubearchivist: [], pinchflat: [] };
+
+function showStatus(prefix, msg, isError) {
+    var el = document.getElementById(prefix + '-status');
+    el.style.display = 'block';
+    el.style.color = isError ? 'var(--red)' : 'var(--text-dim)';
+    el.textContent = msg;
+}
+
+function resetPanel(prefix) {
+    document.getElementById(prefix + '-results').style.display = 'none';
+    document.getElementById(prefix + '-done').style.display = 'none';
+}
+
+/* ── Scan Existing Library ── */
+function analyzeScan() {
+    var pathInput = document.getElementById('scan-path');
+    var scanPath = pathInput.value.trim();
+    if (!scanPath) { showStatus('scan', 'Please enter a directory path.', true); return; }
+
+    var btn = document.getElementById('scan-analyze-btn');
+    btn.disabled = true;
+    btn.textContent = 'Scanning...';
+    showStatus('scan', 'Scanning directory for channels...', false);
+    resetPanel('scan');
+
+    fetch('/import/scan-library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: scanPath })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.textContent = 'Scan';
+        if (data.error) { showStatus('scan', data.error, true); return; }
+        importData.scan_library = data.channels;
+        document.getElementById('scan-status').style.display = 'none';
+        document.getElementById('scan-summary').textContent =
+            'Found ' + data.total + ' channels. ' + data.new_count + ' new, ' + data.existing_count + ' already in library.';
+        renderScanTable(data.channels);
+        document.getElementById('scan-results').style.display = 'block';
+    })
+    .catch(function(e) {
+        btn.disabled = false;
+        btn.textContent = 'Scan';
+        showStatus('scan', 'Scan failed: ' + e.message, true);
+    });
+}
+
+function renderScanTable(channels) {
+    var tbody = document.getElementById('scan-tbody');
+    tbody.innerHTML = '';
+    channels.forEach(function(ch, i) {
+        var tr = document.createElement('tr');
+        if (ch.already_exists) tr.style.opacity = '0.45';
+
+        // Checkbox
+        var tdCheck = document.createElement('td');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'form-checkbox';
+        cb.dataset.idx = i;
+        cb.dataset.source = 'scan';
+        if (ch.already_exists) { cb.disabled = true; cb.checked = false; }
+        else { cb.checked = true; }
+        tdCheck.appendChild(cb);
+
+        // Name + URL
+        var tdName = document.createElement('td');
+        var nameSpan = document.createElement('span');
+        nameSpan.className = 'channel-name';
+        nameSpan.textContent = ch.name;
+        tdName.appendChild(nameSpan);
+        if (ch.folder_name && ch.folder_name !== ch.name) {
+            var folderDiv = document.createElement('div');
+            folderDiv.style.cssText = 'font-size:11px;color:var(--text-dimmer);margin-top:1px;';
+            folderDiv.textContent = 'Folder: ' + ch.folder_name;
+            tdName.appendChild(folderDiv);
+        }
+        if (ch.url) {
+            var urlDiv = document.createElement('div');
+            urlDiv.style.cssText = 'font-size:11px;color:var(--text-dimmer);margin-top:1px;';
+            urlDiv.textContent = ch.url;
+            tdName.appendChild(urlDiv);
+        }
+
+        // Metadata badge
+        var tdMeta = document.createElement('td');
+        var metaBadge = document.createElement('span');
+        if (ch.has_metadata) {
+            metaBadge.className = 'badge badge-green';
+            metaBadge.textContent = '.info.json';
+        } else {
+            metaBadge.className = 'badge badge-orange';
+            metaBadge.textContent = 'Folder only';
+        }
+        tdMeta.appendChild(metaBadge);
+
+        // Status
+        var tdStatus = document.createElement('td');
+        var statusBadge = document.createElement('span');
+        if (ch.already_exists) {
+            statusBadge.className = 'badge badge-dim';
+            statusBadge.textContent = 'Already imported';
+        } else if (!ch.url) {
+            statusBadge.className = 'badge badge-orange';
+            statusBadge.textContent = 'No URL found';
+        } else {
+            statusBadge.className = 'badge badge-green';
+            statusBadge.textContent = 'New';
+        }
+        tdStatus.appendChild(statusBadge);
+
+        tr.appendChild(tdCheck);
+        tr.appendChild(tdName);
+        tr.appendChild(tdMeta);
+        tr.appendChild(tdStatus);
+        tbody.appendChild(tr);
+    });
+}
+
+/* ── File Upload (TA / PF) ── */
+function analyzeUpload(prefix, endpoint) {
+    var fileInput = document.getElementById(prefix + '-file');
+    if (!fileInput.files.length) {
+        showStatus(prefix, 'Please select a file.', true);
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    var btn = document.getElementById(prefix + '-analyze-btn');
+    btn.disabled = true;
+    btn.textContent = 'Analyzing...';
+    showStatus(prefix, 'Uploading and parsing...', false);
+    resetPanel(prefix);
+
+    var sourceKey = prefix === 'ta' ? 'tubearchivist' : 'pinchflat';
+
+    fetch(endpoint, { method: 'POST', body: formData })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.textContent = 'Analyze';
+            if (data.error) { showStatus(prefix, data.error, true); return; }
+            importData[sourceKey] = data.channels;
+            document.getElementById(prefix + '-status').style.display = 'none';
+            document.getElementById(prefix + '-summary').textContent =
+                'Found ' + data.total + ' channels. ' + data.new_count + ' new, ' + data.existing_count + ' already in library.';
+            renderUploadTable(prefix, data.channels);
+            document.getElementById(prefix + '-results').style.display = 'block';
+        })
+        .catch(function(e) {
+            btn.disabled = false;
+            btn.textContent = 'Analyze';
+            showStatus(prefix, 'Upload failed: ' + e.message, true);
+        });
+}
+
+function renderUploadTable(prefix, channels) {
+    var tbody = document.getElementById(prefix + '-tbody');
+    tbody.innerHTML = '';
+    channels.forEach(function(ch, i) {
+        var tr = document.createElement('tr');
+        if (ch.already_exists) tr.style.opacity = '0.45';
+
+        var tdCheck = document.createElement('td');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'form-checkbox';
+        cb.dataset.idx = i;
+        cb.dataset.source = prefix;
+        if (ch.already_exists) { cb.disabled = true; cb.checked = false; }
+        else { cb.checked = true; }
+        tdCheck.appendChild(cb);
+
+        var tdName = document.createElement('td');
+        var nameSpan = document.createElement('span');
+        nameSpan.className = 'channel-name';
+        nameSpan.textContent = ch.name;
+        tdName.appendChild(nameSpan);
+        var urlDiv = document.createElement('div');
+        urlDiv.style.cssText = 'font-size:11px;color:var(--text-dimmer);margin-top:2px;';
+        urlDiv.textContent = ch.url;
+        tdName.appendChild(urlDiv);
+
+        var tdStatus = document.createElement('td');
+        var badge = document.createElement('span');
+        if (ch.already_exists) {
+            badge.className = 'badge badge-dim';
+            badge.textContent = 'Already imported';
+        } else {
+            badge.className = 'badge badge-green';
+            badge.textContent = 'New';
+        }
+        tdStatus.appendChild(badge);
+
+        tr.appendChild(tdCheck);
+        tr.appendChild(tdName);
+        tr.appendChild(tdStatus);
+        tbody.appendChild(tr);
+    });
+}
+
+/* ── Shared ── */
+function toggleAll(prefix, checked) {
+    document.querySelectorAll('#' + prefix + '-tbody input[type=checkbox]:not(:disabled)').forEach(function(cb) {
+        cb.checked = checked;
+    });
+}
+
+function confirmImport(source) {
+    var prefixMap = { scan_library: 'scan', tubearchivist: 'ta', pinchflat: 'pf' };
+    var prefix = prefixMap[source];
+    var channels = importData[source];
+    if (!channels || !channels.length) return;
+
+    var selected = [];
+    document.querySelectorAll('#' + prefix + '-tbody input[type=checkbox]:checked').forEach(function(cb) {
+        var idx = parseInt(cb.dataset.idx);
+        var ch = channels[idx];
+        selected.push({ name: ch.name, url: ch.url });
+    });
+
+    if (!selected.length) {
+        showStatus(prefix, 'No channels selected.', true);
+        return;
+    }
+
+    var btn = document.getElementById(prefix + '-import-btn');
+    btn.disabled = true;
+    btn.textContent = 'Importing...';
+
+    // Map source name for the section header in channels.txt
+    var sourceLabel = source;
+    if (source === 'scan_library') sourceLabel = 'library_scan';
+
+    fetch('/import/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channels: selected, source: sourceLabel })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.textContent = 'Import Selected';
+        if (data.error) { showStatus(prefix, data.error, true); return; }
+        document.getElementById(prefix + '-results').style.display = 'none';
+        var doneEl = document.getElementById(prefix + '-done');
+        doneEl.style.display = 'block';
+        doneEl.textContent = '\u2705 Added ' + data.added + ' channels' +
+            (data.skipped ? ' (' + data.skipped + ' skipped as duplicates)' : '') + '.';
+    })
+    .catch(function(e) {
+        btn.disabled = false;
+        btn.textContent = 'Import Selected';
+        showStatus(prefix, 'Import failed: ' + e.message, true);
+    });
+}
+</script>
+
 {% endblock %}
