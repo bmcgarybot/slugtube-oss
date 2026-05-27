@@ -1,0 +1,11 @@
+# SlugTube Channel List
+# Format: URL|Display Name
+# Lines starting with # are comments
+#
+# Example:
+# https://www.youtube.com/@ChannelName/videos|Channel Display Name
+# https://www.youtube.com/playlist?list=PLxxxxxx|My Playlist Name
+#
+# Sections (optional):
+# # --- Category Name ---
+# https://www.youtube.com/@Example/videos|Example Channel

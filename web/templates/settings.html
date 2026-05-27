@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title_extra %} — Settings{% endblock %}
+{% block content %}
+
+<div class="page-header">
+    <h1>⚙️ Settings</h1>
+</div>
+
+{% if save_status == 'success' %}
+<div style="margin-bottom: 16px; padding: 10px 16px; background: rgba(63,185,80,0.08); border: 1px solid rgba(63,185,80,0.3); border-radius: 6px; color: var(--green); font-size: 13px;">
+    ✅ Settings saved! Changes apply on next download.
+</div>
+{% endif %}
+
+<form method="POST" action="/settings/save">
+
+<div class="two-col">
+
+    <!-- Quality Profile -->
+    <div class="card">
+        <div class="card-header">🎬 Quality Profile</div>
+        <div class="card-body">
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Resolution</div>
+                    <div class="setting-desc">Maximum video resolution to download</div>
+                </div>
+                <select name="quality" style="padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+                    <option value="720p" {% if config.quality == '720p' %}selected{% endif %}>720p — Smaller files</option>
+                    <option value="1080p" {% if config.quality == '1080p' %}selected{% endif %}>1080p — Recommended</option>
+                    <option value="1440p" {% if config.quality == '1440p' %}selected{% endif %}>1440p — High quality</option>
+                    <option value="4k" {% if config.quality == '4k' %}selected{% endif %}>4K — Maximum quality</option>
+                    <option value="best" {% if config.quality == 'best' %}selected{% endif %}>Best Available — No limit</option>
+                </select>
+            </div>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Container Format</div>
+                    <div class="setting-desc">Video file format</div>
+                </div>
+                <select name="format" style="padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+                    <option value="mp4" {% if config.format == 'mp4' %}selected{% endif %}>MP4 — Best compatibility</option>
+                    <option value="mkv" {% if config.format == 'mkv' %}selected{% endif %}>MKV — More features</option>
+                    <option value="webm" {% if config.format == 'webm' %}selected{% endif %}>WebM — Smaller files</option>
+                </select>
+            </div>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Skip Shorts</div>
+                    <div class="setting-desc">Skip videos under 60 seconds</div>
+                </div>
+                <label style="cursor:pointer;">
+                    <input type="checkbox" name="skip_shorts" {% if config.skip_shorts %}checked{% endif %}
+                        style="width:18px;height:18px;accent-color:var(--green);">
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Metadata & Files -->
+    <div class="card">
+        <div class="card-header">📝 Metadata & Files</div>
+        <div class="card-body">
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Embed Subtitles</div>
+                    <div class="setting-desc">Bake subtitles into the video file</div>
+                </div>
+                <label style="cursor:pointer;">
+                    <input type="checkbox" name="embed_subs" {% if config.embed_subs %}checked{% endif %}
+                        style="width:18px;height:18px;accent-color:var(--green);">
+                </label>
+            </div>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Separate .srt Files</div>
+                    <div class="setting-desc">Also save subtitle files alongside video</div>
+                </div>
+                <label style="cursor:pointer;">
+                    <input type="checkbox" name="write_subs_file" {% if config.write_subs_file %}checked{% endif %}
+                        style="width:18px;height:18px;accent-color:var(--green);">
+                </label>
+            </div>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Embed Metadata</div>
+                    <div class="setting-desc">Title, description, upload date in file</div>
+                </div>
+                <label style="cursor:pointer;">
+                    <input type="checkbox" name="embed_metadata" {% if config.embed_metadata %}checked{% endif %}
+                        style="width:18px;height:18px;accent-color:var(--green);">
+                </label>
+            </div>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Embed Thumbnail</div>
+                    <div class="setting-desc">Poster art embedded in video file</div>
+                </div>
+                <label style="cursor:pointer;">
+                    <input type="checkbox" name="embed_thumbnail" {% if config.embed_thumbnail %}checked{% endif %}
+                        style="width:18px;height:18px;accent-color:var(--green);">
+                </label>
+            </div>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Write .nfo Files</div>
+                    <div class="setting-desc">Jellyfin/Kodi metadata files (info.json)</div>
+                </div>
+                <label style="cursor:pointer;">
+                    <input type="checkbox" name="write_nfo" {% if config.write_nfo %}checked{% endif %}
+                        style="width:18px;height:18px;accent-color:var(--green);">
+                </label>
+            </div>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Write Thumbnail Files</div>
+                    <div class="setting-desc">Separate .jpg episode thumbnails</div>
+                </div>
+                <label style="cursor:pointer;">
+                    <input type="checkbox" name="write_thumbnail" {% if config.write_thumbnail %}checked{% endif %}
+                        style="width:18px;height:18px;accent-color:var(--green);">
+                </label>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div style="margin: 16px 0;">
+    <button type="submit" class="btn btn-primary" style="padding: 10px 24px;">💾 Save Settings</button>
+</div>
+
+</form>
+
+<div class="two-col">
+
+    <!-- Schedule -->
+    <div class="card">
+        <div class="card-header">⏰ Schedule</div>
+        <div class="card-body">
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">⚡ Fast Check</div>
+                    <div class="setting-desc">Recent 50 videos per channel</div>
+                </div>
+                <div class="setting-value">{{ fast_cron }}</div>
+            </div>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">📚 Full Index</div>
+                    <div class="setting-desc">Entire channel playlists</div>
+                </div>
+                <div class="setting-value">{{ full_cron }}</div>
+            </div>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">🔄 yt-dlp Update</div>
+                    <div class="setting-desc">Auto-update to latest version</div>
+                </div>
+                <div class="setting-value">{{ update_cron }}</div>
+            </div>
+            <div style="margin-top: 12px; font-size: 12px; color: var(--text-dimmer);">
+                To change schedules, edit environment variables in docker-compose.yml and restart.
+            </div>
+        </div>
+    </div>
+
+    <!-- System -->
+    <div class="card">
+        <div class="card-header">🔧 System</div>
+        <div class="card-body">
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">yt-dlp Version</div>
+                    <div class="setting-desc">Auto-updates daily at 1 AM</div>
+                </div>
+                <div>
+                    <span class="setting-value">v{{ ytdlp_version }}</span>
+                    <form method="POST" action="/run/update" style="display:inline; margin-left: 8px;">
+                        <button type="submit" class="btn btn-sm" {% if job.status == 'running' %}disabled{% endif %}>Update Now</button>
+                    </form>
+                </div>
+            </div>
+            <div class="setting-row">
+                <div><div class="setting-label">Archive Entries</div></div>
+                <div class="setting-value">{{ "{:,}".format(archive_count) }}</div>
+            </div>
+            <div class="setting-row">
+                <div><div class="setting-label">Last Fast Check</div></div>
+                <div class="setting-value">{{ state.last_fast or 'Never' }}</div>
+            </div>
+            <div class="setting-row">
+                <div><div class="setting-label">Last Full Index</div></div>
+                <div class="setting-value">{{ state.last_full or 'Never' }}</div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Manual Actions -->
+<div class="card">
+    <div class="card-header">🎮 Manual Actions</div>
+    <div class="card-body">
+        <div class="btn-group">
+            {% if paused %}
+            <form method="POST" action="/resume">
+                <button type="submit" class="btn btn-primary">▶️ Resume Downloads</button>
+            </form>
+            {% else %}
+            <form method="POST" action="/pause">
+                <button type="submit" class="btn" style="border-color:var(--orange);color:var(--orange);">⏸️ Pause Downloads</button>
+            </form>
+            {% endif %}
+            <form method="POST" action="/run/fast">
+                <button type="submit" class="btn btn-blue" {% if job.status == 'running' %}disabled{% endif %}>⚡ Run Fast Check</button>
+            </form>
+            <form method="POST" action="/run/full">
+                <button type="submit" class="btn btn-purple" {% if job.status == 'running' %}disabled{% endif %}>📚 Run Full Index</button>
+            </form>
+            <form method="POST" action="/run/update">
+                <button type="submit" class="btn" {% if job.status == 'running' %}disabled{% endif %}>🔄 Update yt-dlp</button>
+            </form>
+            <form method="POST" action="/api/reindex?force=true" style="display:inline;">
+                <button type="submit" class="btn btn-green" {% if job.status == 'running' %}disabled{% endif %}>📂 Re-Index Library</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

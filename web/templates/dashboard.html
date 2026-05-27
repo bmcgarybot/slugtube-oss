@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title_extra %} — Dashboard{% endblock %}
+{% block content %}
+
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <div class="btn-group">
+        {% if paused %}
+        <form method="POST" action="/resume">
+            <button type="submit" class="btn btn-primary">▶️ Resume Downloads</button>
+        </form>
+        {% else %}
+        <form method="POST" action="/pause">
+            <button type="submit" class="btn" style="border-color:var(--orange);color:var(--orange);">⏸️ Pause</button>
+        </form>
+        {% endif %}
+        <form method="POST" action="/run/fast" style="display:inline">
+            <button type="submit" class="btn btn-blue" {% if job.status == 'running' %}disabled{% endif %}>⚡ Fast Check</button>
+        </form>
+        <form method="POST" action="/run/full" style="display:inline">
+            <button type="submit" class="btn btn-purple" {% if job.status == 'running' %}disabled{% endif %}>📚 Full Index</button>
+        </form>
+        <form method="POST" action="/run/cancel" style="display:inline" onsubmit="return confirm('Cancel running download and clear the queue?');">
+            <button type="submit" class="btn" style="border-color:var(--red);color:var(--red);" {% if job.status != 'running' %}disabled{% endif %}>⛔ Cancel All</button>
+        </form>
+        <button type="button" class="btn btn-sm" onclick="refreshStats(this)" title="Refresh library stats">🔄 Refresh Stats</button>
+    </div>
+</div>
+
+<!-- Cookie Health Warning -->
+{% if cookie_health and cookie_health.status in ('expired', 'missing') %}
+<div class="job-banner job-error" style="margin-bottom:16px;">
+    ❌ {{ cookie_health.message }} — <a href="/cookies" style="color: var(--red); text-decoration: underline;">Update cookies</a>
+</div>
+{% elif cookie_health and cookie_health.status == 'warning' %}
+<div class="job-banner" style="margin-bottom:16px; background: rgba(210,153,34,0.08); border: 1px solid rgba(210,153,34,0.3); color: var(--orange);">
+    ⚠️ {{ cookie_health.message }} — <a href="/cookies" style="color: var(--orange); text-decoration: underline;">Check cookies</a>
+</div>
+{% endif %}
+
+<!-- Stats Grid -->
+{% if scanning %}
+<div class="job-banner job-running" style="margin-bottom:16px;">
+    <div class="spinner"></div>
+    Scanning library — stats will appear shortly. Page auto-refreshes.
+</div>
+{% endif %}
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="label">Subscribed Channels</div>
+        <div class="value blue">{{ channel_count }}</div>
+        <div class="sub">Tracking in channels.txt</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Videos in Library</div>
+        <div class="value green">{{ "{:,}".format(total_videos) }}</div>
+        <div class="sub">Across {{ library_count }} channel folders</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Archive Entries</div>
+        <div class="value purple">{{ "{:,}".format(archive_count) }}</div>
+        <div class="sub">Videos tracked (never re-downloaded)</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Library Size</div>
+        <div class="value orange">{{ disk_usage }}</div>
+        <div class="sub">yt-dlp v{{ ytdlp_version }}</div>
+    </div>
+</div>
+
+<div class="two-col">
+    <!-- Top Channels -->
+    <div class="card">
+        <div class="card-header">
+            🏆 Largest Channels
+            <a href="/channels" style="color: var(--accent); text-decoration: none; font-size: 13px;">View all →</a>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Channel</th>
+                        <th style="text-align:right">Videos</th>
+                        <th style="text-align:right">Size</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ch in top_channels %}
+                    <tr>
+                        <td class="channel-name">{{ ch.name }}</td>
+                        <td style="text-align:right"><span class="badge badge-green">{{ ch.video_count or ch.get('videos', 0) }}</span></td>
+                        <td style="text-align:right; color: var(--text-dim);">{{ "%.1f"|format((ch.total_size_bytes or 0) / 1073741824) }} GB</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not top_channels %}
+                    <tr><td colspan="3" style="text-align:center; color: var(--text-dimmer); padding: 24px;">No videos yet — run a Full Index to start downloading</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="card">
+        <div class="card-header">
+            📡 Recent Activity
+            <a href="/logs" style="color: var(--accent); text-decoration: none; font-size: 13px;">Full logs →</a>
+        </div>
+        <div class="card-body">
+            {% if cookie_health %}
+            <div class="activity-item">
+                {% if cookie_health.status == 'ok' %}
+                🍪 Cookies: OK ({{ cookie_health.age_days }} days old)
+                {% elif cookie_health.status == 'warning' %}
+                ⚠️ Cookies: {{ cookie_health.message }}
+                {% elif cookie_health.status == 'expired' %}
+                ❌ Cookies: Expired! ({{ cookie_health.expired_count }}/{{ cookie_health.total_count }} expired)
+                {% elif cookie_health.status == 'missing' %}
+                ❌ Cookies: Missing!
+                {% endif %}
+            </div>
+            {% endif %}
+            {% if state.last_fast %}
+            <div class="activity-item">⚡ Last fast check: <strong>{{ state.last_fast }}</strong></div>
+            {% endif %}
+            {% if state.last_full %}
+            <div class="activity-item">📚 Last full index: <strong>{{ state.last_full }}</strong></div>
+            {% endif %}
+            {% for line in recent %}
+            <div class="activity-item">{{ line }}</div>
+            {% endfor %}
+            {% if not recent and not state.last_fast %}
+            <div style="text-align:center; color: var(--text-dimmer); padding: 24px;">
+                No activity yet. Downloads will show up here.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Schedule Info -->
+<div class="card" style="margin-top: 4px;">
+    <div class="card-body" style="display: flex; gap: 32px; justify-content: center; font-size: 13px; color: var(--text-dim);">
+        <span>⚡ Fast check: every 6 hours</span>
+        <span>📚 Full index: Sundays 3 AM</span>
+        <span>🔄 yt-dlp update: daily 1 AM</span>
+    </div>
+</div>
+
+{% if scanning %}
+<script>
+(function() {
+    let poll;
+    poll = setInterval(async () => {
+        try {
+            const r = await fetch('/api/index-status');
+            const d = await r.json();
+            if (!d.scanning) { clearInterval(poll); location.reload(); }
+        } catch(e) {}
+    }, 8000);
+})();
+</script>
+{% endif %}
+
+<script>
+function refreshStats(btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Scanning...';
+    fetch('/api/refresh-stats', {method:'POST'})
+        .then(r => r.json())
+        .then(() => { setTimeout(() => location.reload(), 3000); })
+        .catch(() => { btn.disabled = false; btn.textContent = '🔄 Refresh Stats'; });
+}
+</script>
+
+{% endblock %}

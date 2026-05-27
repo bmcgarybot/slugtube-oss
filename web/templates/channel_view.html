@@ -1,0 +1,642 @@
+{% extends "base.html" %}
+{% block title_extra %} — {{ channel_name }}{% endblock %}
+
+{% block content %}
+
+<!-- Channel Header -->
+<div class="ch-header" {% if channel_info and channel_info.has_banner %}style="background-image:url('/media/banner/{{ channel_name | urlencode }}');background-size:cover;background-position:center;"{% endif %}>
+    <div class="ch-header-overlay">
+    <div class="ch-header-left">
+        <div class="ch-poster">
+            {% if channel_info and channel_info.has_poster %}
+            <img src="/media/poster/{{ channel_name | urlencode }}" alt="{{ channel_name }}">
+            {% else %}
+            <div class="ch-poster-placeholder">{{ channel_name[:2] | upper }}</div>
+            {% endif %}
+        </div>
+        <div class="ch-header-info">
+            <a href="/library" class="ch-back">← Library</a>
+            <h1 class="ch-name">{{ channel_name }}</h1>
+            <div class="ch-stats-row">
+                <div class="ch-stat"><span class="ch-stat-val">{{ total }}</span> videos</div>
+                <div class="ch-stat"><span class="ch-stat-val">{{ "%.1f"|format((channel_info.total_size_bytes or 0) / 1073741824) }}</span> GB</div>
+            </div>
+            <div class="ch-controls">
+                {% if not (channel_info and channel_info.has_poster) %}
+                <form method="POST" action="/api/fetch-art/{{ channel_name | urlencode }}" style="display:inline">
+                    <button type="submit" class="btn btn-sm" title="Download channel poster artwork from YouTube" style="border-color:#f0883e;color:#f0883e;font-size:12px;">🎨 Fetch Art</button>
+                </form>
+                {% endif %}
+                {% if channel_url %}
+                <form method="POST" action="/api/reindex-playlists/{{ channel_name | urlencode }}" style="display:inline">
+                    <button type="submit" class="btn btn-sm" title="Fetch playlists from YouTube for this channel" style="border-color:var(--accent);color:var(--accent);font-size:12px;">🎵 Reindex Playlists</button>
+                </form>
+                {% endif %}
+                {% if playlists %}
+                <a href="/library/{{ channel_name | urlencode }}/playlists" class="btn btn-sm playlist-nav-btn">📋 Playlists <span class="pl-nav-count">{{ playlists | length }}</span></a>
+                {% endif %}
+                <button class="btn btn-sm" id="toggle-select-btn" onclick="toggleSelectMode()" style="border-color:#8b5cf6;color:#8b5cf6;font-size:12px;" title="Select videos for bulk actions">☑️ Select</button>
+                <select id="sort-select" onchange="updateSort()">
+                    {% if active_playlist %}
+                    <option value="playlist_index" {% if sort=='playlist_index' %}selected{% endif %}>Playlist Order</option>
+                    {% endif %}
+                    <option value="newest" {% if sort=='newest' %}selected{% endif %}>Newest</option>
+                    <option value="oldest" {% if sort=='oldest' %}selected{% endif %}>Oldest</option>
+                    <option value="title" {% if sort=='title' %}selected{% endif %}>Title A-Z</option>
+                    <option value="largest" {% if sort=='largest' %}selected{% endif %}>Largest</option>
+                    <option value="smallest" {% if sort=='smallest' %}selected{% endif %}>Smallest</option>
+                    <option value="longest" {% if sort=='longest' %}selected{% endif %}>Longest</option>
+                    <option value="shortest" {% if sort=='shortest' %}selected{% endif %}>Shortest</option>
+                    <option value="most_viewed" {% if sort=='most_viewed' %}selected{% endif %}>Most Viewed</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    {% if latest_video %}
+    <a href="/watch/{{ latest_video.id }}" class="ch-latest">
+        <div class="ch-latest-label">Latest</div>
+        <div class="ch-latest-thumb">
+            {% if latest_video.thumbnail_path %}
+            <img src="/media/thumb/{{ latest_video.id }}" alt="{{ latest_video.title }}" loading="lazy">
+            {% else %}
+            <div class="thumb-placeholder">🎬</div>
+            {% endif %}
+            <span class="video-duration">{{ format_duration(latest_video.duration) }}</span>
+        </div>
+        <div class="ch-latest-title">{{ latest_video.title }}</div>
+        <div class="ch-latest-meta">{{ latest_video.upload_date or '' }} · {{ format_size(latest_video.file_size) }}</div>
+    </a>
+    {% endif %}
+    </div>
+</div>
+
+<!-- Playlist Title Banner -->
+{% if active_playlist %}
+<div class="playlist-banner">
+    <span class="playlist-banner-icon">📋</span>
+    <span class="playlist-banner-title">{{ active_playlist.title }}</span>
+    <span class="playlist-banner-count">{{ total }} videos</span>
+</div>
+{% endif %}
+
+<!-- Bulk Action Bar (hidden until select mode) -->
+<div id="bulk-action-bar" class="bulk-bar" style="display:none;">
+    <div class="bulk-bar-left">
+        <label class="bulk-select-all"><input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this)"> Select All</label>
+        <span id="selected-count" class="bulk-count">0 selected</span>
+    </div>
+    <div class="bulk-bar-right">
+        <button class="btn btn-sm bulk-btn-delete" onclick="bulkDelete()" title="Delete selected videos from disk and prevent re-download">🗑️ Delete Selected</button>
+        <button class="btn btn-sm bulk-btn-exclude" onclick="bulkExclude()" title="Block selected from future downloads (keeps existing files)">🚫 Exclude from Future</button>
+        <button class="btn btn-sm" onclick="toggleSelectMode()" style="border-color:var(--text-dim);color:var(--text-dim);">✕ Cancel</button>
+    </div>
+</div>
+
+<!-- Video Grid -->
+<div class="video-grid" id="video-grid">
+    {% for v in videos %}
+    {% if not (latest_video and v.id == latest_video.id and offset == 0) %}
+    <div class="video-card-wrapper" data-video-id="{{ v.id }}">
+        <input type="checkbox" class="video-checkbox" data-id="{{ v.id }}" onchange="updateSelectedCount()" style="display:none;">
+        <a href="/watch/{{ v.id }}" class="video-card">
+        <div class="video-thumb">
+            {% if v.thumbnail_path %}
+            <img src="/media/thumb/{{ v.id }}" alt="{{ v.title }}" loading="lazy">
+            {% else %}
+            <div class="thumb-placeholder">🎬</div>
+            {% endif %}
+            <span class="video-duration">{{ format_duration(v.duration) }}</span>
+            {% if v.watched %}<span class="watched-badge">✓</span>{% endif %}
+            {% if v.position_seconds and not v.watched %}
+            <div class="progress-bar"><div class="progress-fill" style="width:{{ (v.position_seconds / (v.duration or 1) * 100) | round }}%"></div></div>
+            {% endif %}
+        </div>
+        <div class="video-info">
+            <div class="video-title">{{ v.title }}</div>
+            <div class="video-meta">{{ v.upload_date or 'Unknown date' }} · {{ format_size(v.file_size) }}</div>
+            {% if v.view_count %}<div class="video-meta">{{ "{:,}".format(v.view_count) }} views</div>{% endif %}
+        </div>
+    </a>
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+
+{% if total > videos|length %}
+<div style="text-align:center;padding:24px;">
+    {% if active_playlist %}
+        {% if offset > 0 %}
+        <a href="/library/{{ channel_name | urlencode }}/playlist/{{ active_playlist.id }}?sort={{ sort }}&offset={{ offset - limit }}" class="btn btn-sm">← Previous</a>
+        {% endif %}
+        {% if offset + limit < total %}
+        <a href="/library/{{ channel_name | urlencode }}/playlist/{{ active_playlist.id }}?sort={{ sort }}&offset={{ offset + limit }}" class="btn btn-sm">Next →</a>
+        {% endif %}
+    {% else %}
+        {% if offset > 0 %}
+        <a href="/library/{{ channel_name | urlencode }}?sort={{ sort }}&offset={{ offset - limit }}" class="btn btn-sm">← Previous</a>
+        {% endif %}
+        {% if offset + limit < total %}
+        <a href="/library/{{ channel_name | urlencode }}?sort={{ sort }}&offset={{ offset + limit }}" class="btn btn-sm">Next →</a>
+        {% endif %}
+    {% endif %}
+    <div style="color:var(--text-dimmer);font-size:12px;margin-top:8px;">
+        Showing {{ offset + 1 }}-{{ [offset + limit, total] | min }} of {{ total }}
+    </div>
+</div>
+{% endif %}
+
+<style>
+    /* ── Channel Header ── */
+    .ch-header{display:flex;gap:24px;align-items:stretch;margin-bottom:24px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;position:relative}
+    .ch-header-overlay{display:flex;gap:24px;align-items:stretch;width:100%;padding:20px;background:linear-gradient(90deg,rgba(13,17,23,0.92) 0%,rgba(13,17,23,0.85) 60%,rgba(13,17,23,0.7) 100%)}
+    .ch-header-left {
+        display: flex;
+        gap: 20px;
+        flex: 1;
+        min-width: 0;
+    }
+    .ch-poster {
+        width: 120px;
+        height: 120px;
+        border-radius: 10px;
+        overflow: hidden;
+        flex-shrink: 0;
+        background: var(--bg);
+    }
+    .ch-poster img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .ch-poster-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        font-weight: 700;
+        color: var(--text-dim);
+        background: var(--bg-hover);
+    }
+    .ch-header-info {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-width: 0;
+    }
+    .ch-back {
+        font-size: 12px;
+        color: var(--text-dimmer);
+        text-decoration: none;
+        margin-bottom: 4px;
+    }
+    .ch-back:hover { color: var(--accent); }
+    .ch-name {
+        font-size: 24px;
+        font-weight: 700;
+        margin: 0 0 8px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .ch-stats-row {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 10px;
+    }
+    .ch-stat {
+        font-size: 13px;
+        color: var(--text-dim);
+    }
+    .ch-stat-val {
+        font-weight: 700;
+        color: var(--accent);
+        font-size: 16px;
+    }
+    .ch-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+    }
+    .ch-controls select {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        padding: 6px 12px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    /* ── Playlist Navigation Button ── */
+    .playlist-nav-btn {
+        border-color: var(--accent) !important;
+        color: var(--accent) !important;
+        font-size: 13px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        text-decoration: none;
+        transition: all 0.15s;
+    }
+    .playlist-nav-btn:hover {
+        background: rgba(88,166,255,0.1);
+    }
+    .pl-nav-count {
+        font-size: 11px;
+        background: var(--accent);
+        color: #fff;
+        padding: 1px 7px;
+        border-radius: 10px;
+        font-weight: 600;
+    }
+
+    /* ── Playlist Banner ── */
+    .playlist-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--accent);
+        border-radius: 8px;
+    }
+    .playlist-banner-icon {
+        font-size: 18px;
+    }
+    .playlist-banner-title {
+        font-weight: 600;
+        font-size: 15px;
+        color: var(--text);
+    }
+    .playlist-banner-count {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-left: auto;
+    }
+
+    /* ── Latest Video (right side of header) ── */
+    .ch-latest {
+        width: 300px;
+        flex-shrink: 0;
+        text-decoration: none;
+        color: var(--text);
+        border-left: 1px solid var(--border);
+        padding-left: 24px;
+        display: flex;
+        flex-direction: column;
+        transition: opacity 0.2s;
+    }
+    .ch-latest:hover { opacity: 0.85; }
+    .ch-latest-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--accent);
+        margin-bottom: 8px;
+    }
+    .ch-latest-thumb {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16/9;
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--bg);
+    }
+    .ch-latest-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .ch-latest-title {
+        font-weight: 600;
+        font-size: 13px;
+        line-height: 1.4;
+        margin-top: 8px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .ch-latest-meta {
+        font-size: 11px;
+        color: var(--text-dim);
+        margin-top: 4px;
+    }
+
+    /* ── Video Grid ── */
+    .video-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 16px;
+    }
+    .video-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        text-decoration: none;
+        color: var(--text);
+        transition: all 0.2s;
+    }
+    .video-card:hover {
+        border-color: var(--accent);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    .video-thumb {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16/9;
+        overflow: hidden;
+        background: var(--bg);
+    }
+    .video-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .thumb-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        background: var(--bg-hover);
+    }
+    .video-duration {
+        position: absolute;
+        bottom: 6px;
+        right: 6px;
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        font-family: monospace;
+    }
+    .watched-badge {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        background: var(--green);
+        color: white;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .progress-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: rgba(255,255,255,0.2);
+    }
+    .progress-fill {
+        height: 100%;
+        background: var(--red);
+        border-radius: 0 2px 2px 0;
+    }
+    .video-info {
+        padding: 10px 12px;
+    }
+    .video-title {
+        font-weight: 600;
+        font-size: 13px;
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .video-meta {
+        font-size: 11px;
+        color: var(--text-dim);
+        margin-top: 4px;
+    }
+
+    /* ── Mobile ── */
+    @media (max-width: 768px) {
+        .ch-header-overlay { flex-direction: column; }
+        .ch-latest {
+            width: 100%;
+            border-left: none;
+            border-top: 1px solid var(--border);
+            padding-left: 0;
+            padding-top: 16px;
+        }
+        .ch-poster { width: 80px; height: 80px; }
+        .ch-name { font-size: 18px; }
+        .playlist-pills { max-width: 100%; }
+        .ch-controls { flex-direction: column; align-items: flex-start; }
+        .bulk-bar { flex-direction: column; gap: 10px; }
+        .bulk-bar-left, .bulk-bar-right { justify-content: center; }
+    }
+
+    /* ── Bulk Select Mode ── */
+    .bulk-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        background: var(--bg-card);
+        border: 1px solid #8b5cf6;
+        border-radius: 10px;
+        gap: 16px;
+    }
+    .bulk-bar-left {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+    .bulk-bar-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .bulk-select-all {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--text);
+        cursor: pointer;
+        user-select: none;
+    }
+    .bulk-select-all input { width: 16px; height: 16px; cursor: pointer; accent-color: #8b5cf6; }
+    .bulk-count {
+        font-size: 13px;
+        font-weight: 600;
+        color: #8b5cf6;
+    }
+    .bulk-btn-delete {
+        border-color: var(--red) !important;
+        color: var(--red) !important;
+        font-size: 12px !important;
+    }
+    .bulk-btn-delete:hover { background: rgba(248,81,73,0.1); }
+    .bulk-btn-exclude {
+        border-color: #f0883e !important;
+        color: #f0883e !important;
+        font-size: 12px !important;
+    }
+    .bulk-btn-exclude:hover { background: rgba(240,136,62,0.1); }
+
+    /* Checkbox overlay on video cards in select mode */
+    .select-mode .video-checkbox {
+        display: block !important;
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        z-index: 10;
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+        accent-color: #8b5cf6;
+    }
+    .select-mode .video-card-wrapper {
+        position: relative;
+        cursor: pointer;
+    }
+    .select-mode .video-card-wrapper.selected {
+        outline: 2px solid #8b5cf6;
+        border-radius: 10px;
+    }
+    .select-mode .video-card-wrapper.selected .video-card {
+        opacity: 0.85;
+    }
+    .select-mode .video-card {
+        pointer-events: none;
+    }
+</style>
+
+<script>
+let selectMode = false;
+
+function updateSort() {
+    const sort = document.getElementById('sort-select').value;
+    {% if active_playlist %}
+    window.location.href = '/library/{{ channel_name | urlencode }}/playlist/{{ active_playlist.id }}?sort=' + sort;
+    {% else %}
+    window.location.href = '/library/{{ channel_name | urlencode }}?sort=' + sort;
+    {% endif %}
+}
+
+function toggleSelectMode() {
+    selectMode = !selectMode;
+    const grid = document.getElementById('video-grid');
+    const bar = document.getElementById('bulk-action-bar');
+    const btn = document.getElementById('toggle-select-btn');
+
+    if (selectMode) {
+        grid.classList.add('select-mode');
+        bar.style.display = 'flex';
+        btn.style.borderColor = '#8b5cf6';
+        btn.style.background = 'rgba(139,92,246,0.1)';
+        btn.textContent = '☑️ Selecting...';
+    } else {
+        grid.classList.remove('select-mode');
+        bar.style.display = 'none';
+        btn.style.background = '';
+        btn.textContent = '☑️ Select';
+        // Uncheck all
+        document.querySelectorAll('.video-checkbox').forEach(cb => {
+            cb.checked = false;
+            cb.closest('.video-card-wrapper').classList.remove('selected');
+        });
+        document.getElementById('select-all-cb').checked = false;
+        updateSelectedCount();
+    }
+}
+
+// Click wrapper to toggle checkbox in select mode
+document.addEventListener('click', function(e) {
+    if (!selectMode) return;
+    const wrapper = e.target.closest('.video-card-wrapper');
+    if (!wrapper) return;
+    if (e.target.classList.contains('video-checkbox')) return; // checkbox clicked directly
+    e.preventDefault();
+    const cb = wrapper.querySelector('.video-checkbox');
+    cb.checked = !cb.checked;
+    wrapper.classList.toggle('selected', cb.checked);
+    updateSelectedCount();
+});
+
+function toggleSelectAll(master) {
+    const checkboxes = document.querySelectorAll('.video-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = master.checked;
+        cb.closest('.video-card-wrapper').classList.toggle('selected', master.checked);
+    });
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    const count = document.querySelectorAll('.video-checkbox:checked').length;
+    document.getElementById('selected-count').textContent = count + ' selected';
+}
+
+function getSelectedIds() {
+    return Array.from(document.querySelectorAll('.video-checkbox:checked')).map(cb => cb.dataset.id);
+}
+
+function bulkDelete() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return alert('No videos selected');
+    if (!confirm(`Delete ${ids.length} video(s) from disk? They will be blocked from re-downloading.`)) return;
+
+    fetch('/api/bulk-delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({video_ids: ids})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            alert(`Deleted ${data.deleted} video(s). ${data.excluded} added to block list.`);
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown'));
+        }
+    })
+    .catch(err => alert('Request failed: ' + err));
+}
+
+function bulkExclude() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return alert('No videos selected');
+    if (!confirm(`Exclude ${ids.length} video(s) from future downloads? Files on disk will NOT be deleted.`)) return;
+
+    fetch('/api/bulk-exclude', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({video_ids: ids})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            alert(`${data.excluded} video(s) excluded from future downloads.`);
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown'));
+        }
+    })
+    .catch(err => alert('Request failed: ' + err));
+}
+</script>
+{% endblock %}
