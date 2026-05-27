@@ -5,25 +5,25 @@
 <div class="page-header">
     <h1>📋 Logs</h1>
     <div class="btn-group">
-        <span style="color: var(--text-dim); font-size: 13px; align-self: center;">Log file: {% if log_size >= 1048576 %}{{ "%.1f"|format(log_size / 1048576) }} MB{% elif log_size >= 1024 %}{{ "%.1f"|format(log_size / 1024) }} KB{% else %}{{ log_size }} B{% endif %}</span>
-        <a href="/logs/export" class="btn" title="Download log as .txt file">📥 Export</a>
-        <form method="POST" action="/logs/clear" style="display:inline">
-            <button type="submit" class="btn btn-danger" onclick="return confirm('Clear all logs? This cannot be undone.')">🗑️ Clear Logs</button>
+        <span class="text-dim text-sm" style="align-self: center;">Log file: {% if log_size >= 1048576 %}{{ "%.1f"|format(log_size / 1048576) }} MB{% elif log_size >= 1024 %}{{ "%.1f"|format(log_size / 1024) }} KB{% else %}{{ log_size }} B{% endif %}</span>
+        <a href="/logs/export" class="btn btn-ghost" title="Download log as .txt file">Export</a>
+        <form method="POST" action="/logs/clear" class="form-inline">
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Clear all logs? This cannot be undone.')">Clear Logs</button>
         </form>
-        <a href="/logs?lines=50" class="btn {% if lines == 50 %}btn-blue{% endif %}">50</a>
-        <a href="/logs?lines=150" class="btn {% if lines == 150 %}btn-blue{% endif %}">150</a>
-        <a href="/logs?lines=500" class="btn {% if lines == 500 %}btn-blue{% endif %}">500</a>
-        <a href="/logs?lines=1000" class="btn {% if lines == 1000 %}btn-blue{% endif %}">1000</a>
-        <a href="/logs?lines=0" class="btn {% if lines == 0 %}btn-blue{% endif %}">Full</a>
+        <a href="/logs?lines=50" class="btn btn-sm {% if lines == 50 %}btn-blue{% endif %}">50</a>
+        <a href="/logs?lines=150" class="btn btn-sm {% if lines == 150 %}btn-blue{% endif %}">150</a>
+        <a href="/logs?lines=500" class="btn btn-sm {% if lines == 500 %}btn-blue{% endif %}">500</a>
+        <a href="/logs?lines=1000" class="btn btn-sm {% if lines == 1000 %}btn-blue{% endif %}">1000</a>
+        <a href="/logs?lines=0" class="btn btn-sm {% if lines == 0 %}btn-blue{% endif %}">Full</a>
     </div>
 </div>
 
 <!-- Log filter tabs -->
-<div style="margin-bottom: 12px; display: flex; gap: 8px;">
+<div class="filter-tabs">
     <a href="/logs?lines={{ lines }}&filter=" class="btn btn-sm {% if not filter %}btn-blue{% endif %}">All</a>
-    <a href="/logs?lines={{ lines }}&filter=errors" class="btn btn-sm {% if filter == 'errors' %}btn-blue{% endif %}" style="{% if filter == 'errors' %}border-color:var(--danger);color:var(--danger){% endif %}">❌ Errors Only</a>
-    <a href="/logs?lines={{ lines }}&filter=downloads" class="btn btn-sm {% if filter == 'downloads' %}btn-blue{% endif %}">⬇️ Downloads</a>
-    <a href="/logs?lines={{ lines }}&filter=skipped" class="btn btn-sm {% if filter == 'skipped' %}btn-blue{% endif %}">⏭️ Skipped</a>
+    <a href="/logs?lines={{ lines }}&filter=errors" class="btn btn-sm {% if filter == 'errors' %}btn-danger{% endif %} {% if filter != 'errors' %}btn-ghost{% endif %}">Errors Only</a>
+    <a href="/logs?lines={{ lines }}&filter=downloads" class="btn btn-sm {% if filter == 'downloads' %}btn-blue{% endif %} {% if filter != 'downloads' %}btn-ghost{% endif %}">Downloads</a>
+    <a href="/logs?lines={{ lines }}&filter=skipped" class="btn btn-sm {% if filter == 'skipped' %}btn-blue{% endif %} {% if filter != 'skipped' %}btn-ghost{% endif %}">Skipped</a>
 </div>
 
 <div class="card">
@@ -31,7 +31,7 @@
         {% if log_text and log_text.strip() %}
         <pre id="logbox">{{ log_text }}</pre>
         {% else %}
-        <div style="text-align:center; color: var(--text-dimmer); padding: 48px;">
+        <div class="text-center text-dimmer" style="padding: 48px;">
             No logs yet. Logs appear after the first download run.
         </div>
         {% endif %}
