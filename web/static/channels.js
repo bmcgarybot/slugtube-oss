@@ -289,6 +289,7 @@ function renderChannelDetail(d) {
     acts.innerHTML = btns;
 
     // Render videos
+    _st.videos = d.videos;
     renderVideos(d.videos);
 }
 
@@ -304,6 +305,7 @@ function renderVideoGrid(videos) {
         container.innerHTML = '<div class="text-dim text-center" style="grid-column:1/-1;padding:40px 0;">No videos found</div>';
         return;
     }
+    var bulkMode = document.getElementById('bulk-mode-toggle') && document.getElementById('bulk-mode-toggle').checked;
     var html = '';
     videos.forEach(function(v) {
         var thumbStyle = v.has_thumb
@@ -317,8 +319,10 @@ function renderVideoGrid(videos) {
             var pct = Math.min((v.progress / v.duration) * 100, 100);
             progress = '<div class="video-progress-bar" style="width:' + pct.toFixed(1) + '%"></div>';
         }
+        var checkbox = bulkMode ? '<input type="checkbox" class="bulk-checkbox" data-id="' + escHtml(v.id) + '" onclick="event.preventDefault();event.stopPropagation();this.checked=!this.checked;updateBulkCount();" style="position:absolute;top:8px;left:8px;z-index:5;width:18px;height:18px;cursor:pointer;">' : '';
 
-        html += '<a class="video-card" href="/watch/' + encodeURIComponent(v.id) + '">' +
+        html += '<a class="video-card" style="position:relative;" ' + (bulkMode ? 'onclick="event.preventDefault();var cb=this.querySelector(\'.bulk-checkbox\');cb.checked=!cb.checked;updateBulkCount();"' : 'href="/watch/' + encodeURIComponent(v.id) + '"') + '>' +
+            checkbox +
             '<div class="video-thumb" style="' + thumbStyle + '">' + thumbPh + dur + watched + progress + '</div>' +
             '<div class="video-info">' +
             '<div class="video-title">' + escHtml(v.title) + '</div>' +
@@ -358,11 +362,14 @@ function sortVideos() {
         'oldest': function(a, b) { return (a.date || '').localeCompare(b.date || ''); },
         'title': function(a, b) { return (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase()); },
         'largest': function(a, b) { return (b.size || 0) - (a.size || 0); },
-        'longest': function(a, b) { return (b.duration || 0) - (a.duration || 0); }
+        'smallest': function(a, b) { return (a.size || 0) - (b.size || 0); },
+        'longest': function(a, b) { return (b.duration || 0) - (a.duration || 0); },
+        'shortest': function(a, b) { return (a.duration || 0) - (b.duration || 0); }
     };
 
     var cmp = comparators[_st.sort] || comparators['newest'];
     vids.sort(cmp);
+    _st.videos = vids;
     renderVideos(vids);
 }
 
@@ -429,4 +436,68 @@ function escHtml(s) {
 
 function escAttr(s) {
     return (s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+/* ═══ Bulk Select / Delete ═══ */
+function toggleBulkMode(on) {
+    var bar = document.getElementById('bulk-action-bar');
+    if (bar) bar.style.display = on ? 'flex' : 'none';
+    // Re-render videos to add/remove checkboxes
+    if (_st.videos) renderVideos(_st.videos);
+    if (!on) updateBulkCount();
+}
+
+function updateBulkCount() {
+    var checks = document.querySelectorAll('.bulk-checkbox:checked');
+    var label = document.getElementById('bulk-count');
+    if (label) label.textContent = checks.length + ' selected';
+}
+
+function bulkSelectAll() {
+    document.querySelectorAll('.bulk-checkbox').forEach(function(cb) { cb.checked = true; });
+    updateBulkCount();
+}
+
+function bulkSelectNone() {
+    document.querySelectorAll('.bulk-checkbox').forEach(function(cb) { cb.checked = false; });
+    updateBulkCount();
+}
+
+function bulkDeleteSelected() {
+    var checks = document.querySelectorAll('.bulk-checkbox:checked');
+    if (checks.length === 0) { alert('No videos selected.'); return; }
+
+    var ids = [];
+    checks.forEach(function(cb) { ids.push(cb.dataset.id); });
+
+    var excludeChecked = true;
+    var msg = 'Delete ' + ids.length + ' video' + (ids.length > 1 ? 's' : '') + ' permanently?\n\n' +
+        'This removes files, thumbnails, subtitles, and database entries.\n\n' +
+        'Click OK to also exclude these from future downloads.\n' +
+        'Click Cancel to abort.';
+
+    if (!confirm(msg)) return;
+
+    // Delete each video and optionally exclude
+    var done = 0;
+    var errors = 0;
+    ids.forEach(function(id) {
+        fetch('/api/bulk-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ video_ids: [id], exclude: excludeChecked })
+        }).then(function(r) {
+            done++;
+            if (!r.ok) errors++;
+            if (done >= ids.length) {
+                // Refresh channel view
+                if (errors > 0) alert('Deleted ' + (done - errors) + ' videos. ' + errors + ' failed.');
+                selectChannel(_st.current);
+            }
+        }).catch(function() {
+            done++;
+            errors++;
+            if (done >= ids.length) selectChannel(_st.current);
+        });
+    });
 }

@@ -45,8 +45,15 @@
         <div class="detail-actions" id="detail-actions"></div>
     </div>
     <div class="video-toolbar" id="video-toolbar">
-        <select id="video-sort" class="form-select" onchange="sortVideos()"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="title">Title A-Z</option><option value="largest">Largest</option><option value="longest">Longest</option></select>
+        <select id="video-sort" class="form-select" onchange="sortVideos()"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="title">Title A-Z</option><option value="largest">Largest</option><option value="smallest">Smallest</option><option value="longest">Longest</option><option value="shortest">Shortest</option></select>
+        <label class="bulk-select-toggle text-sm" style="margin-left:12px;cursor:pointer;color:var(--text-dim);"><input type="checkbox" id="bulk-mode-toggle" onchange="toggleBulkMode(this.checked)" style="margin-right:4px;">Select</label>
         <span class="text-dim text-sm" id="video-count-label"></span>
+    </div>
+    <div id="bulk-action-bar" style="display:none;padding:8px 12px;margin-bottom:12px;background:var(--bg-card);border:1px solid var(--accent);border-radius:10px;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span id="bulk-count" style="font-size:13px;color:var(--text);font-weight:600;">0 selected</span>
+        <button class="btn btn-sm btn-accent" onclick="bulkSelectAll()">Select All</button>
+        <button class="btn btn-sm" onclick="bulkSelectNone()">Select None</button>
+        <button class="btn btn-sm btn-danger" onclick="bulkDeleteSelected()">Delete Selected</button>
     </div>
     <div id="video-grid" class="video-grid"></div>
     <div id="video-list-table" class="card" style="display:none;"><div style="overflow-x:auto;"><table class="video-list-tbl"><thead><tr><th>Title</th><th class="text-center">Date</th><th class="text-center">Duration</th><th class="text-right">Size</th><th class="text-center">Watched</th></tr></thead><tbody id="video-list-tbody"></tbody></table></div></div>
