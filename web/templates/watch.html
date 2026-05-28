@@ -63,6 +63,9 @@
             <button id="shuffle-btn" class="btn btn-sm toggle-btn" onclick="toggleShuffle()" title="Shuffle plays random video from channel">
                 Shuffle: OFF
             </button>
+            <button id="skip-watched-btn" class="btn btn-sm toggle-btn" onclick="toggleSkipWatched()" title="Skip previously watched videos in shuffle/autoplay">
+                Skip Watched: OFF
+            </button>
             <button id="queue-toggle-btn" class="btn btn-sm toggle-btn" onclick="toggleQueuePanel()" title="Show/hide play queue">
                 Queue (<span id="queue-count-badge">0</span>)
             </button>
@@ -200,10 +203,12 @@ var prevVideoUrl = {{ (prev_video.id if prev_video else '') | tojson }};
 // ── Autoplay + Shuffle state ──
 var autoplayEnabled = localStorage.getItem('slugtube-autoplay') === 'true';
 var shuffleEnabled = localStorage.getItem('slugtube-shuffle') === 'true';
+var skipWatchedEnabled = localStorage.getItem('slugtube-skip-watched') === 'true';
 
 function updateToggleButtons() {
     var abtn = document.getElementById('autoplay-btn');
     var sbtn = document.getElementById('shuffle-btn');
+    var swbtn = document.getElementById('skip-watched-btn');
     if (abtn) {
         abtn.textContent = 'Autoplay: ' + (autoplayEnabled ? 'ON' : 'OFF');
         abtn.classList.toggle('active', autoplayEnabled);
@@ -211,6 +216,10 @@ function updateToggleButtons() {
     if (sbtn) {
         sbtn.textContent = 'Shuffle: ' + (shuffleEnabled ? 'ON' : 'OFF');
         sbtn.classList.toggle('active', shuffleEnabled);
+    }
+    if (swbtn) {
+        swbtn.textContent = 'Skip Watched: ' + (skipWatchedEnabled ? 'ON' : 'OFF');
+        swbtn.classList.toggle('active', skipWatchedEnabled);
     }
 }
 function toggleAutoplay() {
@@ -221,6 +230,11 @@ function toggleAutoplay() {
 function toggleShuffle() {
     shuffleEnabled = !shuffleEnabled;
     localStorage.setItem('slugtube-shuffle', shuffleEnabled);
+    updateToggleButtons();
+}
+function toggleSkipWatched() {
+    skipWatchedEnabled = !skipWatchedEnabled;
+    localStorage.setItem('slugtube-skip-watched', skipWatchedEnabled);
     updateToggleButtons();
 }
 updateToggleButtons();
@@ -438,7 +452,8 @@ player.addEventListener('ended', () => {
         var mixChannels = SlugQueue.getMixChannels();
         if (mixChannels.length > 0) {
             var channelsParam = mixChannels.map(function(c) { return encodeURIComponent(c); }).join(',');
-            fetch('/api/random-video?channels=' + channelsParam + '&exclude=' + encodeURIComponent(videoId))
+            var swParam = skipWatchedEnabled ? '&skip_watched=1' : '';
+            fetch('/api/random-video?channels=' + channelsParam + '&exclude=' + encodeURIComponent(videoId) + swParam)
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.id) startAutoplayCountdown(data.id, data.title);
@@ -449,7 +464,8 @@ player.addEventListener('ended', () => {
 
         // Priority 3: Shuffle within channel
         if (shuffleEnabled) {
-            fetch('/api/random-video/' + encodeURIComponent(channelName) + '?exclude=' + encodeURIComponent(videoId))
+            var swParam2 = skipWatchedEnabled ? '&skip_watched=1' : '';
+            fetch('/api/random-video/' + encodeURIComponent(channelName) + '?exclude=' + encodeURIComponent(videoId) + swParam2)
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.id) startAutoplayCountdown(data.id, data.title);
