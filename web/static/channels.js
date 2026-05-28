@@ -252,13 +252,28 @@ function renderChannelDetail(d) {
     document.getElementById('detail-stats').textContent = d.video_count + ' videos \u00B7 ' + fmtSize(d.total_size);
     document.getElementById('video-count-label').textContent = d.video_count + ' videos';
 
-    // Playlists
+    // Playlists — collapsible tag cloud
     var plHtml = '';
     if (d.playlists && d.playlists.length > 0) {
-        plHtml = '📋 ';
-        d.playlists.forEach(function(pl) {
-            plHtml += '<a href="/library/' + encodeURIComponent(d.name) + '/playlist/' + encodeURIComponent(pl.id) + '">' + escHtml(pl.title) + ' (' + pl.video_count + ')</a> ';
-        });
+        var SHOW_LIMIT = 8;
+        var sorted = d.playlists.slice().sort(function(a, b) { return b.video_count - a.video_count; });
+        var makeTag = function(pl) {
+            return '<a class="pl-tag" href="/library/' + encodeURIComponent(d.name) + '/playlist/' + encodeURIComponent(pl.id) + '">'
+                + escHtml(pl.title) + ' <span class="pl-count">(' + pl.video_count + ')</span></a>';
+        };
+        plHtml = '<div class="pl-cloud">';
+        plHtml += '<span class="pl-label">📋 ' + d.playlists.length + ' playlists</span>';
+        if (sorted.length <= SHOW_LIMIT) {
+            sorted.forEach(function(pl) { plHtml += makeTag(pl); });
+        } else {
+            sorted.slice(0, SHOW_LIMIT).forEach(function(pl) { plHtml += makeTag(pl); });
+            plHtml += '<div class="pl-overflow" id="pl-overflow" style="display:none;">';
+            sorted.slice(SHOW_LIMIT).forEach(function(pl) { plHtml += makeTag(pl); });
+            plHtml += '</div>';
+            plHtml += '<button class="pl-toggle" onclick="var ov=document.getElementById(\'pl-overflow\');if(ov.style.display===\'none\'){ov.style.display=\'inline\';this.textContent=\'▲ Show less\';}else{ov.style.display=\'none\';this.textContent=\'▼ Show all ' + sorted.length + ' playlists\';}">'
+                + '▼ Show all ' + sorted.length + ' playlists</button>';
+        }
+        plHtml += '</div>';
     }
     document.getElementById('detail-playlists').innerHTML = plHtml;
 

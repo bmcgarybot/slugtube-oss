@@ -142,16 +142,26 @@ if not m:
 if m:
     try:
         data = json.loads(m.group(1))
-        # Navigate to banner
         header = data.get('header', {})
-        # c4TabbedHeaderRenderer path
-        c4 = header.get('c4TabbedHeaderRenderer', {})
-        banner = c4.get('banner', {})
-        thumbs = banner.get('thumbnails', [])
-        if thumbs:
-            # Get highest resolution
-            best = max(thumbs, key=lambda t: t.get('width', 0))
-            print(best.get('url', ''))
+        url = ''
+        # NEW path: pageHeaderRenderer (2025+)
+        phr = header.get('pageHeaderRenderer', {})
+        if phr:
+            vm = phr.get('content', {}).get('pageHeaderViewModel', {})
+            ibvm = vm.get('banner', {}).get('imageBannerViewModel', {})
+            sources = ibvm.get('image', {}).get('sources', [])
+            if sources:
+                best = max(sources, key=lambda s: s.get('width', 0))
+                url = best.get('url', '')
+        # OLD path: c4TabbedHeaderRenderer (legacy fallback)
+        if not url:
+            c4 = header.get('c4TabbedHeaderRenderer', {})
+            thumbs = c4.get('banner', {}).get('thumbnails', [])
+            if thumbs:
+                best = max(thumbs, key=lambda t: t.get('width', 0))
+                url = best.get('url', '')
+        if url:
+            print(url)
     except: pass
 " 2>/dev/null)
 
