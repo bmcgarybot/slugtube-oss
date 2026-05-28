@@ -4,7 +4,9 @@ var _st = {
     current: null,   // selected channel name
     data: null,      // API response for current channel
     sort: 'newest',
-    jobRunning: false
+    jobRunning: false,
+    page: 1,
+    perPage: 60
 };
 
 function initChannelsPage(jobRunning) {
@@ -90,6 +92,11 @@ function fmtDate(d) {
     return d.substring(0, 10);
 }
 
+function fmtViews(n) {
+    if (!n) return '';
+    return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
 /* ═══ Browse view toggle (grid / table) ═══ */
 function setBrowseView(mode) {
     var grid = document.getElementById('channels-grid-view');
@@ -162,6 +169,7 @@ function selectChannel(name) {
 
     _st.current = name;
     _st.sort = 'newest';
+    _st.page = 1;
     document.getElementById('video-sort').value = 'newest';
 
     // Update URL hash
@@ -262,7 +270,7 @@ function renderChannelDetail(d) {
                 + escHtml(pl.title) + ' <span class="pl-count">(' + pl.video_count + ')</span></a>';
         };
         plHtml = '<div class="pl-cloud">';
-        plHtml += '<a href="/library/' + encodeURIComponent(d.name) + '/playlists" class="pl-label-link">📋 ' + d.playlists.length + ' playlists →</a>';
+        plHtml += '<a href="/library/' + encodeURIComponent(d.name) + '/playlists" class="pl-label-link">' + d.playlists.length + ' playlists \u2192</a>';
         sorted.slice(0, SHOW_LIMIT).forEach(function(pl) { plHtml += makeTag(pl); });
         if (sorted.length > SHOW_LIMIT) {
             plHtml += '<a href="/library/' + encodeURIComponent(d.name) + '/playlists" class="pl-more">+ ' + (sorted.length - SHOW_LIMIT) + ' more</a>';
@@ -284,10 +292,10 @@ function renderChannelDetail(d) {
         btns += '<button class="btn btn-ghost btn-sm" onclick="channelAction(\'reindex\',\'' + escAttr(d.name) + '\')">Reindex</button>';
     }
     if (d.channel_url) {
-        btns += '<button class="btn btn-ghost btn-sm" onclick="channelAction(\'reindex-playlists\',\'' + escAttr(d.name) + '\')">🎵 Reindex Playlists</button>';
+        btns += '<button class="btn btn-ghost btn-sm" onclick="channelAction(\'reindex-playlists\',\'' + escAttr(d.name) + '\')">Reindex Playlists</button>';
     }
     if (d.playlists && d.playlists.length > 0) {
-        btns += '<a href="/library/' + encodeURIComponent(d.name) + '/playlists" class="btn btn-ghost btn-sm">📋 Playlists</a>';
+        btns += '<a href="/library/' + encodeURIComponent(d.name) + '/playlists" class="btn btn-ghost btn-sm">View Playlists</a>';
     }
     if (!d.has_poster && d.channel_url) {
         btns += '<button class="btn btn-orange btn-sm" onclick="channelAction(\'fetch-art\',\'' + escAttr(d.name) + '\')">Fetch Art</button>';
@@ -303,15 +311,73 @@ function renderChannelDetail(d) {
     }
     acts.innerHTML = btns;
 
+    // Latest Video card
+    var latestWrap = document.getElementById('detail-latest');
+    if (latestWrap) {
+        var latest = null;
+        if (d.videos && d.videos.length > 0) {
+            latest = d.videos.slice().sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); })[0];
+        }
+        if (latest) {
+            var ltThumb = latest.has_thumb
+                ? '<div class="latest-thumb" style="background-image:url(\'/media/thumb/' + encodeURIComponent(latest.id) + '\')"><span class="video-duration">' + fmtDuration(latest.duration) + '</span></div>'
+                : '<div class="latest-thumb"><div class="video-thumb-ph">▶</div><span class="video-duration">' + fmtDuration(latest.duration) + '</span></div>';
+            latestWrap.innerHTML = '<a href="/watch/' + encodeURIComponent(latest.id) + '" class="latest-card">' +
+                ltThumb +
+                '<div class="latest-info">' +
+                '<div class="latest-label">Latest</div>' +
+                '<div class="latest-title">' + escHtml(latest.title) + '</div>' +
+                '<div class="latest-meta">' + fmtDate(latest.date) + (latest.view_count > 0 ? ' \u00B7 ' + fmtViews(latest.view_count) + ' views' : '') + '</div>' +
+                '</div></a>';
+            latestWrap.style.display = '';
+        } else {
+            latestWrap.innerHTML = '';
+            latestWrap.style.display = 'none';
+        }
+    }
+
     // Render videos
     _st.videos = d.videos;
+    _st.page = 1;
     renderVideos(d.videos);
 }
 
 /* ═══ Render videos ═══ */
 function renderVideos(videos) {
-    renderVideoGrid(videos);
-    renderVideoList(videos);
+    var total = videos ? videos.length : 0;
+    var perPage = _st.perPage;
+    var totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (_st.page > totalPages) _st.page = totalPages;
+    var start = (_st.page - 1) * perPage;
+    var end = Math.min(start + perPage, total);
+    var pageVids = videos ? videos.slice(start, end) : [];
+
+    renderVideoGrid(pageVids);
+    renderVideoList(pageVids);
+    renderPagination(total, start, end, totalPages);
+}
+
+function renderPagination(total, start, end, totalPages) {
+    var container = document.getElementById('pagination-controls');
+    if (!container) return;
+    if (total <= _st.perPage) {
+        container.style.display = 'none';
+        return;
+    }
+    container.style.display = 'flex';
+    var html = '<button class="btn btn-sm btn-ghost" id="page-prev"' + (_st.page <= 1 ? ' disabled' : '') + ' onclick="changePage(-1)">Previous</button>';
+    html += '<span class="pagination-info">Showing ' + (start + 1) + '-' + end + ' of ' + total + '</span>';
+    html += '<button class="btn btn-sm btn-ghost" id="page-next"' + (_st.page >= totalPages ? ' disabled' : '') + ' onclick="changePage(1)">Next</button>';
+    container.innerHTML = html;
+}
+
+function changePage(delta) {
+    _st.page += delta;
+    if (_st.page < 1) _st.page = 1;
+    renderVideos(_st.videos);
+    // Scroll to top of video area
+    var toolbar = document.getElementById('video-toolbar');
+    if (toolbar) toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function renderVideoGrid(videos) {
@@ -344,7 +410,7 @@ function renderVideoGrid(videos) {
             '<div class="video-thumb" style="' + thumbStyle + '">' + thumbPh + dur + watched + progressLabel + progress + '</div>' +
             '<div class="video-info">' +
             '<div class="video-title">' + escHtml(v.title) + '</div>' +
-            '<div class="video-meta">' + fmtDate(v.date) + ' \u00B7 ' + fmtSize(v.size) + '</div>' +
+            '<div class="video-meta">' + fmtDate(v.date) + ' \u00B7 ' + fmtSize(v.size) + (v.view_count > 0 ? ' \u00B7 ' + fmtViews(v.view_count) + ' views' : '') + '</div>' +
             '</div></a>';
     });
     container.innerHTML = html;
@@ -353,7 +419,7 @@ function renderVideoGrid(videos) {
 function renderVideoList(videos) {
     var tbody = document.getElementById('video-list-tbody');
     if (!videos || videos.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-dim text-center" style="padding:40px 0;">No videos found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="text-dim text-center" style="padding:40px 0;">No videos found</td></tr>';
         return;
     }
     var html = '';
@@ -363,6 +429,7 @@ function renderVideoList(videos) {
             '<td class="text-center nowrap">' + fmtDate(v.date) + '</td>' +
             '<td class="text-center nowrap">' + fmtDuration(v.duration) + '</td>' +
             '<td class="text-right nowrap">' + fmtSize(v.size) + '</td>' +
+            '<td class="text-right nowrap">' + (v.view_count > 0 ? fmtViews(v.view_count) : '\u2014') + '</td>' +
             '<td class="text-center">' + (v.watched ? '<span class="badge badge-green">✓</span>' : (v.progress > 5 ? '<span class="badge badge-blue">⏳</span>' : '\u2014')) + '</td>' +
             '</tr>';
     });
@@ -382,12 +449,14 @@ function sortVideos() {
         'largest': function(a, b) { return (b.size || 0) - (a.size || 0); },
         'smallest': function(a, b) { return (a.size || 0) - (b.size || 0); },
         'longest': function(a, b) { return (b.duration || 0) - (a.duration || 0); },
-        'shortest': function(a, b) { return (a.duration || 0) - (b.duration || 0); }
+        'shortest': function(a, b) { return (a.duration || 0) - (b.duration || 0); },
+        'most_viewed': function(a, b) { return (b.view_count || 0) - (a.view_count || 0); }
     };
 
     var cmp = comparators[_st.sort] || comparators['newest'];
     vids.sort(cmp);
     _st.videos = vids;
+    _st.page = 1;
     renderVideos(vids);
 }
 
@@ -521,6 +590,60 @@ function bulkDeleteSelected() {
             if (done >= ids.length) selectChannel(_st.current);
         });
     });
+}
+
+/* ═══ Add to Playlist (bulk) ═══ */
+function bulkAddToPlaylist() {
+    var checks = document.querySelectorAll('.bulk-checkbox:checked');
+    if (checks.length === 0) { alert('No videos selected.'); return; }
+    showPlaylistModal();
+}
+
+function showPlaylistModal() {
+    // Remove old modal if exists
+    var old = document.getElementById('playlist-modal-overlay');
+    if (old) old.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'playlist-modal-overlay';
+    overlay.className = 'modal-overlay';
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+    var modal = document.createElement('div');
+    modal.className = 'modal-dialog';
+    modal.innerHTML = '<h3 style="margin:0 0 12px;font-size:16px;">Add to Playlist</h3>' +
+        '<input type="text" id="playlist-name-input" class="form-input" placeholder="Playlist name" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;margin-bottom:12px;">' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+        '<button class="btn btn-sm btn-ghost" onclick="document.getElementById(\'playlist-modal-overlay\').remove()">Cancel</button>' +
+        '<button class="btn btn-sm btn-accent" onclick="submitPlaylistAdd()">Add</button>' +
+        '</div>';
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function() { document.getElementById('playlist-name-input').focus(); }, 50);
+}
+
+function submitPlaylistAdd() {
+    var nameInput = document.getElementById('playlist-name-input');
+    var name = nameInput ? nameInput.value.trim() : '';
+    if (!name) { alert('Please enter a playlist name.'); return; }
+
+    var checks = document.querySelectorAll('.bulk-checkbox:checked');
+    var ids = [];
+    checks.forEach(function(cb) { ids.push(cb.dataset.id); });
+
+    fetch('/api/create-playlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_ids: ids, playlist_name: name, channel_name: _st.current || '' })
+    }).then(function(r) {
+        if (r.ok) {
+            showToast('Added ' + ids.length + ' video' + (ids.length > 1 ? 's' : '') + ' to "' + name + '"');
+            var overlay = document.getElementById('playlist-modal-overlay');
+            if (overlay) overlay.remove();
+        } else {
+            r.text().then(function(t) { alert('Error: ' + t); });
+        }
+    }).catch(function(err) { alert('Error: ' + err); });
 }
 
 /* ═══════════════════════════════════════════

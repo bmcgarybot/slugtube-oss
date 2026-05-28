@@ -43,10 +43,11 @@
     <div class="detail-header">
         <div class="detail-poster-wrap" id="detail-poster-wrap"><div class="detail-poster-fallback" id="detail-poster-fb"><span class="poster-initial" id="detail-poster-initial"></span></div></div>
         <div class="detail-info"><h2 id="detail-name"></h2><div class="detail-stats" id="detail-stats"></div><div class="detail-playlists" id="detail-playlists"></div></div>
+        <div class="detail-latest-wrap" id="detail-latest" style="display:none;"></div>
         <div class="detail-actions" id="detail-actions"></div>
     </div>
     <div class="video-toolbar" id="video-toolbar">
-        <select id="video-sort" class="form-select" onchange="sortVideos()"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="title">Title A-Z</option><option value="largest">Largest</option><option value="smallest">Smallest</option><option value="longest">Longest</option><option value="shortest">Shortest</option></select>
+        <select id="video-sort" class="form-select" onchange="sortVideos()"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="title">Title A-Z</option><option value="largest">Largest</option><option value="smallest">Smallest</option><option value="longest">Longest</option><option value="shortest">Shortest</option><option value="most_viewed">Most Viewed</option></select>
         <label class="bulk-select-toggle text-sm" style="margin-left:12px;cursor:pointer;color:var(--text-dim);"><input type="checkbox" id="bulk-mode-toggle" onchange="toggleBulkMode(this.checked)" style="margin-right:4px;">Select</label>
         <span class="text-dim text-sm" id="video-count-label"></span>
     </div>
@@ -54,10 +55,12 @@
         <span id="bulk-count" style="font-size:13px;color:var(--text);font-weight:600;">0 selected</span>
         <button class="btn btn-sm btn-accent" onclick="bulkSelectAll()">Select All</button>
         <button class="btn btn-sm" onclick="bulkSelectNone()">Select None</button>
+        <button class="btn btn-sm btn-blue" onclick="bulkAddToPlaylist()">Add to Playlist</button>
         <button class="btn btn-sm btn-danger" onclick="bulkDeleteSelected()">Delete Selected</button>
     </div>
     <div id="video-grid" class="video-grid"></div>
-    <div id="video-list-table" class="card" style="display:none;"><div style="overflow-x:auto;"><table class="video-list-tbl"><thead><tr><th>Title</th><th class="text-center">Date</th><th class="text-center">Duration</th><th class="text-right">Size</th><th class="text-center">Watched</th></tr></thead><tbody id="video-list-tbody"></tbody></table></div></div>
+    <div id="video-list-table" class="card" style="display:none;"><div style="overflow-x:auto;"><table class="video-list-tbl"><thead><tr><th>Title</th><th class="text-center">Date</th><th class="text-center">Duration</th><th class="text-right">Size</th><th class="text-right">Views</th><th class="text-center">Watched</th></tr></thead><tbody id="video-list-tbody"></tbody></table></div></div>
+    <div id="pagination-controls" class="pagination-controls" style="display:none;"></div>
 </div>
 
 <div class="channel-grid" id="channels-grid-view">
@@ -165,6 +168,19 @@
 @media(max-width:768px){.channels-table thead{display:none}.channels-table tbody tr{display:block;margin-bottom:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px}.channels-table tbody td{display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:none;text-align:right!important}.channels-table tbody td::before{content:attr(data-label);font-weight:600;font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.3px;margin-right:12px;text-align:left;flex-shrink:0}.channels-table tbody td.channel-name{font-size:15px;font-weight:700;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:4px}.channels-table tbody td.channel-name::before{display:none}.channels-table tbody td.ch-actions{justify-content:flex-end;flex-wrap:wrap;gap:4px;padding-top:8px;border-top:1px solid var(--border);margin-top:4px}.channels-table tbody td.ch-actions::before{display:none}.ch-actions-row{flex-wrap:wrap;justify-content:flex-end}.channels-table tbody td:nth-child(5),.channels-table tbody td:nth-child(6){display:none}.add-form{flex-direction:column!important;gap:8px!important}.add-form input,.add-form button{width:100%!important;max-width:100%!important}.detail-header{flex-direction:column}.detail-actions{width:100%}.channel-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}.video-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}}
 .channel-grid-card{position:relative}
 .channel-grid-card.mix-selected{border-color:var(--accent);box-shadow:0 0 0 2px rgba(88,166,255,0.3)}
+.detail-latest-wrap{flex-shrink:0;min-width:200px;max-width:280px}
+.latest-card{display:flex;gap:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;text-decoration:none;color:var(--text);transition:transform .2s,box-shadow .2s}
+.latest-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.2)}
+.latest-thumb{width:120px;min-height:68px;background-size:cover;background-position:center;background-color:var(--bg-hover);position:relative;flex-shrink:0}
+.latest-info{padding:8px 10px 8px 0;display:flex;flex-direction:column;justify-content:center;min-width:0}
+.latest-label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--accent);font-weight:700;margin-bottom:2px}
+.latest-title{font-size:12px;font-weight:500;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3;margin-bottom:2px}
+.latest-meta{font-size:11px;color:var(--text-dim)}
+.pagination-controls{display:flex;align-items:center;justify-content:center;gap:16px;padding:16px 0;margin-top:8px}
+.pagination-info{font-size:13px;color:var(--text-dim);font-weight:500}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-dialog{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px 24px;min-width:320px;max-width:400px;box-shadow:0 16px 48px rgba(0,0,0,.3)}
+@media(max-width:768px){.detail-latest-wrap{max-width:100%;min-width:0;width:100%}.latest-card{width:100%}.latest-thumb{width:100px;min-height:56px}}
 </style>
 
 <!-- Mix bar (shows when channels selected) -->
