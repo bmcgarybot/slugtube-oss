@@ -225,15 +225,112 @@ function toggleShuffle() {
 }
 updateToggleButtons();
 
+// ── Queue Panel ──
+function toggleQueuePanel() {
+    var panel = document.getElementById('queue-panel');
+    panel.classList.toggle('open');
+    var btn = document.getElementById('queue-toggle-btn');
+    btn.classList.toggle('active', panel.classList.contains('open'));
+    renderQueuePanel();
+}
+
+function updateQueueBadge() {
+    var count = SlugQueue.count();
+    var badge = document.getElementById('queue-count-badge');
+    if (badge) badge.textContent = count;
+    var panelCount = document.getElementById('queue-panel-count');
+    if (panelCount) panelCount.textContent = count > 0 ? '(' + count + ')' : '';
+}
+
+function fmtDur(s) {
+    if (!s) return '0:00';
+    s = Math.floor(s);
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    if (h) return h + ':' + (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+}
+
+function renderQueuePanel() {
+    var body = document.getElementById('queue-panel-body');
+    var emptyMsg = document.getElementById('queue-empty-msg');
+    var q = SlugQueue.get();
+    updateQueueBadge();
+
+    if (q.length === 0) {
+        body.innerHTML = '';
+        body.appendChild(emptyMsg || createEmptyMsg());
+        return;
+    }
+
+    var html = '';
+    q.forEach(function(item, idx) {
+        var isPlaying = item.id === videoId;
+        var thumbStyle = item.thumb_url ? "background-image:url('" + item.thumb_url + "')" : '';
+        html += '<div class="queue-item' + (isPlaying ? ' playing' : '') + '" data-id="' + item.id + '">' +
+            '<div class="queue-item-thumb" style="' + thumbStyle + '">' + (item.thumb_url ? '' : '<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--text-dimmer)">🎬</span>') + '</div>' +
+            '<div class="queue-item-info" onclick="playQueueItem(\'' + item.id + '\')">' +
+            '<div class="queue-item-title">' + escQHtml(item.title) + '</div>' +
+            '<div class="queue-item-channel">' + escQHtml(item.channel || '') + '</div>' +
+            (item.duration ? '<div class="queue-item-duration">' + fmtDur(item.duration) + '</div>' : '') +
+            '</div>' +
+            '<div class="queue-item-actions">' +
+            (idx > 0 ? '<button class="queue-item-btn" onclick="moveQueueItem(\'' + item.id + '\',\'up\')" title="Move up">↑</button>' : '') +
+            (idx < q.length - 1 ? '<button class="queue-item-btn" onclick="moveQueueItem(\'' + item.id + '\',\'down\')" title="Move down">↓</button>' : '') +
+            '<button class="queue-item-btn" onclick="removeQueueItem(\'' + item.id + '\')" title="Remove">✕</button>' +
+            '</div></div>';
+    });
+    body.innerHTML = html;
+}
+
+function createEmptyMsg() {
+    var d = document.createElement('div');
+    d.className = 'queue-empty';
+    d.id = 'queue-empty-msg';
+    d.innerHTML = 'Queue is empty.<br><span class="text-dimmer text-xs">Browse channels and click + on video cards to add.</span>';
+    return d;
+}
+
+function escQHtml(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(s));
+    return d.innerHTML;
+}
+
+function playQueueItem(id) {
+    window.location.href = '/watch/' + encodeURIComponent(id);
+}
+
+function removeQueueItem(id) {
+    SlugQueue.remove(id);
+    renderQueuePanel();
+}
+
+function moveQueueItem(id, dir) {
+    if (dir === 'up') SlugQueue.moveUp(id); else SlugQueue.moveDown(id);
+    renderQueuePanel();
+}
+
+// Listen for queue changes from other tabs
+document.addEventListener('queue-changed', function() { updateQueueBadge(); });
+window.addEventListener('storage', function(e) {
+    if (e.key === SlugQueue.KEY) { updateQueueBadge(); renderQueuePanel(); }
+});
+
+// Init queue badge
+updateQueueBadge();
+
 // ── Autoplay countdown ──
 var autoplayTimer = null;
 var autoplayTarget = null;
+var autoplayTargetTitle = null;
 
 function startAutoplayCountdown(nextId, nextTitle) {
     var overlay = document.getElementById('autoplay-overlay');
     var titleEl = document.getElementById('autoplay-next-title');
     var countEl = document.getElementById('countdown');
     autoplayTarget = nextId;
+    autoplayTargetTitle = nextTitle;
     titleEl.textContent = nextTitle || 'Next video';
     var count = 5;
     countEl.textContent = count;
@@ -309,7 +406,7 @@ window.addEventListener('beforeunload', () => {
     }));
 });
 
-// ── Mark watched + autoplay on end ──
+// ── Mark watched + queue-aware autoplay on end ──
 player.addEventListener('ended', () => {
     fetch('/api/watch-progress', {
         method: 'POST',
@@ -324,8 +421,33 @@ player.addEventListener('ended', () => {
     btn.textContent = '✅ Watched';
     btn.classList.add('btn-primary');
 
-    // Autoplay logic
+    // Queue-aware autoplay logic
     if (autoplayEnabled) {
+        // Priority 1: Play next from queue
+        var queue = SlugQueue.get();
+        if (queue.length > 0) {
+            var nextItem = SlugQueue.shift();
+            if (nextItem) {
+                startAutoplayCountdown(nextItem.id, nextItem.title);
+                renderQueuePanel();
+                return;
+            }
+        }
+
+        // Priority 2: Mix channels random
+        var mixChannels = SlugQueue.getMixChannels();
+        if (mixChannels.length > 0) {
+            var channelsParam = mixChannels.map(function(c) { return encodeURIComponent(c); }).join(',');
+            fetch('/api/random-video?channels=' + channelsParam + '&exclude=' + encodeURIComponent(videoId))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.id) startAutoplayCountdown(data.id, data.title);
+                })
+                .catch(function() {});
+            return;
+        }
+
+        // Priority 3: Shuffle within channel
         if (shuffleEnabled) {
             fetch('/api/random-video/' + encodeURIComponent(channelName) + '?exclude=' + encodeURIComponent(videoId))
                 .then(function(r) { return r.json(); })
@@ -334,6 +456,7 @@ player.addEventListener('ended', () => {
                 })
                 .catch(function() {});
         } else if (nextVideoUrl) {
+            // Priority 4: Sequential next
             startAutoplayCountdown(nextVideoUrl, nextVideoTitle);
         }
     }
@@ -397,6 +520,9 @@ document.addEventListener('keydown', (e) => {
             break;
         case 'p':
             if (prevVideoUrl) window.location.href = '/watch/' + encodeURIComponent(prevVideoUrl);
+            break;
+        case 'q':
+            toggleQueuePanel();
             break;
     }
 });
