@@ -501,3 +501,163 @@ function bulkDeleteSelected() {
         });
     });
 }
+
+/* ═══════════════════════════════════════════
+   Mix Mode — select multiple channels
+   ═══════════════════════════════════════════ */
+var _mixMode = false;
+var _mixSelected = []; // array of channel names
+
+function toggleMixMode() {
+    _mixMode = !_mixMode;
+    var btn = document.getElementById('mix-mode-btn');
+    btn.classList.toggle('active', _mixMode);
+
+    var grid = document.getElementById('channels-grid-view');
+    if (grid) grid.classList.toggle('mix-mode-active', _mixMode);
+
+    if (_mixMode) {
+        // Restore previously saved mix channels
+        var saved = SlugQueue.getMixChannels();
+        _mixSelected = saved.slice();
+        injectMixCheckboxes();
+        updateMixBar();
+    } else {
+        removeMixCheckboxes();
+        document.getElementById('mix-bar').style.display = 'none';
+        // Remove selected styling
+        document.querySelectorAll('.channel-grid-card.mix-selected').forEach(function(c) { c.classList.remove('mix-selected'); });
+    }
+}
+
+function injectMixCheckboxes() {
+    document.querySelectorAll('.channel-grid-card').forEach(function(card) {
+        // Remove old if present
+        var old = card.querySelector('.mix-checkbox-wrap');
+        if (old) old.remove();
+
+        var name = card.getAttribute('data-name');
+        var wrap = document.createElement('div');
+        wrap.className = 'mix-checkbox-wrap';
+        if (_mixSelected.indexOf(name) >= 0) {
+            wrap.classList.add('checked');
+            card.classList.add('mix-selected');
+        }
+        wrap.onclick = function(e) {
+            e.stopPropagation();
+            toggleMixChannel(name, wrap, card);
+        };
+        card.appendChild(wrap);
+    });
+}
+
+function removeMixCheckboxes() {
+    document.querySelectorAll('.mix-checkbox-wrap').forEach(function(el) { el.remove(); });
+}
+
+function toggleMixChannel(name, wrap, card) {
+    var idx = _mixSelected.indexOf(name);
+    if (idx >= 0) {
+        _mixSelected.splice(idx, 1);
+        wrap.classList.remove('checked');
+        card.classList.remove('mix-selected');
+    } else {
+        _mixSelected.push(name);
+        wrap.classList.add('checked');
+        card.classList.add('mix-selected');
+    }
+    SlugQueue.setMixChannels(_mixSelected);
+    updateMixBar();
+}
+
+function updateMixBar() {
+    var bar = document.getElementById('mix-bar');
+    var text = document.getElementById('mix-bar-text');
+    if (_mixSelected.length > 0) {
+        bar.style.display = 'flex';
+        text.textContent = _mixSelected.length + ' channel' + (_mixSelected.length > 1 ? 's' : '') + ' selected';
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+function clearMixSelection() {
+    _mixSelected = [];
+    SlugQueue.clearMix();
+    document.querySelectorAll('.mix-checkbox-wrap.checked').forEach(function(w) { w.classList.remove('checked'); });
+    document.querySelectorAll('.channel-grid-card.mix-selected').forEach(function(c) { c.classList.remove('mix-selected'); });
+    updateMixBar();
+}
+
+function shufflePlayMix() {
+    if (_mixSelected.length === 0) return;
+    // Save mix channels, then fetch a random video
+    SlugQueue.setMixChannels(_mixSelected);
+    var channelsParam = _mixSelected.map(function(c) { return encodeURIComponent(c); }).join(',');
+    fetch('/api/random-video?channels=' + channelsParam)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.id) {
+                window.location.href = '/watch/' + encodeURIComponent(data.id);
+            } else {
+                showToastGlobal('No videos found in selected channels');
+            }
+        })
+        .catch(function() { showToastGlobal('Error fetching random video'); });
+}
+
+/* ═══════════════════════════════════════════
+   Add to Queue (+) button on video cards
+   ═══════════════════════════════════════════ */
+function addQueueBtnToVideoCards() {
+    // Called after renderVideoGrid to inject + buttons
+    document.querySelectorAll('#video-grid .video-card').forEach(function(card) {
+        // Skip if already has a queue button
+        if (card.querySelector('.queue-add-btn')) return;
+
+        var thumbEl = card.querySelector('.video-thumb');
+        if (!thumbEl) return;
+
+        // Extract video data from the card
+        var href = card.getAttribute('href') || '';
+        var match = href.match(/\/watch\/(.+)/);
+        if (!match) return;
+        var videoId = decodeURIComponent(match[1]);
+
+        // Find video data from _st.data
+        var vData = null;
+        if (_st.data && _st.data.videos) {
+            for (var i = 0; i < _st.data.videos.length; i++) {
+                if (_st.data.videos[i].id === videoId) { vData = _st.data.videos[i]; break; }
+            }
+        }
+        if (!vData) return;
+
+        var btn = document.createElement('div');
+        btn.className = 'queue-add-btn';
+        btn.textContent = '+';
+        btn.title = 'Add to queue';
+        btn.onclick = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var item = {
+                id: vData.id,
+                title: vData.title,
+                channel: _st.current,
+                duration: vData.duration || 0,
+                thumb_url: vData.has_thumb ? '/media/thumb/' + encodeURIComponent(vData.id) : ''
+            };
+            var added = SlugQueue.add(item);
+            showToastGlobal(added ? 'Added to queue' : 'Already in queue');
+        };
+        thumbEl.appendChild(btn);
+    });
+}
+
+// Monkey-patch renderVideoGrid to add queue buttons after rendering
+var _origRenderVideoGrid = renderVideoGrid;
+renderVideoGrid = function(videos) {
+    _origRenderVideoGrid(videos);
+    // Inject queue add buttons after a tick (DOM needs to update)
+    setTimeout(addQueueBtnToVideoCards, 0);
+};
