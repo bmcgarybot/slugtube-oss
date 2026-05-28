@@ -76,7 +76,7 @@ https://www.youtube.com/channel/UCMTx_OGd-g4dVvhRKVUu9aQ/videos|BBC Select
 https://www.youtube.com/channel/UCjD2hhUF5R8G9oAjOzQo26w/videos|Documentary Vault
 https://www.youtube.com/channel/UC9MAhZQQd9egwWCxrwSIsJQ/videos|HISTORY
 https://www.youtube.com/channel/UCgyeJxD05YnoDquRMNBfBqw/videos|PBS
-https://www.youtube.com/@NaturePBS/videos|PBS Nature
+https://www.youtube.com/@NaturePBS/videos|PBS Nature Playlist
 https://www.youtube.com/channel/UCJUAqHnkDX15IvFoXIGTm2A/videos|Travel Channel
 
 # --- Education / Philosophy ---
