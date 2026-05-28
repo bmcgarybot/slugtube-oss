@@ -1006,6 +1006,102 @@
             .top-channel-name { min-width: 120px; max-width: 140px; }
         }
 
+        /* ── Feature Tour ── */
+        .tour-backdrop {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 9998;
+            pointer-events: auto;
+            transition: opacity 0.3s;
+        }
+        .tour-spotlight {
+            position: absolute;
+            border-radius: 8px;
+            box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.6);
+            z-index: 9999;
+            pointer-events: none;
+            transition: all 0.3s ease;
+        }
+        .tour-tooltip {
+            position: absolute;
+            z-index: 10001;
+            background: var(--bg-card, #1e2029);
+            backdrop-filter: blur(20px) saturate(130%);
+            -webkit-backdrop-filter: blur(20px) saturate(130%);
+            border: 1px solid var(--accent, #58a6ff);
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 360px;
+            min-width: 280px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            pointer-events: auto;
+            animation: tour-fadein 0.3s ease;
+        }
+        @keyframes tour-fadein {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .tour-tooltip-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text, #fff);
+            margin-bottom: 8px;
+        }
+        .tour-tooltip-desc {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--text-dim, #aaa);
+            margin-bottom: 16px;
+        }
+        .tour-tooltip-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .tour-step-counter {
+            font-size: 12px;
+            color: var(--text-dimmer, #666);
+        }
+        .tour-tooltip-btns {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .tour-btn {
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            border: 1px solid var(--border, #333);
+            background: transparent;
+            color: var(--text-dim, #aaa);
+            transition: all 0.2s;
+        }
+        .tour-btn:hover {
+            background: var(--bg-hover, #2a2d3a);
+        }
+        .tour-btn-primary {
+            background: var(--accent, #58a6ff);
+            color: #fff;
+            border-color: var(--accent, #58a6ff);
+        }
+        .tour-btn-primary:hover {
+            filter: brightness(1.1);
+        }
+        .tour-btn-skip {
+            font-size: 12px;
+            color: var(--text-dimmer, #666);
+            background: none;
+            border: none;
+            cursor: pointer;
+            text-decoration: underline;
+            padding: 4px;
+        }
+        .tour-btn-skip:hover {
+            color: var(--text-dim, #aaa);
+        }
+
         /* ── Toast Notifications ── */
         .toast { position: fixed; bottom: 20px; right: 20px; background: var(--accent); color: white; padding: 12px 20px; border-radius: 12px; font-size: 13px; font-weight: 500; opacity: 0; transform: translateY(10px); transition: all 0.3s; z-index: 1000; pointer-events: none; }
         .toast.show { opacity: 1; transform: translateY(0); }
@@ -1309,6 +1405,209 @@ function setThemeFromCard(theme) {
         syncUI();
     }
 })();
+</script>
+
+<!-- Page identifier for tour -->
+<script>document.body.dataset.page = '{{ page }}';</script>
+
+<!-- Feature Tour -->
+<script>
+var SlugTubeTour = {
+    steps: [],
+    currentStep: 0,
+    overlay: null,
+
+    allSteps: [
+        // Dashboard
+        { target: '#cookie-dot', title: 'Cookie Health', desc: 'This dot shows your cookie health at a glance. Green means cookies are working. Orange means they are getting old. Red means they are expired or YouTube rejected them. Hover for details.', page: 'dashboard' },
+        { target: '.recent-videos-grid', title: 'Latest Downloads', desc: 'Your 8 most recent downloads appear here with thumbnails, titles, and channel names. Click any video to start watching.', page: 'dashboard', optional: true },
+        { target: '.stat-card', title: 'Quick Stats', desc: 'Channel count, video count, archive size, and total storage at a glance. These update after each index run.', page: 'dashboard' },
+        { target: '.status-bar', title: 'Status Bar', desc: 'Live status: cookie health, last check time, and your yt-dlp version. All in one glance.', page: 'dashboard', optional: true },
+        { target: '.top-channel-row', title: 'Largest Channels', desc: 'Your biggest channels by storage. The bars show relative size so you can see which channels take the most space.', page: 'dashboard', optional: true },
+        { target: '.dashboard-actions', title: 'Quick Actions', desc: 'Quick Check scans for new videos (fast). Full Index does a deep scan of everything. Pause stops all downloads.', page: 'dashboard' },
+        // Sidebar — any page
+        { target: '.sidebar-theme-picker', title: 'Themes', desc: 'Pick your color scheme and toggle dark/light mode. 4 themes with 7 total variants: Midnight, Jellyfin, Playnite, AMOLED. Your choice is saved automatically.', page: 'any' },
+        // Channels
+        { target: '.channel-grid', title: 'Channel Grid', desc: 'All your channels in a poster grid. Click any channel to see its videos inline — no page navigation needed.', page: 'channels' },
+        { target: '.view-toggle', title: 'View Toggle', desc: 'Switch between the poster grid view and a compact table view.', page: 'channels' },
+        { target: '#add-channel-card', title: 'Add Channel', desc: 'Paste a YouTube channel URL and give it a name to subscribe. SlugTube will start downloading on the next check.', page: 'channels' },
+        // Player
+        { target: '#autoplay-btn', title: 'Autoplay', desc: 'Turn on autoplay to automatically play the next video when the current one ends.', page: 'watch' },
+        { target: '#shuffle-btn', title: 'Shuffle', desc: 'Shuffle picks a random video from the channel instead of playing in order.', page: 'watch' },
+        { target: '.player-container', title: 'Keyboard Shortcuts', desc: 'Space = play/pause, N = next, P = previous, F = fullscreen, J/L = seek 10 seconds back/forward.', page: 'watch' },
+        // Settings
+        { target: '[action="/run/banners"]', title: 'Fetch All Channel Art', desc: 'Grabs poster artwork for ALL channels at once. Great after importing new channels.', page: 'settings' },
+        { target: '.card-header:last-of-type', title: 'Import Channels', desc: 'Import channels from TubeArchivist, PinchFlat, or scan your existing library folders.', page: 'settings', altTarget: function() { var els = document.querySelectorAll('.card-header'); for (var i = 0; i < els.length; i++) { if (els[i].textContent.indexOf('Import') !== -1) return els[i].closest('.card'); } return null; } },
+        { target: '#restart-tour-btn', title: 'Re-launch Tour', desc: 'You can always come back to Settings and click this button to see this walkthrough again.', page: 'settings' },
+        // Info steps for dashboard (no highlight)
+        { target: null, title: 'Channels Page', desc: 'Click Channels in the sidebar to see all your subscribed channels in a poster grid. Click any channel to browse its videos inline.', page: 'dashboard', noHighlight: true },
+        { target: null, title: 'Video Player', desc: 'When watching a video, use Autoplay and Shuffle toggles to keep videos playing. Keyboard shortcuts: N = next, P = previous, F = fullscreen.', page: 'dashboard', noHighlight: true },
+        { target: null, title: 'Settings & Import', desc: 'Settings has Fetch All Channel Art (grabs artwork for all channels), Import (from TubeArchivist, PinchFlat, or disk scan), and a button to restart this walkthrough.', page: 'dashboard', noHighlight: true }
+    ],
+
+    init: function() {
+        var currentPage = (document.body.dataset.page || 'dashboard').toLowerCase();
+        this.steps = this.allSteps.filter(function(s) {
+            if (s.page === 'any') return true;
+            if (s.page === currentPage) return true;
+            return false;
+        }).filter(function(s) {
+            if (s.noHighlight) return true;
+            if (s.altTarget && typeof s.altTarget === 'function') {
+                return !!s.altTarget();
+            }
+            if (s.optional && s.target && !document.querySelector(s.target)) return false;
+            if (s.target && !document.querySelector(s.target)) return false;
+            return true;
+        });
+        this.currentStep = 0;
+    },
+
+    start: function() {
+        this.init();
+        if (this.steps.length === 0) return;
+        this.createOverlay();
+        this.showStep(0);
+    },
+
+    createOverlay: function() {
+        var old = document.getElementById('tour-container');
+        if (old) old.remove();
+
+        var container = document.createElement('div');
+        container.id = 'tour-container';
+        container.innerHTML =
+            '<div class="tour-backdrop" id="tour-backdrop"></div>' +
+            '<div class="tour-spotlight" id="tour-spotlight"></div>' +
+            '<div class="tour-tooltip" id="tour-tooltip">' +
+                '<div class="tour-tooltip-title" id="tour-title"></div>' +
+                '<div class="tour-tooltip-desc" id="tour-desc"></div>' +
+                '<div class="tour-tooltip-footer">' +
+                    '<span class="tour-step-counter" id="tour-counter"></span>' +
+                    '<div class="tour-tooltip-btns">' +
+                        '<button class="tour-btn-skip" id="tour-skip-btn">Skip tour</button>' +
+                        '<button class="tour-btn" id="tour-prev-btn">Back</button>' +
+                        '<button class="tour-btn tour-btn-primary" id="tour-next-btn">Next</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(container);
+        this.overlay = container;
+
+        // Bind events
+        var self = this;
+        document.getElementById('tour-backdrop').onclick = function() { self.end(); };
+        document.getElementById('tour-skip-btn').onclick = function() { self.end(); };
+        document.getElementById('tour-prev-btn').onclick = function() { self.prev(); };
+        document.getElementById('tour-next-btn').onclick = function() { self.next(); };
+
+        // Keyboard nav
+        this._keyHandler = function(e) {
+            if (e.key === 'Escape') self.end();
+            else if (e.key === 'ArrowRight' || e.key === 'Enter') self.next();
+            else if (e.key === 'ArrowLeft') self.prev();
+        };
+        document.addEventListener('keydown', this._keyHandler);
+    },
+
+    showStep: function(idx) {
+        if (idx < 0 || idx >= this.steps.length) { this.end(); return; }
+        this.currentStep = idx;
+        var step = this.steps[idx];
+
+        document.getElementById('tour-title').textContent = step.title;
+        document.getElementById('tour-desc').textContent = step.desc;
+        document.getElementById('tour-counter').textContent = (idx + 1) + ' of ' + this.steps.length;
+        document.getElementById('tour-prev-btn').style.display = idx === 0 ? 'none' : '';
+
+        var nextBtn = document.getElementById('tour-next-btn');
+        nextBtn.textContent = idx === this.steps.length - 1 ? 'Finish' : 'Next';
+
+        var spotlight = document.getElementById('tour-spotlight');
+        var tooltip = document.getElementById('tour-tooltip');
+
+        // Reset transform from centered steps
+        tooltip.style.transform = '';
+
+        var el = null;
+        if (step.altTarget && typeof step.altTarget === 'function') {
+            el = step.altTarget();
+        } else if (step.target && !step.noHighlight) {
+            el = document.querySelector(step.target);
+        }
+
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            var self = this;
+            setTimeout(function() {
+                if (self.currentStep !== idx) return; // step changed during scroll
+                var rect = el.getBoundingClientRect();
+                var pad = 8;
+                spotlight.style.display = '';
+                spotlight.style.left = (rect.left - pad + window.scrollX) + 'px';
+                spotlight.style.top = (rect.top - pad + window.scrollY) + 'px';
+                spotlight.style.width = (rect.width + pad * 2) + 'px';
+                spotlight.style.height = (rect.height + pad * 2) + 'px';
+
+                // Position tooltip
+                var below = rect.bottom + 16;
+                var tooltipH = tooltip.offsetHeight || 200;
+
+                if (below + tooltipH > window.innerHeight) {
+                    // Place above target
+                    tooltip.style.top = Math.max(10, (rect.top - 16 - tooltipH + window.scrollY)) + 'px';
+                } else {
+                    tooltip.style.top = (below + window.scrollY) + 'px';
+                }
+                var leftPos = Math.max(16, Math.min(rect.left + window.scrollX, window.innerWidth - 380));
+                tooltip.style.left = leftPos + 'px';
+            }, 350);
+        } else {
+            // No target: center tooltip, hide spotlight
+            spotlight.style.display = 'none';
+            tooltip.style.top = '50%';
+            tooltip.style.left = '50%';
+            tooltip.style.transform = 'translate(-50%, -50%)';
+        }
+    },
+
+    next: function() {
+        if (this.currentStep >= this.steps.length - 1) {
+            this.end();
+        } else {
+            this.showStep(this.currentStep + 1);
+        }
+    },
+
+    prev: function() {
+        if (this.currentStep > 0) {
+            this.showStep(this.currentStep - 1);
+        }
+    },
+
+    end: function() {
+        if (this.overlay) {
+            this.overlay.remove();
+            this.overlay = null;
+        }
+        if (this._keyHandler) {
+            document.removeEventListener('keydown', this._keyHandler);
+            this._keyHandler = null;
+        }
+        localStorage.setItem('slugtube-tour-done', 'true');
+    }
+};
+
+// Auto-launch on first visit
+if (!localStorage.getItem('slugtube-tour-done')) {
+    setTimeout(function() { SlugTubeTour.start(); }, 1200);
+}
+
+// Global restart function
+function restartTour() {
+    localStorage.removeItem('slugtube-tour-done');
+    SlugTubeTour.start();
+}
 </script>
 
 </body>
