@@ -5,6 +5,7 @@
 <div class="page-header">
     <h1>📺 Channels <span class="text-dim text-sm" style="font-weight:400;" id="channel-count">({{ unified | length }})</span></h1>
     <div class="view-toggle" id="browse-toggle">
+        <button class="btn btn-sm btn-ghost mix-toggle-btn" onclick="toggleMixMode()" id="mix-mode-btn" title="Select multiple channels to mix">🎲 Mix</button>
         <button class="btn btn-sm btn-ghost" onclick="setBrowseView('table')" id="browse-table-btn" title="Table view">☰ Table</button>
         <button class="btn btn-sm btn-ghost" onclick="setBrowseView('grid')" id="browse-grid-btn" title="Grid view">⊞ Grid</button>
     </div>
@@ -151,7 +152,16 @@
 [data-theme="light"] .video-card{background:rgba(255,255,255,.8);border:1px solid rgba(0,0,0,.08)}
 @media(max-width:1100px){.channels-table th:nth-child(5),.channels-table td:nth-child(5),.channels-table th:nth-child(6),.channels-table td:nth-child(6){display:none}}
 @media(max-width:768px){.channels-table thead{display:none}.channels-table tbody tr{display:block;margin-bottom:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px}.channels-table tbody td{display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:none;text-align:right!important}.channels-table tbody td::before{content:attr(data-label);font-weight:600;font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.3px;margin-right:12px;text-align:left;flex-shrink:0}.channels-table tbody td.channel-name{font-size:15px;font-weight:700;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:4px}.channels-table tbody td.channel-name::before{display:none}.channels-table tbody td.ch-actions{justify-content:flex-end;flex-wrap:wrap;gap:4px;padding-top:8px;border-top:1px solid var(--border);margin-top:4px}.channels-table tbody td.ch-actions::before{display:none}.ch-actions-row{flex-wrap:wrap;justify-content:flex-end}.channels-table tbody td:nth-child(5),.channels-table tbody td:nth-child(6){display:none}.add-form{flex-direction:column!important;gap:8px!important}.add-form input,.add-form button{width:100%!important;max-width:100%!important}.detail-header{flex-direction:column}.detail-actions{width:100%}.channel-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}.video-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}}
+.channel-grid-card{position:relative}
+.channel-grid-card.mix-selected{border-color:var(--accent);box-shadow:0 0 0 2px rgba(88,166,255,0.3)}
 </style>
+
+<!-- Mix bar (shows when channels selected) -->
+<div class="mix-bar" id="mix-bar" style="display:none;">
+    <span class="mix-bar-text" id="mix-bar-text">0 channels selected</span>
+    <button class="btn btn-sm btn-accent" onclick="shufflePlayMix()">🔀 Shuffle Play</button>
+    <button class="btn btn-sm btn-ghost" onclick="clearMixSelection()">✕ Clear</button>
+</div>
 
 <script src="/static/channels.js"></script>
 <script>initChannelsPage({{ 'true' if job.status == 'running' else 'false' }});</script>

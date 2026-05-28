@@ -63,6 +63,9 @@
             <button id="shuffle-btn" class="btn btn-sm toggle-btn" onclick="toggleShuffle()" title="Shuffle plays random video from channel">
                 Shuffle: OFF
             </button>
+            <button id="queue-toggle-btn" class="btn btn-sm toggle-btn" onclick="toggleQueuePanel()" title="Show/hide play queue">
+                Queue (<span id="queue-count-badge">0</span>)
+            </button>
         </div>
         <form method="POST" action="/delete/{{ video.id }}" style="display:inline; margin-left:auto;">
             <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('🗑️ Delete this video permanently?\n\n{{ video.title }}\n\nThis will remove the video file, thumbnail, subtitles, and database entry. This cannot be undone.')">🗑️ Delete</button>
@@ -75,6 +78,20 @@
         <div class="description-text">{{ video.description }}</div>
     </details>
     {% endif %}
+</div>
+
+<!-- Queue Panel -->
+<div class="queue-panel" id="queue-panel">
+    <div class="queue-panel-header">
+        <span>🎶 Play Queue <span id="queue-panel-count" class="text-dim text-sm"></span></span>
+        <button class="queue-panel-close" onclick="toggleQueuePanel()" title="Close">✕</button>
+    </div>
+    <div class="queue-panel-body" id="queue-panel-body">
+        <div class="queue-empty" id="queue-empty-msg">Queue is empty.<br><span class="text-dimmer text-xs">Browse channels and click + on video cards to add.</span></div>
+    </div>
+    <div class="queue-panel-footer">
+        <button class="btn btn-sm btn-danger" onclick="SlugQueue.clear(); renderQueuePanel();" style="width:100%;">Clear Queue</button>
+    </div>
 </div>
 
 <style>

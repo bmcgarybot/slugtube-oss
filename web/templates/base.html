@@ -1103,8 +1103,97 @@
         }
 
         /* ── Toast Notifications ── */
-        .toast { position: fixed; bottom: 20px; right: 20px; background: var(--accent); color: white; padding: 12px 20px; border-radius: 12px; font-size: 13px; font-weight: 500; opacity: 0; transform: translateY(10px); transition: all 0.3s; z-index: 1000; pointer-events: none; }
-        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(10px); background: var(--accent); color: white; padding: 12px 20px; border-radius: 12px; font-size: 13px; font-weight: 500; opacity: 0; transition: all 0.3s; z-index: 1000; pointer-events: none; white-space: nowrap; }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        /* ── Mix Mode (Channels page) ── */
+        .mix-toggle-btn { position: relative; }
+        .mix-toggle-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .mix-bar {
+            position: fixed; bottom: 0; left: 220px; right: 0;
+            padding: 12px 24px; z-index: 150;
+            background: rgba(22,27,34,0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border-top: 1px solid var(--accent);
+            display: flex; align-items: center; gap: 12px;
+            animation: mix-bar-slide 0.25s ease;
+        }
+        @keyframes mix-bar-slide { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .mix-bar-text { font-size: 14px; font-weight: 600; color: var(--text); flex: 1; }
+        .mix-bar .btn { flex-shrink: 0; }
+        .mix-checkbox-wrap {
+            position: absolute; top: 6px; right: 6px; z-index: 5;
+            width: 24px; height: 24px; border-radius: 50%;
+            background: rgba(0,0,0,0.6); border: 2px solid var(--accent);
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.15s;
+            opacity: 0; pointer-events: none;
+        }
+        .mix-mode-active .mix-checkbox-wrap { opacity: 1; pointer-events: auto; }
+        .mix-checkbox-wrap.checked { background: var(--accent); }
+        .mix-checkbox-wrap.checked::after { content: '✓'; color: #fff; font-size: 14px; font-weight: 700; }
+
+        /* ── Add to Queue (+) button on video cards ── */
+        .queue-add-btn {
+            position: absolute; bottom: 6px; right: 6px; z-index: 5;
+            width: 28px; height: 28px; border-radius: 50%;
+            background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.2);
+            color: #fff; font-size: 18px; line-height: 1;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; opacity: 0; transition: opacity 0.15s, background 0.15s;
+            pointer-events: none;
+        }
+        .video-card:hover .queue-add-btn,
+        .video-card:focus-within .queue-add-btn { opacity: 1; pointer-events: auto; }
+        .queue-add-btn:hover { background: var(--accent); border-color: var(--accent); }
+
+        /* ── Queue Panel (Player page) ── */
+        .queue-panel {
+            position: fixed; top: 0; right: 0; bottom: 0; width: 340px;
+            background: rgba(22,27,34,0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border-left: 1px solid var(--border); z-index: 200;
+            transform: translateX(100%); transition: transform 0.3s ease;
+            display: flex; flex-direction: column;
+        }
+        .queue-panel.open { transform: translateX(0); }
+        .queue-panel-header {
+            padding: 16px 18px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+            font-weight: 700; font-size: 15px;
+        }
+        .queue-panel-close { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 20px; padding: 4px; }
+        .queue-panel-close:hover { color: var(--text); }
+        .queue-panel-body { flex: 1; overflow-y: auto; padding: 8px 0; }
+        .queue-panel-footer { padding: 12px 18px; border-top: 1px solid var(--border); }
+        .queue-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 14px; cursor: pointer; transition: background 0.1s;
+            position: relative;
+        }
+        .queue-item:hover { background: var(--bg-hover); }
+        .queue-item.playing { background: rgba(88,166,255,0.08); border-left: 3px solid var(--accent); }
+        .queue-item-thumb {
+            width: 72px; height: 40px; border-radius: 4px;
+            background-size: cover; background-position: center; background-color: var(--bg-hover);
+            flex-shrink: 0; position: relative;
+        }
+        .queue-item-info { flex: 1; min-width: 0; }
+        .queue-item-title {
+            font-size: 12px; font-weight: 500; line-height: 1.3;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+        }
+        .queue-item-channel { font-size: 11px; color: var(--text-dim); }
+        .queue-item-duration { font-size: 10px; color: var(--text-dimmer); }
+        .queue-item-actions { display: flex; gap: 2px; flex-shrink: 0; }
+        .queue-item-btn {
+            background: none; border: none; color: var(--text-dim); cursor: pointer;
+            font-size: 14px; padding: 2px 4px; border-radius: 4px; transition: all 0.1s;
+        }
+        .queue-item-btn:hover { color: var(--text); background: var(--bg-hover); }
+        .queue-empty { padding: 40px 20px; text-align: center; color: var(--text-dim); font-size: 13px; }
+        @media (max-width: 900px) {
+            .mix-bar { left: 0; }
+            .queue-panel { width: 100%; }
+        }
 
         /* ── Sidebar Theme Picker ── */
         .sidebar-theme-picker {
@@ -1407,6 +1496,52 @@ function setThemeFromCard(theme) {
 })();
 </script>
 
+<!-- Global Queue Helpers (localStorage) -->
+<script>
+var SlugQueue = {
+    KEY: 'slugtube-queue',
+    MIX_KEY: 'slugtube-mix-channels',
+    get: function() { try { return JSON.parse(localStorage.getItem(this.KEY)) || []; } catch(e) { return []; } },
+    set: function(q) { localStorage.setItem(this.KEY, JSON.stringify(q)); document.dispatchEvent(new CustomEvent('queue-changed', { detail: q })); },
+    add: function(item) {
+        var q = this.get();
+        // Avoid dupes
+        if (q.some(function(x) { return x.id === item.id; })) return false;
+        q.push(item);
+        this.set(q);
+        return true;
+    },
+    remove: function(id) { var q = this.get().filter(function(x) { return x.id !== id; }); this.set(q); return q; },
+    clear: function() { this.set([]); },
+    moveUp: function(id) {
+        var q = this.get(), idx = -1;
+        for (var i = 0; i < q.length; i++) { if (q[i].id === id) { idx = i; break; } }
+        if (idx > 0) { var tmp = q[idx]; q[idx] = q[idx-1]; q[idx-1] = tmp; this.set(q); }
+        return q;
+    },
+    moveDown: function(id) {
+        var q = this.get(), idx = -1;
+        for (var i = 0; i < q.length; i++) { if (q[i].id === id) { idx = i; break; } }
+        if (idx >= 0 && idx < q.length - 1) { var tmp = q[idx]; q[idx] = q[idx+1]; q[idx+1] = tmp; this.set(q); }
+        return q;
+    },
+    shift: function() { var q = this.get(); var item = q.shift(); this.set(q); return item; },
+    count: function() { return this.get().length; },
+    getMixChannels: function() { try { return JSON.parse(localStorage.getItem(this.MIX_KEY)) || []; } catch(e) { return []; } },
+    setMixChannels: function(arr) { localStorage.setItem(this.MIX_KEY, JSON.stringify(arr)); },
+    clearMix: function() { localStorage.removeItem(this.MIX_KEY); }
+};
+
+function showToastGlobal(msg) {
+    var t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function() { t.classList.add('show'); }, 10);
+    setTimeout(function() { t.classList.remove('show'); setTimeout(function() { t.remove(); }, 300); }, 2000);
+}
+</script>
+
 <!-- Page identifier for tour -->
 <script>document.body.dataset.page = '{{ page }}';</script>
 
@@ -1418,31 +1553,200 @@ var SlugTubeTour = {
     overlay: null,
 
     allSteps: [
-        // Dashboard
-        { target: '#cookie-dot', title: 'Cookie Health', desc: 'This dot shows your cookie health at a glance. Green means cookies are working. Orange means they are getting old. Red means they are expired or YouTube rejected them. Hover for details.', page: 'dashboard' },
-        { target: '.recent-videos-grid', title: 'Latest Downloads', desc: 'Your 8 most recent downloads appear here with thumbnails, titles, and channel names. Click any video to start watching.', page: 'dashboard', optional: true },
-        { target: '.stat-card', title: 'Quick Stats', desc: 'Channel count, video count, archive size, and total storage at a glance. These update after each index run.', page: 'dashboard' },
-        { target: '.status-bar', title: 'Status Bar', desc: 'Live status: cookie health, last check time, and your yt-dlp version. All in one glance.', page: 'dashboard', optional: true },
-        { target: '.top-channel-row', title: 'Largest Channels', desc: 'Your biggest channels by storage. The bars show relative size so you can see which channels take the most space.', page: 'dashboard', optional: true },
-        { target: '.dashboard-actions', title: 'Quick Actions', desc: 'Quick Check scans for new videos (fast). Full Index does a deep scan of everything. Pause stops all downloads.', page: 'dashboard' },
-        // Sidebar — any page
-        { target: '.sidebar-theme-picker', title: 'Themes', desc: 'Pick your color scheme and toggle dark/light mode. 4 themes with 7 total variants: Midnight, Jellyfin, Playnite, AMOLED. Your choice is saved automatically.', page: 'any' },
-        // Channels
-        { target: '.channel-grid', title: 'Channel Grid', desc: 'All your channels in a poster grid. Click any channel to see its videos inline — no page navigation needed.', page: 'channels' },
-        { target: '.view-toggle', title: 'View Toggle', desc: 'Switch between the poster grid view and a compact table view.', page: 'channels' },
-        { target: '#add-channel-card', title: 'Add Channel', desc: 'Paste a YouTube channel URL and give it a name to subscribe. SlugTube will start downloading on the next check.', page: 'channels' },
-        // Player
-        { target: '#autoplay-btn', title: 'Autoplay', desc: 'Turn on autoplay to automatically play the next video when the current one ends.', page: 'watch' },
-        { target: '#shuffle-btn', title: 'Shuffle', desc: 'Shuffle picks a random video from the channel instead of playing in order.', page: 'watch' },
-        { target: '.player-container', title: 'Keyboard Shortcuts', desc: 'Space = play/pause, N = next, P = previous, F = fullscreen, J/L = seek 10 seconds back/forward.', page: 'watch' },
-        // Settings
-        { target: '[action="/run/banners"]', title: 'Fetch All Channel Art', desc: 'Grabs poster artwork for ALL channels at once. Great after importing new channels.', page: 'settings' },
-        { target: '.card-header:last-of-type', title: 'Import Channels', desc: 'Import channels from TubeArchivist, PinchFlat, or scan your existing library folders.', page: 'settings', altTarget: function() { var els = document.querySelectorAll('.card-header'); for (var i = 0; i < els.length; i++) { if (els[i].textContent.indexOf('Import') !== -1) return els[i].closest('.card'); } return null; } },
-        { target: '#restart-tour-btn', title: 'Re-launch Tour', desc: 'You can always come back to Settings and click this button to see this walkthrough again.', page: 'settings' },
-        // Info steps for dashboard (no highlight)
-        { target: null, title: 'Channels Page', desc: 'Click Channels in the sidebar to see all your subscribed channels in a poster grid. Click any channel to browse its videos inline.', page: 'dashboard', noHighlight: true },
-        { target: null, title: 'Video Player', desc: 'When watching a video, use Autoplay and Shuffle toggles to keep videos playing. Keyboard shortcuts: N = next, P = previous, F = fullscreen.', page: 'dashboard', noHighlight: true },
-        { target: null, title: 'Settings & Import', desc: 'Settings has Fetch All Channel Art (grabs artwork for all channels), Import (from TubeArchivist, PinchFlat, or disk scan), and a button to restart this walkthrough.', page: 'dashboard', noHighlight: true }
+        /* ═══════════════════════════════════════════
+           DASHBOARD  (page: 'dashboard')
+           ═══════════════════════════════════════════ */
+
+        // 1 — Welcome
+        { target: null, title: 'Welcome to SlugTube! 🎉', desc: 'This tour will walk you through every feature. Use Next/Back or arrow keys to navigate, Escape to skip. Let\'s go!', page: 'dashboard', noHighlight: true },
+
+        // 2 — Cookie Health Dot
+        { target: '#cookie-dot', title: 'Cookie Health Dot', desc: 'Green = cookies are fresh. Orange = getting stale, refresh soon. Red = expired or rejected — paste new cookies in Settings. Hover this dot anytime for details.', page: 'dashboard' },
+
+        // 3 — Latest Downloads Grid
+        { target: '.recent-videos-grid', title: 'Latest Downloads', desc: 'Your 8 most recent downloads with thumbnails and titles. Click any video to jump straight into the player.', page: 'dashboard', optional: true },
+
+        // 4 — Stat Cards
+        { target: '.stat-card', title: 'Quick Stats', desc: 'Channel count, video count, archive entries, and total storage at a glance. These refresh after each index run.', page: 'dashboard' },
+
+        // 5 — Status Bar
+        { target: '.status-bar', title: 'Status Bar', desc: 'Live cookie status, last check time, and your yt-dlp version — all in one line so you know the system is healthy.', page: 'dashboard', optional: true },
+
+        // 6 — Largest Channels chart
+        { target: '.top-channel-row', title: 'Largest Channels', desc: 'Horizontal bars showing storage per channel. Great for spotting which channels eat the most disk space.', page: 'dashboard', optional: true },
+
+        // 7 — Recent Activity feed
+        { target: '.activity-feed', title: 'Recent Activity', desc: 'Color-coded log of recent events — downloads, errors, checks. A quick way to see what SlugTube has been up to.', page: 'dashboard', optional: true },
+
+        // 8 — Quick Check button
+        { target: '#quick-check-btn', title: 'Quick Check', desc: 'Scans the last ~50 videos per channel for anything new. Fast — usually done in seconds. Run this often.', page: 'dashboard', optional: true },
+
+        // 9 — Full Index button
+        { target: '#full-index-btn', title: 'Full Index', desc: 'Deep-scans every channel from the beginning. Slower but catches anything Quick Check might miss. Good for first-time setup.', page: 'dashboard', optional: true },
+
+        // 10 — Pause/Resume
+        { target: '#pause-btn', title: 'Pause / Resume', desc: 'Stops all active downloads immediately. Click again to resume. Handy when you need bandwidth for something else.', page: 'dashboard', optional: true },
+
+        /* ═══════════════════════════════════════════
+           SIDEBAR  (page: 'any')
+           ═══════════════════════════════════════════ */
+
+        // 11 — Navigation
+        { target: '.sidebar-nav', title: 'Navigation', desc: 'Jump between Dashboard, Channels, History, Logs, and Settings. Everything is one click away.', page: 'any', optional: true },
+
+        // 12 — Theme Picker
+        { target: '.sidebar-theme-picker', title: 'Themes & Dark Mode', desc: '4 color schemes — Midnight, Jellyfin, Playnite, AMOLED — each with a dark/light toggle. Your choice is saved automatically.', page: 'any' },
+
+        // 13 — Cookie Dot reminder (sidebar)
+        { target: '#cookie-dot', title: 'Cookie Dot (Always Visible)', desc: 'This dot lives in the sidebar on every page. It auto-refreshes every 60 seconds so you always know if cookies need attention.', page: 'any' },
+
+        /* ═══════════════════════════════════════════
+           CHANNELS  (page: 'channels')
+           ═══════════════════════════════════════════ */
+
+        // 14 — Channel Grid
+        { target: '.channel-grid', title: 'Channel Grid', desc: 'Poster cards for every subscribed channel. Click any card to load its videos inline — no page reload needed.', page: 'channels' },
+
+        // 15 — Grid/Table Toggle
+        { target: '.view-toggle', title: 'Grid / Table Toggle', desc: 'Switch between the poster grid and a detailed table view. Table shows name, video count, size, and subscription status.', page: 'channels', optional: true },
+
+        // 16 — Table View
+        { target: '.channel-table', title: 'Table View', desc: 'Columns for name, video count, size, and subscription status. Click a column header to sort. Compact and info-dense.', page: 'channels', optional: true },
+
+        // 17 — Click a Channel
+        { target: '.channel-card', title: 'Inline Channel Browsing', desc: 'Click a channel poster to load its videos right here — no page navigation. A channel strip appears at the top for quick switching.', page: 'channels', optional: true },
+
+        // 18 — Channel Hero Banner
+        { target: '.channel-hero', title: 'Channel Banner', desc: 'Artwork banner with a gradient fade. Fetched automatically when you add a channel, or grab it manually from channel actions.', page: 'channels', optional: true },
+
+        // 19 — Channel Stats Bar
+        { target: '.channel-stats', title: 'Channel Stats', desc: 'Video count, total size, and subscription status for the selected channel. Updates after each scan.', page: 'channels', optional: true },
+
+        // 20 — Channel Actions
+        { target: '.channel-actions', title: 'Channel Actions', desc: 'Quick Check, Download, Reindex, Fetch Art, and Unsubscribe — all the tools to manage a single channel.', page: 'channels', optional: true },
+
+        // 21 — Destructive Actions (⋮ menu)
+        { target: '.channel-menu-btn', title: 'Destructive Actions', desc: 'The ⋮ menu hides dangerous stuff like Delete Channel. It always asks for confirmation first, so no accidental nukes.', page: 'channels', optional: true },
+
+        // 22 — Video Grid View
+        { target: '.video-grid', title: 'Video Grid', desc: 'Poster cards with thumbnails, duration badges, and blue progress bars showing how much you\'ve watched.', page: 'channels', optional: true },
+
+        // 23 — Video List View
+        { target: '.video-list-toggle', title: 'Video List View', desc: 'Toggle to a table view with title, date, duration, file size, and watched status. Great for scanning large libraries.', page: 'channels', optional: true },
+
+        // 24 — Sort Options
+        { target: '#video-sort', title: 'Sort Videos', desc: 'Sort by Newest, Oldest, Title A-Z, Largest, Smallest, Longest, or Shortest. Your sort preference sticks until you change it.', page: 'channels', optional: true },
+
+        // 25 — Bulk Select Mode
+        { target: '#bulk-mode-toggle', title: 'Bulk Select Mode', desc: 'Flip this switch to enable checkboxes on every video card. Select multiple videos for batch actions.', page: 'channels', optional: true },
+
+        // 26 — Bulk Actions
+        { target: '#bulk-action-bar', title: 'Bulk Actions', desc: 'Select All, Select None, and Delete Selected. Deleted videos are removed from disk and excluded from future downloads.', page: 'channels', optional: true },
+
+        // 27 — Add New Channel
+        { target: '#add-channel-card', title: 'Add a Channel', desc: 'Paste a YouTube channel URL and give it a display name. SlugTube starts downloading on the next check.', page: 'channels' },
+
+        // 28 — URL Routing
+        { target: null, title: 'Bookmarkable URLs', desc: 'URLs like /channels#ChannelName are bookmarkable. Browser back/forward works too — deep-link straight to any channel.', page: 'channels', noHighlight: true },
+
+        /* ═══════════════════════════════════════════
+           PLAYER  (page: 'watch')
+           ═══════════════════════════════════════════ */
+
+        // 29 — Video Player
+        { target: '.player-container', title: 'Video Player', desc: 'Standard HTML5 player that resumes where you left off. Your position is saved automatically — just close and come back later.', page: 'watch', optional: true },
+
+        // 30 — Progress Saving
+        { target: '.player-container', title: 'Progress Saving', desc: 'Your position saves every 10 seconds. You\'ll see a blue progress bar on video cards showing how far you got.', page: 'watch', optional: true },
+
+        // 31 — Autoplay Toggle
+        { target: '#autoplay-btn', title: 'Autoplay', desc: 'When ON, the next video plays automatically after the current one ends. Binge mode activated.', page: 'watch' },
+
+        // 32 — Shuffle Toggle
+        { target: '#shuffle-btn', title: 'Shuffle', desc: 'When ON, picks a random video from the channel instead of playing in order. Great for variety.', page: 'watch' },
+
+        // 33 — Countdown Overlay
+        { target: null, title: 'Up Next Countdown', desc: 'When a video ends with Autoplay on, you\'ll see "Up next in 5s…" with Cancel and Play Now buttons. You\'re always in control.', page: 'watch', noHighlight: true },
+
+        // 34 — Mark Watched
+        { target: '#mark-watched-btn', title: 'Mark as Watched', desc: 'Toggles the watched status. Watched videos get a checkmark badge on their card so you can track what you\'ve seen.', page: 'watch', optional: true },
+
+        // 35 — Previous/Next
+        { target: '#next-btn', title: 'Previous / Next', desc: 'Navigate through videos in channel order. Works with your current sort — so if you sorted by newest, Next goes to the next newest.', page: 'watch', optional: true },
+
+        // 36 — Delete Video
+        { target: '#delete-btn', title: 'Delete Video', desc: 'Permanently removes the video file from disk. Always asks for confirmation first. Deleted videos won\'t be re-downloaded.', page: 'watch', optional: true },
+
+        // 37 — Keyboard Shortcuts
+        { target: '.player-container', title: 'Keyboard Shortcuts ⌨️', desc: 'Space/K = play/pause · J/← = back 10s · L/→ = forward 10s · N = next · P = previous · F = fullscreen · M = mute', page: 'watch', optional: true },
+
+        /* ═══════════════════════════════════════════
+           SETTINGS  (page: 'settings')
+           ═══════════════════════════════════════════ */
+
+        // 38 — Download Quality
+        { target: '#quality-select', title: 'Download Quality', desc: 'Choose the quality profile for yt-dlp. Higher quality = bigger files. Pick what fits your storage and bandwidth.', page: 'settings', optional: true },
+
+        // 39 — Subtitle/Metadata
+        { target: '#subtitle-options', title: 'Subtitles & Metadata', desc: 'Options for embedding subtitles, metadata, and thumbnails into downloaded files. Useful for offline players that read embedded info.', page: 'settings', optional: true },
+
+        // 40 — Schedule Display
+        { target: '#schedule-display', title: 'Schedule', desc: 'Shows the cron schedule for Quick Check and Full Index runs. Adjust these in your server config to control how often SlugTube checks for new videos.', page: 'settings', optional: true },
+
+        // 41 — Quick Check (Settings)
+        { target: '#settings-quick-check', title: 'Quick Check', desc: 'Same as the dashboard button — scans recent videos across all channels. Handy shortcut while you\'re in Settings.', page: 'settings', optional: true },
+
+        // 42 — Full Index (Settings)
+        { target: '#settings-full-index', title: 'Full Index', desc: 'Deep scan from Settings. Same thorough scan as the dashboard version.', page: 'settings', optional: true },
+
+        // 43 — Update yt-dlp
+        { target: '#update-ytdlp-btn', title: 'Update yt-dlp', desc: 'Updates your YouTube downloader to the latest version. YouTube changes often, so keeping yt-dlp current prevents download failures.', page: 'settings', optional: true },
+
+        // 44 — Fetch All Channel Art
+        { target: '[action="/run/banners"]', title: 'Fetch All Channel Art', desc: 'Grabs poster and banner artwork for ALL channels at once using their YouTube URLs. Great after a bulk import.', page: 'settings' },
+
+        // 45 — Re-Index Library
+        { target: '#reindex-btn', title: 'Re-Index Library', desc: 'Rebuilds the entire database from what\'s actually on disk. Use this if files were added/removed outside SlugTube.', page: 'settings', optional: true },
+
+        // 46 — Import: Scan Library
+        { target: '#scan-library-btn', title: 'Import: Scan Library', desc: 'Scans your existing media folders for channels by reading .info.json files. Perfect for importing a library you already have.', page: 'settings', optional: true },
+
+        // 47 — Import: TubeArchivist
+        { target: '#import-tubearchivist', title: 'Import: TubeArchivist', desc: 'Upload a TubeArchivist backup ZIP to import all your channels. One-click migration from TubeArchivist to SlugTube.', page: 'settings', optional: true },
+
+        // 48 — Import: PinchFlat
+        { target: '#import-pinchflat', title: 'Import: PinchFlat', desc: 'Reads PinchFlat\'s SQLite database to import channels. If you\'re coming from PinchFlat, this makes switching painless.', page: 'settings', optional: true },
+
+        // 49 — Cookies
+        { target: '#cookies-textarea', title: 'Cookies', desc: 'Paste your exported cookies.txt here — tab characters are auto-fixed. Export from Firefox or Brave, and close the browser after exporting so the cookies stay valid.', page: 'settings', optional: true },
+
+        // 50 — Restart Tour
+        { target: '#restart-tour-btn', title: 'Restart This Tour', desc: 'That\'s the end of the Settings section! You can always come back here and click this button to see the full walkthrough again.', page: 'settings' },
+
+        /* ═══════════════════════════════════════════
+           INFO CARDS  (page: 'dashboard', noHighlight)
+           Cross-page feature highlights shown as
+           centered cards on the dashboard.
+           ═══════════════════════════════════════════ */
+
+        // 51
+        { target: null, title: 'Inline Channel Browsing', desc: 'The Channels page lets you click any poster to load its videos without leaving the page. A channel strip at the top lets you hop between channels.', page: 'dashboard', noHighlight: true },
+
+        // 52
+        { target: null, title: 'Autoplay & Shuffle', desc: 'The player has Autoplay and Shuffle toggles — let videos play continuously or in random order. Perfect for binge sessions.', page: 'dashboard', noHighlight: true },
+
+        // 53
+        { target: null, title: 'Easy Imports', desc: 'Settings has one-click import from TubeArchivist and PinchFlat, plus a library scanner for existing media folders.', page: 'dashboard', noHighlight: true },
+
+        // 54
+        { target: null, title: 'Keyboard Shortcuts', desc: 'On the player page: Space = play/pause, N = next, P = previous, F = fullscreen, M = mute, J/L and arrow keys = seek.', page: 'dashboard', noHighlight: true },
+
+        /* ═══════════════════════════════════════════
+           COMPLETION
+           ═══════════════════════════════════════════ */
+
+        // 55
+        { target: null, title: 'You\'re All Set! 🎉', desc: 'SlugTube will remember you\'ve seen this tour. To revisit it anytime, go to Settings → 🎓 Show Feature Walkthrough. Enjoy your library!', page: 'any', noHighlight: true }
     ],
 
     init: function() {
