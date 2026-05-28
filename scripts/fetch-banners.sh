@@ -1,28 +1,36 @@
 #!/bin/bash
-# Fetch YouTube channel banner/poster images
-# Uses channels.txt as primary URL source, falls back to .info.json metadata
+# Fetch YouTube channel poster/banner images
+# Method 1: YouTube channel page HTML (og:image meta tag) — no yt-dlp needed
+# Method 2: Existing .info.json thumbnail metadata fallback
+# Method 3: yt-dlp --write-thumbnail as last resort
 
 SHOWS_DIR="/shows"
 CHANNELS_FILE="/config/channels.txt"
 COOKIE_FILE="/config/Cookie/cookies.txt"
 LOG="/config/logs/slugtube.log"
-TMPJSON="/tmp/slugtube-banner-fetch.json"
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [banners] $1" | tee -a "$LOG"; }
 
 log "Starting banner fetch..."
 
-COOKIE_ARGS=""
+CURL_COOKIE=""
 if [ -f "$COOKIE_FILE" ]; then
-    COOKIE_ARGS="--cookies $COOKIE_FILE"
+    CURL_COOKIE="-b $COOKIE_FILE"
+fi
+
+YT_COOKIE=""
+if [ -f "$COOKIE_FILE" ]; then
+    YT_COOKIE="--cookies $COOKIE_FILE"
 fi
 
 # Build lookup: folder_name -> channel_url from channels.txt
 declare -A CHANNEL_URLS
 if [ -f "$CHANNELS_FILE" ]; then
     while IFS='|' read -r url name; do
-        [[ "$url" =~ ^# ]] && continue
+        [[ "$url" =~ ^#  ]] && continue
+        [[ "$url" =~ ^[[:space:]]*$ ]] && continue
         [ -z "$url" ] || [ -z "$name" ] && continue
+        # Strip /videos suffix for channel page access
         clean_url="${url%/videos}"
         CHANNEL_URLS["$name"]="$clean_url"
     done < "$CHANNELS_FILE"
@@ -38,131 +46,151 @@ for channel_dir in "$SHOWS_DIR"/*/; do
     channel_name=$(basename "$channel_dir")
     total=$((total + 1))
 
+    need_poster=false
+    need_banner=false
+    [ ! -f "$channel_dir/poster.jpg" ] && need_poster=true
+    [ ! -f "$channel_dir/banner.jpg" ] && need_banner=true
+
     # Skip if both already exist
-    if [ -f "$channel_dir/poster.jpg" ] && [ -f "$channel_dir/banner.jpg" ]; then
+    if ! $need_poster && ! $need_banner; then
         skipped=$((skipped + 1))
         continue
     fi
 
-    # Get channel URL: channels.txt first, then .info.json
+    # Get channel URL from channels.txt
     channel_url="${CHANNEL_URLS[$channel_name]:-}"
 
+    # Fallback: get URL from .info.json
     if [ -z "$channel_url" ]; then
         json_file=$(find "$channel_dir" -name "*.info.json" -type f 2>/dev/null | head -1)
         if [ -n "$json_file" ]; then
             channel_url=$(python3 -c "
 import json
 try:
-    with open(r'$json_file', 'r', errors='replace') as f:
+    with open(r'''$json_file''', 'r', errors='replace') as f:
         d = json.load(f)
-    print(d.get('channel_url') or d.get('uploader_url') or '')
+    url = d.get('channel_url') or d.get('uploader_url') or ''
+    # Strip /videos if present
+    print(url.rstrip('/').removesuffix('/videos'))
 except: pass
 " 2>/dev/null)
         fi
     fi
 
+    # Skip playlists — they don't have channel art
+    if [[ "$channel_url" == *"playlist?"* ]]; then
+        log "  ⏭️  $channel_name — playlist (no channel art)"
+        skipped=$((skipped + 1))
+        continue
+    fi
+
     if [ -z "$channel_url" ]; then
-        log "  ⏭️  $channel_name — no channel URL"
+        log "  ⏭️  $channel_name — no channel URL found"
         failed=$((failed + 1))
         continue
     fi
 
-    log "  Fetching art for: $channel_name ($channel_url)"
+    log "  Fetching art for: $channel_name"
+    got_something=false
 
-    # Dump channel/video metadata to temp file
-    rm -f "$TMPJSON"
-    yt-dlp $COOKIE_ARGS --dump-json --playlist-items 0 --flat-playlist "$channel_url" > "$TMPJSON" 2>/dev/null
-    if [ ! -s "$TMPJSON" ]; then
-        yt-dlp $COOKIE_ARGS --dump-json --playlist-items 1 "$channel_url/videos" > "$TMPJSON" 2>/dev/null
-    fi
+    # ══════════════════════════════════════════════════════
+    # METHOD 1: Scrape YouTube channel page HTML
+    # YouTube puts the channel avatar in <meta property="og:image">
+    # and sometimes a banner in the page JSON
+    # ══════════════════════════════════════════════════════
+    if $need_poster; then
+        page_html=$(curl -sL $CURL_COOKIE \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36" \
+            -H "Accept-Language: en-US,en;q=0.9" \
+            --max-time 15 \
+            "$channel_url" 2>/dev/null)
 
-    got_poster=false
-    got_banner=false
-
-    if [ -s "$TMPJSON" ]; then
-        # Extract poster URL
-        if [ ! -f "${channel_dir}poster.jpg" ]; then
-            poster_url=$(python3 -c "
-import json
-with open('$TMPJSON') as f:
-    d = json.load(f)
-thumbs = d.get('thumbnails', [])
-# Try tagged avatars first
-for t in thumbs:
-    tid = (t.get('id') or '').lower()
-    if 'avatar' in tid and t.get('url'):
-        print(t['url']); exit()
-# Fallback: square-ish thumbnail >= 100px
-for t in sorted(thumbs, key=lambda x: x.get('width',0), reverse=True):
-    w, h = t.get('width',0), t.get('height',0)
-    if w > 0 and h > 0 and 0.8 < w/h < 1.3 and w >= 100 and t.get('url'):
-        print(t['url']); exit()
+        if [ -n "$page_html" ]; then
+            # Extract og:image (channel avatar)
+            poster_url=$(echo "$page_html" | python3 -c "
+import sys, re
+html = sys.stdin.read()
+# Try og:image meta tag
+m = re.search(r'<meta\s+property=\"og:image\"\s+content=\"([^\"]+)\"', html)
+if m:
+    url = m.group(1)
+    # Upgrade to high-res: replace =s... with =s900
+    url = re.sub(r'=s\d+', '=s900', url)
+    print(url)
 " 2>/dev/null)
 
             if [ -n "$poster_url" ]; then
-                curl -s -L -o "${channel_dir}poster.jpg" "$poster_url"
+                curl -sL --max-time 10 -o "${channel_dir}poster.jpg" "$poster_url"
                 if [ -s "${channel_dir}poster.jpg" ]; then
-                    log "    ✅ poster"
-                    got_poster=true
+                    log "    ✅ poster (from channel page)"
+                    got_something=true
+                    need_poster=false
                 else
                     rm -f "${channel_dir}poster.jpg"
                 fi
             fi
-        else
-            got_poster=true
-        fi
 
-        # Extract banner URL
-        if [ ! -f "${channel_dir}banner.jpg" ]; then
-            banner_url=$(python3 -c "
-import json
-with open('$TMPJSON') as f:
-    d = json.load(f)
-thumbs = d.get('thumbnails', [])
-# Try tagged banners first
-for t in thumbs:
-    tid = (t.get('id') or '').lower()
-    if 'banner' in tid and t.get('url'):
-        w = t.get('width', 0)
-        if w >= 1000 or w == 0:
-            print(t['url']); exit()
-# Fallback: wide landscape
-for t in sorted(thumbs, key=lambda x: x.get('width',0), reverse=True):
-    w, h = t.get('width',0), t.get('height',0)
-    if w > 0 and h > 0 and w/h > 2.5 and t.get('url'):
-        print(t['url']); exit()
+            # Extract banner from page JSON (ytInitialData)
+            if $need_banner; then
+                banner_url=$(echo "$page_html" | python3 -c "
+import sys, re, json
+html = sys.stdin.read()
+# Find ytInitialData JSON blob
+m = re.search(r'var\s+ytInitialData\s*=\s*(\{.*?\});', html, re.DOTALL)
+if not m:
+    m = re.search(r'ytInitialData\"\s*:\s*(\{.*?\})\s*[,;]', html, re.DOTALL)
+if m:
+    try:
+        data = json.loads(m.group(1))
+        # Navigate to banner
+        header = data.get('header', {})
+        # c4TabbedHeaderRenderer path
+        c4 = header.get('c4TabbedHeaderRenderer', {})
+        banner = c4.get('banner', {})
+        thumbs = banner.get('thumbnails', [])
+        if thumbs:
+            # Get highest resolution
+            best = max(thumbs, key=lambda t: t.get('width', 0))
+            print(best.get('url', ''))
+    except: pass
 " 2>/dev/null)
 
-            if [ -n "$banner_url" ]; then
-                curl -s -L -o "${channel_dir}banner.jpg" "$banner_url"
-                if [ -s "${channel_dir}banner.jpg" ]; then
-                    log "    ✅ banner"
-                    got_banner=true
-                else
-                    rm -f "${channel_dir}banner.jpg"
+                if [ -n "$banner_url" ]; then
+                    # YouTube banner URLs sometimes lack protocol
+                    [[ "$banner_url" == //* ]] && banner_url="https:$banner_url"
+                    curl -sL --max-time 10 -o "${channel_dir}banner.jpg" "$banner_url"
+                    if [ -s "${channel_dir}banner.jpg" ]; then
+                        log "    ✅ banner (from channel page)"
+                        got_something=true
+                        need_banner=false
+                    else
+                        rm -f "${channel_dir}banner.jpg"
+                    fi
                 fi
             fi
-        else
-            got_banner=true
         fi
     fi
 
-    # Fallback for poster: check video .info.json files for avatar
-    if [ ! -f "${channel_dir}poster.jpg" ]; then
+    # ══════════════════════════════════════════════════════
+    # METHOD 2: Existing .info.json thumbnail metadata
+    # ══════════════════════════════════════════════════════
+    if $need_poster; then
         for jf in $(find "$channel_dir" -name "*.info.json" -type f 2>/dev/null | head -3); do
             avatar_url=$(python3 -c "
 import json
-with open(r'$jf', 'r', errors='replace') as f:
+with open(r'''$jf''', 'r', errors='replace') as f:
     d = json.load(f)
 for t in d.get('thumbnails', []):
-    if 'avatar' in (t.get('id') or '').lower() and t.get('url'):
+    tid = (t.get('id') or '').lower()
+    if 'avatar' in tid and t.get('url'):
         print(t['url']); break
 " 2>/dev/null)
             if [ -n "$avatar_url" ]; then
-                curl -s -L -o "${channel_dir}poster.jpg" "$avatar_url"
+                curl -sL --max-time 10 -o "${channel_dir}poster.jpg" "$avatar_url"
                 if [ -s "${channel_dir}poster.jpg" ]; then
-                    log "    ✅ poster (from video metadata)"
-                    got_poster=true
+                    log "    ✅ poster (from .info.json)"
+                    got_something=true
+                    need_poster=false
                     break
                 else
                     rm -f "${channel_dir}poster.jpg"
@@ -171,15 +199,38 @@ for t in d.get('thumbnails', []):
         done
     fi
 
-    if $got_poster || $got_banner; then
+    # ══════════════════════════════════════════════════════
+    # METHOD 3: yt-dlp --write-thumbnail (last resort)
+    # ══════════════════════════════════════════════════════
+    if $need_poster; then
+        tmpdir=$(mktemp -d)
+        if yt-dlp $YT_COOKIE \
+            --write-thumbnail \
+            --skip-download \
+            --playlist-items 1 \
+            --convert-thumbnails jpg \
+            -o "$tmpdir/%(channel)s" \
+            "$channel_url/videos" 2>/dev/null; then
+
+            thumb=$(find "$tmpdir" -name "*.jpg" 2>/dev/null | head -1)
+            if [ -n "$thumb" ] && [ -s "$thumb" ]; then
+                cp "$thumb" "${channel_dir}poster.jpg"
+                log "    ✅ poster (from yt-dlp thumbnail)"
+                got_something=true
+            fi
+        fi
+        rm -rf "$tmpdir"
+    fi
+
+    if $got_something; then
         count=$((count + 1))
     else
         failed=$((failed + 1))
         log "  ❌ $channel_name — no art found"
     fi
 
-    sleep 2
+    # Rate limit: 1 second between channels
+    sleep 1
 done
 
-rm -f "$TMPJSON"
-log "Art fetch done. Channels: $total, Got art: $count, Already had: $skipped, Failed: $failed"
+log "Art fetch done. Total: $total | Got art: $count | Already had: $skipped | Failed: $failed"
