@@ -102,6 +102,36 @@
     <span class="status-item status-ok">📡 yt-dlp: v{{ ytdlp_version }}</span>
 </div>
 
+<!-- Latest Downloads Grid -->
+{% if recent_videos %}
+<div class="card" style="margin-bottom: 20px;">
+    <div class="card-header">
+        🎬 Latest Downloads
+        <a href="/library/recent" style="color: var(--accent); text-decoration: none; font-size: 13px;">View all →</a>
+    </div>
+    <div class="recent-videos-grid">
+        {% for v in recent_videos %}
+        <a href="/watch/{{ v.id | urlencode }}" class="recent-video-card">
+            <div class="recent-video-thumb">
+                {% if v.thumbnail_path %}
+                <img src="/media/thumb/{{ v.id | urlencode }}" alt="" loading="lazy">
+                {% else %}
+                <div class="recent-video-placeholder">▶</div>
+                {% endif %}
+                {% if v.duration %}
+                <span class="recent-video-duration">{{ "%d:%02d" | format(v.duration // 60, v.duration % 60) }}</span>
+                {% endif %}
+            </div>
+            <div class="recent-video-info">
+                <div class="recent-video-title">{{ v.title or 'Untitled' }}</div>
+                <div class="recent-video-channel">{{ v.channel_name }}</div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 <!-- Main Two-Column Layout -->
 <div class="dashboard-grid">
     <!-- Top Channels — Bar Chart -->

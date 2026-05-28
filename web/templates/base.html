@@ -61,6 +61,18 @@
             border-bottom: 1px solid var(--border);
         }
         .sidebar-brand span { font-size: 26px; }
+        .cookie-dot {
+            font-size: 12px;
+            margin-left: 4px;
+            vertical-align: middle;
+            transition: color 0.3s ease;
+            cursor: help;
+        }
+        .cookie-dot.ok { color: #3fb950; }
+        .cookie-dot.warning { color: #d29922; }
+        .cookie-dot.expired { color: #f85149; }
+        .cookie-dot.missing { color: #f85149; }
+        .cookie-dot.rejected { color: #f85149; }
         .sidebar-nav { padding: 12px 0; }
         .sidebar-nav a {
             display: flex;
@@ -900,6 +912,85 @@
         .activity-time { font-size: 11px; color: var(--text-dimmer); }
 
         /* ── Dashboard Grid ── */
+        .recent-videos-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+            padding: 16px;
+        }
+        .recent-video-card {
+            text-decoration: none;
+            color: var(--text);
+            border-radius: 10px;
+            overflow: hidden;
+            background: var(--bg-hover);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .recent-video-card:hover {
+            transform: translateY(-3px) scale(1.01);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+        }
+        .recent-video-thumb {
+            position: relative;
+            width: 100%;
+            padding-top: 56.25%;
+            background: var(--bg);
+            overflow: hidden;
+        }
+        .recent-video-thumb img {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .recent-video-placeholder {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            color: var(--text-dimmer);
+            background: var(--bg);
+        }
+        .recent-video-duration {
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            background: rgba(0,0,0,0.8);
+            color: #fff;
+            font-size: 11px;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .recent-video-info {
+            padding: 10px;
+        }
+        .recent-video-title {
+            font-size: 13px;
+            font-weight: 500;
+            line-height: 1.3;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            margin-bottom: 4px;
+        }
+        .recent-video-channel {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+        @media (max-width: 1200px) {
+            .recent-videos-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 768px) {
+            .recent-videos-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
         .dashboard-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -1004,7 +1095,7 @@
 <div class="sidebar-overlay" onclick="document.querySelector('.sidebar').classList.remove('open'); this.classList.remove('open');"></div>
 
 <aside class="sidebar">
-    <div class="sidebar-brand"><span>🐌</span> SlugTube</div>
+    <div class="sidebar-brand"><span>🐌</span> SlugTube <span id="cookie-dot" class="cookie-dot" title="Checking cookies...">●</span></div>
     <nav class="sidebar-nav" onclick="if(window.innerWidth<=900){document.querySelector('.sidebar').classList.remove('open');document.querySelector('.sidebar-overlay').classList.remove('open');}">
         <a href="/" class="{% if page == 'dashboard' %}active{% endif %}">
             <span class="icon">📊</span> Dashboard
@@ -1079,6 +1170,34 @@
 {% if job.status == 'running' and request.path == '/' %}
 <script>setTimeout(() => location.reload(), 8000);</script>
 {% endif %}
+
+<!-- Cookie health indicator -->
+<script>
+function checkCookieHealth() {
+    fetch('/api/cookie-health')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var dot = document.getElementById('cookie-dot');
+            if (!dot) return;
+            dot.className = 'cookie-dot ' + data.status;
+            dot.title = data.message || 'Unknown';
+            if (data.status === 'ok') {
+                dot.title = 'Cookies healthy (' + data.age_days + ' days old)';
+            } else if (data.status === 'rejected') {
+                dot.title = 'YouTube rejected cookies - re-export needed';
+            } else if (data.status === 'expired') {
+                dot.title = 'Cookies expired - re-export needed';
+            } else if (data.status === 'warning') {
+                dot.title = data.message;
+            } else if (data.status === 'missing') {
+                dot.title = 'No cookie file found';
+            }
+        })
+        .catch(function() {});
+}
+checkCookieHealth();
+setInterval(checkCookieHealth, 60000);
+</script>
 
 <!-- Global dropdown handler -->
 <script>

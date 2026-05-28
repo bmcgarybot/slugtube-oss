@@ -510,12 +510,13 @@ def dashboard():
     cookie_health = check_cookie_health()
 
     # Use the indexer database for stats (same source as Library page)
-    from indexer import get_library_stats, get_all_channels, get_index_status
+    from indexer import get_library_stats, get_all_channels, get_index_status, get_recent_videos
     idx_stats = get_library_stats()
     idx_channels = get_all_channels()
     idx_status = get_index_status()
     total_videos = idx_stats.get('total_videos', 0)
     top_channels = sorted(idx_channels, key=lambda c: c.get('video_count', 0), reverse=True)[:10]
+    recent_videos = get_recent_videos(limit=8)
 
     return render_template("dashboard.html",
         page="dashboard",
@@ -531,6 +532,7 @@ def dashboard():
         config=config,
         recent=get_recent_downloads(15),
         top_channels=top_channels,
+        recent_videos=recent_videos,
         scanning=idx_status.get('scanning', False),
         cookie_health=cookie_health,
     )
@@ -1151,7 +1153,29 @@ def api_status():
 
 @app.route("/api/cookie-health")
 def api_cookie_health():
-    return jsonify(check_cookie_health())
+    health = check_cookie_health()
+    # Also check recent logs for YouTube's server-side cookie rejection
+    try:
+        if os.path.isfile(LOG_FILE):
+            with open(LOG_FILE, "r", errors="replace") as f:
+                # Read last 50KB of log to check for recent cookie warnings
+                f.seek(0, 2)
+                size = f.tell()
+                f.seek(max(0, size - 50000))
+                recent = f.read()
+            if "cookies are no longer valid" in recent or "cookie" in recent.lower() and "expired" in recent.lower():
+                # Find the most recent cookie warning timestamp
+                import re
+                matches = re.findall(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*cookies are no longer valid", recent)
+                if matches:
+                    last_warning = matches[-1]
+                    # If file health says OK but logs show rejection, override
+                    if health["status"] == "ok":
+                        health["status"] = "rejected"
+                        health["message"] = f"YouTube rejected cookies at {last_warning}"
+    except Exception:
+        pass
+    return jsonify(health)
 
 
 @app.route("/api/log-size")
@@ -1690,6 +1714,46 @@ def api_watch_progress():
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/random-video/<path:channel_name>")
+def api_random_video(channel_name):
+    """Return a random video from a specific channel."""
+    from indexer import get_channel_videos
+    from urllib.parse import unquote
+    import random
+    channel_name = unquote(channel_name)
+    videos, _ = get_channel_videos(channel_name, sort='newest', limit=5000)
+    if not videos:
+        return jsonify({"error": "No videos"}), 404
+    exclude = request.args.get('exclude', '')
+    candidates = [v for v in videos if v['id'] != exclude]
+    if not candidates:
+        candidates = videos
+    pick = random.choice(candidates)
+    return jsonify({"id": pick['id'], "title": pick['title']})
+
+
+@app.route("/api/random-video")
+def api_random_video_any():
+    """Return a random video from all channels or a subset."""
+    from indexer import get_db
+    import random
+    channels_param = request.args.get('channels', '')
+    exclude = request.args.get('exclude', '')
+    conn = get_db()
+    if channels_param:
+        channel_list = [c.strip() for c in channels_param.split(',')]
+        placeholders = ','.join(['?' for _ in channel_list])
+        rows = conn.execute(f"SELECT id, title, channel_name FROM videos WHERE channel_name IN ({placeholders})", channel_list).fetchall()
+    else:
+        rows = conn.execute("SELECT id, title, channel_name FROM videos").fetchall()
+    conn.close()
+    candidates = [dict(r) for r in rows if r['id'] != exclude]
+    if not candidates:
+        return jsonify({"error": "No videos"}), 404
+    pick = random.choice(candidates)
+    return jsonify({"id": pick['id'], "title": pick['title'], "channel_name": pick['channel_name']})
 
 
 @app.route("/api/reindex", methods=["POST"])

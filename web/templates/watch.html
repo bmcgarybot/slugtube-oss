@@ -20,6 +20,17 @@
         {% endif %}
         Your browser does not support the video tag.
     </video>
+    <!-- Autoplay countdown overlay -->
+    <div id="autoplay-overlay" style="display:none;">
+        <div class="autoplay-content">
+            <div class="autoplay-text">Up next in <span id="countdown">5</span>s</div>
+            <div id="autoplay-next-title" class="autoplay-title"></div>
+            <div class="autoplay-actions">
+                <button onclick="cancelAutoplay()" class="btn btn-sm">Cancel</button>
+                <button onclick="playNow()" class="btn btn-sm btn-accent">Play Now</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Video Info -->
@@ -40,11 +51,19 @@
             {% if video.watched %}✅ Watched{% else %}👁️ Mark Watched{% endif %}
         </button>
         {% if prev_video %}
-        <a href="/watch/{{ prev_video.id }}" class="btn btn-sm">⏮️ Previous</a>
+        <a href="/watch/{{ prev_video.id }}" class="btn btn-sm" id="prev-btn">⏮️ Previous</a>
         {% endif %}
         {% if next_video %}
-        <a href="/watch/{{ next_video.id }}" class="btn btn-sm">⏭️ Next</a>
+        <a href="/watch/{{ next_video.id }}" class="btn btn-sm" id="next-btn">⏭️ Next</a>
         {% endif %}
+        <div class="player-toggles">
+            <button id="autoplay-btn" class="btn btn-sm toggle-btn" onclick="toggleAutoplay()" title="Auto-play next video when current ends">
+                Autoplay: OFF
+            </button>
+            <button id="shuffle-btn" class="btn btn-sm toggle-btn" onclick="toggleShuffle()" title="Shuffle plays random video from channel">
+                Shuffle: OFF
+            </button>
+        </div>
         <form method="POST" action="/delete/{{ video.id }}" style="display:inline; margin-left:auto;">
             <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('🗑️ Delete this video permanently?\n\n{{ video.title }}\n\nThis will remove the video file, thumbnail, subtitles, and database entry. This cannot be undone.')">🗑️ Delete</button>
         </form>
@@ -67,6 +86,7 @@
         border-radius: 10px;
         overflow: hidden;
         box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        position: relative;
     }
     #player {
         width: 100%;
@@ -112,13 +132,117 @@
         overflow-y: auto;
         padding-top: 8px;
     }
+    .player-toggles {
+        display: flex;
+        gap: 6px;
+        margin-left: 8px;
+    }
+    .toggle-btn {
+        font-size: 12px;
+        padding: 4px 10px;
+        border-radius: 16px;
+        transition: all 0.2s;
+    }
+    .toggle-btn.active {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+    }
+    #autoplay-overlay {
+        position: absolute;
+        bottom: 0; left: 0; right: 0;
+        background: linear-gradient(transparent, rgba(0,0,0,0.9));
+        padding: 40px 24px 24px;
+        z-index: 10;
+    }
+    .autoplay-content { max-width: 400px; }
+    .autoplay-text { font-size: 14px; color: rgba(255,255,255,0.7); margin-bottom: 4px; }
+    .autoplay-title {
+        font-size: 16px; color: #fff; font-weight: 600; margin-bottom: 12px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .autoplay-actions { display: flex; gap: 8px; }
+    .btn-accent {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+    }
+    .btn-accent:hover {
+        opacity: 0.85;
+    }
 </style>
 
 <script>
 const player = document.getElementById('player');
 const videoId = '{{ video.id }}';
+var channelName = {{ video.channel_name | tojson }};
+var nextVideoUrl = {{ (next_video.id if next_video else '') | tojson }};
+var nextVideoTitle = {{ (next_video.title if next_video else '') | tojson }};
+var prevVideoUrl = {{ (prev_video.id if prev_video else '') | tojson }};
 
-// Resume playback if we have a saved position
+// ── Autoplay + Shuffle state ──
+var autoplayEnabled = localStorage.getItem('slugtube-autoplay') === 'true';
+var shuffleEnabled = localStorage.getItem('slugtube-shuffle') === 'true';
+
+function updateToggleButtons() {
+    var abtn = document.getElementById('autoplay-btn');
+    var sbtn = document.getElementById('shuffle-btn');
+    if (abtn) {
+        abtn.textContent = 'Autoplay: ' + (autoplayEnabled ? 'ON' : 'OFF');
+        abtn.classList.toggle('active', autoplayEnabled);
+    }
+    if (sbtn) {
+        sbtn.textContent = 'Shuffle: ' + (shuffleEnabled ? 'ON' : 'OFF');
+        sbtn.classList.toggle('active', shuffleEnabled);
+    }
+}
+function toggleAutoplay() {
+    autoplayEnabled = !autoplayEnabled;
+    localStorage.setItem('slugtube-autoplay', autoplayEnabled);
+    updateToggleButtons();
+}
+function toggleShuffle() {
+    shuffleEnabled = !shuffleEnabled;
+    localStorage.setItem('slugtube-shuffle', shuffleEnabled);
+    updateToggleButtons();
+}
+updateToggleButtons();
+
+// ── Autoplay countdown ──
+var autoplayTimer = null;
+var autoplayTarget = null;
+
+function startAutoplayCountdown(nextId, nextTitle) {
+    var overlay = document.getElementById('autoplay-overlay');
+    var titleEl = document.getElementById('autoplay-next-title');
+    var countEl = document.getElementById('countdown');
+    autoplayTarget = nextId;
+    titleEl.textContent = nextTitle || 'Next video';
+    var count = 5;
+    countEl.textContent = count;
+    overlay.style.display = '';
+    autoplayTimer = setInterval(function() {
+        count--;
+        countEl.textContent = count;
+        if (count <= 0) {
+            clearInterval(autoplayTimer);
+            playNow();
+        }
+    }, 1000);
+}
+function cancelAutoplay() {
+    clearInterval(autoplayTimer);
+    document.getElementById('autoplay-overlay').style.display = 'none';
+    autoplayTarget = null;
+}
+function playNow() {
+    clearInterval(autoplayTimer);
+    if (autoplayTarget) {
+        window.location.href = '/watch/' + encodeURIComponent(autoplayTarget);
+    }
+}
+
+// ── Resume playback ──
 const resumePos = player.dataset.resume;
 if (resumePos) {
     player.addEventListener('loadedmetadata', () => {
@@ -126,7 +250,7 @@ if (resumePos) {
     }, { once: true });
 }
 
-// Save progress every 10 seconds
+// ── Save progress every 10 seconds ──
 let lastSaved = 0;
 player.addEventListener('timeupdate', () => {
     const now = Date.now();
@@ -146,7 +270,7 @@ player.addEventListener('timeupdate', () => {
     }
 });
 
-// Also save on pause and before leaving
+// Save on pause
 player.addEventListener('pause', () => {
     fetch('/api/watch-progress', {
         method: 'POST',
@@ -159,8 +283,8 @@ player.addEventListener('pause', () => {
     }).catch(() => {});
 });
 
+// Save before leaving
 window.addEventListener('beforeunload', () => {
-    // Use sendBeacon for reliable save on page close
     navigator.sendBeacon('/api/watch-progress', JSON.stringify({
         video_id: videoId,
         position: player.currentTime || 0,
@@ -168,7 +292,7 @@ window.addEventListener('beforeunload', () => {
     }));
 });
 
-// Mark as watched when video ends
+// ── Mark watched + autoplay on end ──
 player.addEventListener('ended', () => {
     fetch('/api/watch-progress', {
         method: 'POST',
@@ -182,8 +306,23 @@ player.addEventListener('ended', () => {
     const btn = document.getElementById('mark-watched-btn');
     btn.textContent = '✅ Watched';
     btn.classList.add('btn-primary');
+
+    // Autoplay logic
+    if (autoplayEnabled) {
+        if (shuffleEnabled) {
+            fetch('/api/random-video/' + encodeURIComponent(channelName) + '?exclude=' + encodeURIComponent(videoId))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.id) startAutoplayCountdown(data.id, data.title);
+                })
+                .catch(function() {});
+        } else if (nextVideoUrl) {
+            startAutoplayCountdown(nextVideoUrl, nextVideoTitle);
+        }
+    }
 });
 
+// ── Toggle watched ──
 function toggleWatched() {
     const btn = document.getElementById('mark-watched-btn');
     const isWatched = btn.textContent.includes('✅');
@@ -205,7 +344,7 @@ function toggleWatched() {
     }
 }
 
-// Keyboard shortcuts
+// ── Keyboard shortcuts ──
 document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     switch(e.key) {
@@ -235,6 +374,12 @@ document.addEventListener('keydown', (e) => {
         case 'm':
             e.preventDefault();
             player.muted = !player.muted;
+            break;
+        case 'n':
+            if (nextVideoUrl) window.location.href = '/watch/' + encodeURIComponent(nextVideoUrl);
+            break;
+        case 'p':
+            if (prevVideoUrl) window.location.href = '/watch/' + encodeURIComponent(prevVideoUrl);
             break;
     }
 });
