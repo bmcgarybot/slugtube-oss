@@ -1716,6 +1716,46 @@ def api_watch_progress():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/random-video/<path:channel_name>")
+def api_random_video(channel_name):
+    """Return a random video from a specific channel."""
+    from indexer import get_channel_videos
+    from urllib.parse import unquote
+    import random
+    channel_name = unquote(channel_name)
+    videos, _ = get_channel_videos(channel_name, sort='newest', limit=5000)
+    if not videos:
+        return jsonify({"error": "No videos"}), 404
+    exclude = request.args.get('exclude', '')
+    candidates = [v for v in videos if v['id'] != exclude]
+    if not candidates:
+        candidates = videos
+    pick = random.choice(candidates)
+    return jsonify({"id": pick['id'], "title": pick['title']})
+
+
+@app.route("/api/random-video")
+def api_random_video_any():
+    """Return a random video from all channels or a subset."""
+    from indexer import get_db
+    import random
+    channels_param = request.args.get('channels', '')
+    exclude = request.args.get('exclude', '')
+    conn = get_db()
+    if channels_param:
+        channel_list = [c.strip() for c in channels_param.split(',')]
+        placeholders = ','.join(['?' for _ in channel_list])
+        rows = conn.execute(f"SELECT id, title, channel_name FROM videos WHERE channel_name IN ({placeholders})", channel_list).fetchall()
+    else:
+        rows = conn.execute("SELECT id, title, channel_name FROM videos").fetchall()
+    conn.close()
+    candidates = [dict(r) for r in rows if r['id'] != exclude]
+    if not candidates:
+        return jsonify({"error": "No videos"}), 404
+    pick = random.choice(candidates)
+    return jsonify({"id": pick['id'], "title": pick['title'], "channel_name": pick['channel_name']})
+
+
 @app.route("/api/reindex", methods=["POST"])
 def api_reindex():
     """Trigger a library re-index."""
