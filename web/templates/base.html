@@ -1649,6 +1649,15 @@ var SlugTubeTour = {
         // 28 — URL Routing
         { target: null, title: 'Bookmarkable URLs', desc: 'URLs like /channels#ChannelName are bookmarkable. Browser back/forward works too — deep-link straight to any channel.', page: 'channels', noHighlight: true },
 
+        // 29 — Mix Mode
+        { target: '#mix-toggle-btn', title: '🎲 Mix Mode', desc: 'Hit the Mix button to select multiple channels. Checkboxes appear on each channel card. Pick your favorites, then Shuffle Play to get random videos from across all of them.', page: 'channels', optional: true },
+
+        // 30 — Mix Bar
+        { target: '#mix-bar', title: 'Mix Shuffle Play', desc: 'Once you have selected channels, this bar shows how many are picked. Shuffle Play opens a random video from any of them. Clear resets your selection.', page: 'channels', optional: true },
+
+        // 31 — Add to Queue
+        { target: null, title: 'Add to Queue (+)', desc: 'Hover over any video thumbnail and you will see a + button in the bottom-right. Click it to add the video to your queue without leaving the page. A toast confirms it was added.', page: 'channels', noHighlight: true },
+
         /* ═══════════════════════════════════════════
            PLAYER  (page: 'watch')
            ═══════════════════════════════════════════ */
@@ -1668,7 +1677,13 @@ var SlugTubeTour = {
         // 33 — Countdown Overlay
         { target: null, title: 'Up Next Countdown', desc: 'When a video ends with Autoplay on, you\'ll see "Up next in 5s…" with Cancel and Play Now buttons. You\'re always in control.', page: 'watch', noHighlight: true },
 
-        // 34 — Mark Watched
+        // 34 — Queue Panel
+        { target: '#queue-toggle-btn', title: 'Queue Panel', desc: 'Click Queue to open a slide-in panel on the right showing your queued videos. Reorder with arrows, remove with ✕, or clear the whole queue. Press Q on your keyboard to toggle it.', page: 'watch', optional: true },
+
+        // 35 — Queue-Aware Autoplay
+        { target: null, title: 'Smart Autoplay Priority', desc: 'When a video ends, autoplay picks the next one in this order: (1) Next video in your queue, (2) Random from your mix channels, (3) Random from this channel if shuffle is on, (4) Next in order. Queue always wins.', page: 'watch', noHighlight: true },
+
+        // 36 — Mark Watched
         { target: '#mark-watched-btn', title: 'Mark as Watched', desc: 'Toggles the watched status. Watched videos get a checkmark badge on their card so you can track what you\'ve seen.', page: 'watch', optional: true },
 
         // 35 — Previous/Next
