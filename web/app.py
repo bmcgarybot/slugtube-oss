@@ -510,12 +510,13 @@ def dashboard():
     cookie_health = check_cookie_health()
 
     # Use the indexer database for stats (same source as Library page)
-    from indexer import get_library_stats, get_all_channels, get_index_status
+    from indexer import get_library_stats, get_all_channels, get_index_status, get_recent_videos
     idx_stats = get_library_stats()
     idx_channels = get_all_channels()
     idx_status = get_index_status()
     total_videos = idx_stats.get('total_videos', 0)
     top_channels = sorted(idx_channels, key=lambda c: c.get('video_count', 0), reverse=True)[:10]
+    recent_videos = get_recent_videos(limit=8)
 
     return render_template("dashboard.html",
         page="dashboard",
@@ -531,6 +532,7 @@ def dashboard():
         config=config,
         recent=get_recent_downloads(15),
         top_channels=top_channels,
+        recent_videos=recent_videos,
         scanning=idx_status.get('scanning', False),
         cookie_health=cookie_health,
     )
