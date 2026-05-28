@@ -61,6 +61,18 @@
             border-bottom: 1px solid var(--border);
         }
         .sidebar-brand span { font-size: 26px; }
+        .cookie-dot {
+            font-size: 12px;
+            margin-left: 4px;
+            vertical-align: middle;
+            transition: color 0.3s ease;
+            cursor: help;
+        }
+        .cookie-dot.ok { color: #3fb950; }
+        .cookie-dot.warning { color: #d29922; }
+        .cookie-dot.expired { color: #f85149; }
+        .cookie-dot.missing { color: #f85149; }
+        .cookie-dot.rejected { color: #f85149; }
         .sidebar-nav { padding: 12px 0; }
         .sidebar-nav a {
             display: flex;
@@ -1004,7 +1016,7 @@
 <div class="sidebar-overlay" onclick="document.querySelector('.sidebar').classList.remove('open'); this.classList.remove('open');"></div>
 
 <aside class="sidebar">
-    <div class="sidebar-brand"><span>🐌</span> SlugTube</div>
+    <div class="sidebar-brand"><span>🐌</span> SlugTube <span id="cookie-dot" class="cookie-dot" title="Checking cookies...">●</span></div>
     <nav class="sidebar-nav" onclick="if(window.innerWidth<=900){document.querySelector('.sidebar').classList.remove('open');document.querySelector('.sidebar-overlay').classList.remove('open');}">
         <a href="/" class="{% if page == 'dashboard' %}active{% endif %}">
             <span class="icon">📊</span> Dashboard
@@ -1079,6 +1091,34 @@
 {% if job.status == 'running' and request.path == '/' %}
 <script>setTimeout(() => location.reload(), 8000);</script>
 {% endif %}
+
+<!-- Cookie health indicator -->
+<script>
+function checkCookieHealth() {
+    fetch('/api/cookie-health')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var dot = document.getElementById('cookie-dot');
+            if (!dot) return;
+            dot.className = 'cookie-dot ' + data.status;
+            dot.title = data.message || 'Unknown';
+            if (data.status === 'ok') {
+                dot.title = 'Cookies healthy (' + data.age_days + ' days old)';
+            } else if (data.status === 'rejected') {
+                dot.title = 'YouTube rejected cookies - re-export needed';
+            } else if (data.status === 'expired') {
+                dot.title = 'Cookies expired - re-export needed';
+            } else if (data.status === 'warning') {
+                dot.title = data.message;
+            } else if (data.status === 'missing') {
+                dot.title = 'No cookie file found';
+            }
+        })
+        .catch(function() {});
+}
+checkCookieHealth();
+setInterval(checkCookieHealth, 60000);
+</script>
 
 <!-- Global dropdown handler -->
 <script>

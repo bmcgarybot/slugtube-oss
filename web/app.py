@@ -1151,7 +1151,29 @@ def api_status():
 
 @app.route("/api/cookie-health")
 def api_cookie_health():
-    return jsonify(check_cookie_health())
+    health = check_cookie_health()
+    # Also check recent logs for YouTube's server-side cookie rejection
+    try:
+        if os.path.isfile(LOG_FILE):
+            with open(LOG_FILE, "r", errors="replace") as f:
+                # Read last 50KB of log to check for recent cookie warnings
+                f.seek(0, 2)
+                size = f.tell()
+                f.seek(max(0, size - 50000))
+                recent = f.read()
+            if "cookies are no longer valid" in recent or "cookie" in recent.lower() and "expired" in recent.lower():
+                # Find the most recent cookie warning timestamp
+                import re
+                matches = re.findall(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*cookies are no longer valid", recent)
+                if matches:
+                    last_warning = matches[-1]
+                    # If file health says OK but logs show rejection, override
+                    if health["status"] == "ok":
+                        health["status"] = "rejected"
+                        health["message"] = f"YouTube rejected cookies at {last_warning}"
+    except Exception:
+        pass
+    return jsonify(health)
 
 
 @app.route("/api/log-size")
