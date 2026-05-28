@@ -271,6 +271,9 @@
             <form method="POST" action="/api/reindex?force=true" style="display:inline;">
                 <button type="submit" class="btn btn-green" {% if job.status == 'running' %}disabled{% endif %}>📂 Re-Index Library</button>
             </form>
+            <form onsubmit="event.preventDefault(); restartTour();" style="display:inline;">
+                <button type="submit" class="btn btn-accent" id="restart-tour-btn">🎓 Show Feature Walkthrough</button>
+            </form>
         </div>
     </div>
 </div>
