@@ -1727,7 +1727,12 @@ def api_random_video(channel_name):
     if not videos:
         return jsonify({"error": "No videos"}), 404
     exclude = request.args.get('exclude', '')
+    skip_watched = request.args.get('skip_watched', '').lower() in ('1', 'true', 'yes')
     candidates = [v for v in videos if v['id'] != exclude]
+    if skip_watched:
+        unwatched = [v for v in candidates if not v.get('watched')]
+        if unwatched:
+            candidates = unwatched
     if not candidates:
         candidates = videos
     pick = random.choice(candidates)
@@ -1741,15 +1746,25 @@ def api_random_video_any():
     import random
     channels_param = request.args.get('channels', '')
     exclude = request.args.get('exclude', '')
+    skip_watched = request.args.get('skip_watched', '').lower() in ('1', 'true', 'yes')
     conn = get_db()
     if channels_param:
         channel_list = [c.strip() for c in channels_param.split(',')]
         placeholders = ','.join(['?' for _ in channel_list])
-        rows = conn.execute(f"SELECT id, title, channel_name FROM videos WHERE channel_name IN ({placeholders})", channel_list).fetchall()
+        rows = conn.execute(
+            f"SELECT v.id, v.title, v.channel_name, wh.watched FROM videos v "
+            f"LEFT JOIN watch_history wh ON v.id = wh.video_id "
+            f"WHERE v.channel_name IN ({placeholders})", channel_list).fetchall()
     else:
-        rows = conn.execute("SELECT id, title, channel_name FROM videos").fetchall()
+        rows = conn.execute(
+            "SELECT v.id, v.title, v.channel_name, wh.watched FROM videos v "
+            "LEFT JOIN watch_history wh ON v.id = wh.video_id").fetchall()
     conn.close()
     candidates = [dict(r) for r in rows if r['id'] != exclude]
+    if skip_watched:
+        unwatched = [v for v in candidates if not v.get('watched')]
+        if unwatched:
+            candidates = unwatched
     if not candidates:
         return jsonify({"error": "No videos"}), 404
     pick = random.choice(candidates)

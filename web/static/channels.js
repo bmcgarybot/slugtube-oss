@@ -315,15 +315,18 @@ function renderVideoGrid(videos) {
         var dur = v.duration ? '<span class="video-duration">' + fmtDuration(v.duration) + '</span>' : '';
         var watched = v.watched ? '<span class="video-watched-badge">✓ Watched</span>' : '';
         var progress = '';
+        var progressLabel = '';
         if (!v.watched && v.progress > 5 && v.duration > 0) {
             var pct = Math.min((v.progress / v.duration) * 100, 100);
             progress = '<div class="video-progress-bar" style="width:' + pct.toFixed(1) + '%"></div>';
+            progressLabel = '<span class="video-progress-label">' + Math.round(pct) + '% watched</span>';
         }
+        var watchedClass = v.watched ? ' is-watched' : '';
         var checkbox = bulkMode ? '<input type="checkbox" class="bulk-checkbox" data-id="' + escHtml(v.id) + '" onclick="event.preventDefault();event.stopPropagation();this.checked=!this.checked;updateBulkCount();" style="position:absolute;top:8px;left:8px;z-index:5;width:18px;height:18px;cursor:pointer;">' : '';
 
-        html += '<a class="video-card" style="position:relative;" ' + (bulkMode ? 'onclick="event.preventDefault();var cb=this.querySelector(\'.bulk-checkbox\');cb.checked=!cb.checked;updateBulkCount();"' : 'href="/watch/' + encodeURIComponent(v.id) + '"') + '>' +
+        html += '<a class="video-card' + watchedClass + '" style="position:relative;" ' + (bulkMode ? 'onclick="event.preventDefault();var cb=this.querySelector(\'.bulk-checkbox\');cb.checked=!cb.checked;updateBulkCount();"' : 'href="/watch/' + encodeURIComponent(v.id) + '"') + '>' +
             checkbox +
-            '<div class="video-thumb" style="' + thumbStyle + '">' + thumbPh + dur + watched + progress + '</div>' +
+            '<div class="video-thumb" style="' + thumbStyle + '">' + thumbPh + dur + watched + progressLabel + progress + '</div>' +
             '<div class="video-info">' +
             '<div class="video-title">' + escHtml(v.title) + '</div>' +
             '<div class="video-meta">' + fmtDate(v.date) + ' \u00B7 ' + fmtSize(v.size) + '</div>' +
