@@ -260,24 +260,11 @@ function renderChannelDetail(d) {
     document.getElementById('detail-stats').textContent = d.video_count + ' videos \u00B7 ' + fmtSize(d.total_size);
     document.getElementById('video-count-label').textContent = d.video_count + ' videos';
 
-    // Playlists — compact link for many, tag preview only for few
+    // Playlists — clean link only, no tag bubbles
     var plHtml = '';
     if (d.playlists && d.playlists.length > 0) {
-        var sorted = d.playlists.slice().sort(function(a, b) { return b.video_count - a.video_count; });
-        var makeTag = function(pl) {
-            return '<a class="pl-tag" href="/library/' + encodeURIComponent(d.name) + '/playlist/' + encodeURIComponent(pl.id) + '?sort=playlist_index">'
-                + escHtml(pl.title) + ' <span class="pl-count">(' + pl.video_count + ')</span></a>';
-        };
         plHtml = '<div class="pl-cloud">';
         plHtml += '<a href="/library/' + encodeURIComponent(d.name) + '/playlists" class="pl-label-link">' + d.playlists.length + ' playlists \u2192</a>';
-        if (d.playlists.length <= 8) {
-            // Few playlists — show tag preview
-            var SHOW_LIMIT = 4;
-            sorted.slice(0, SHOW_LIMIT).forEach(function(pl) { plHtml += makeTag(pl); });
-            if (sorted.length > SHOW_LIMIT) {
-                plHtml += '<a href="/library/' + encodeURIComponent(d.name) + '/playlists" class="pl-more">+ ' + (sorted.length - SHOW_LIMIT) + ' more</a>';
-            }
-        }
         plHtml += '</div>';
     }
     document.getElementById('detail-playlists').innerHTML = plHtml;
