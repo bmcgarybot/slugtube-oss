@@ -1951,7 +1951,7 @@ def api_reindex():
 @app.route("/api/cleanup-ghosts", methods=["POST"])
 def api_cleanup_ghosts():
     """Remove database channel entries that don't match any entry in channels.txt.
-    Only cleans DB records — never touches files on disk."""
+    Only cleans DB records — never deletes video files from disk."""
     try:
         # Get all channel names from channels.txt
         valid_names = set()
@@ -1965,24 +1965,7 @@ def api_cleanup_ghosts():
         for row in db_channels:
             name = row['name']
             if name not in valid_names:
-                # Check if there's a folder on disk with actual videos — don't orphan real data
-                channel_dir = Path(SHOWS_DIR) / name
-                has_videos = False
-                if channel_dir.is_dir():
-                    video_extensions = {'.mp4', '.mkv', '.webm', '.avi', '.mov'}
-                    for root, dirs, files in os.walk(str(channel_dir)):
-                        for f in files:
-                            if os.path.splitext(f)[1].lower() in video_extensions:
-                                has_videos = True
-                                break
-                        if has_videos:
-                            break
-
-                if has_videos:
-                    # Has real video files but no channels.txt entry — skip, don't orphan
-                    continue
-
-                # Safe to remove — no channels.txt entry and no video files
+                # Channel not in channels.txt — clean DB entries
                 video_ids = [r['id'] for r in conn.execute(
                     "SELECT id FROM videos WHERE channel_name = ?", (name,)
                 ).fetchall()]
@@ -1999,13 +1982,21 @@ def api_cleanup_ghosts():
                 conn.execute("DELETE FROM channels WHERE name = ?", (name,))
                 removed.append(name)
 
-                # Also remove empty folder if it exists
+                # Remove empty folder (no video files) if it exists — leave folders with videos alone
+                channel_dir = Path(SHOWS_DIR) / name
                 if channel_dir.is_dir():
-                    import shutil
-                    try:
-                        shutil.rmtree(str(channel_dir))
-                    except Exception:
-                        pass
+                    video_extensions = {'.mp4', '.mkv', '.webm', '.avi', '.mov'}
+                    has_videos = any(
+                        os.path.splitext(f)[1].lower() in video_extensions
+                        for root, dirs, files in os.walk(str(channel_dir))
+                        for f in files
+                    )
+                    if not has_videos:
+                        import shutil
+                        try:
+                            shutil.rmtree(str(channel_dir))
+                        except Exception:
+                            pass
 
         conn.commit()
 
