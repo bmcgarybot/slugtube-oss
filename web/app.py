@@ -1948,6 +1948,92 @@ def api_reindex():
     return jsonify({"status": "started"})
 
 
+@app.route("/api/cleanup-ghosts", methods=["POST"])
+def api_cleanup_ghosts():
+    """Remove database channel entries that don't match any entry in channels.txt.
+    Only cleans DB records — never touches files on disk."""
+    try:
+        # Get all channel names from channels.txt
+        valid_names = set()
+        for ch in get_channels():
+            valid_names.add(ch['name'])
+
+        conn = get_db()
+        db_channels = conn.execute("SELECT name FROM channels").fetchall()
+        removed = []
+
+        for row in db_channels:
+            name = row['name']
+            if name not in valid_names:
+                # Check if there's a folder on disk with actual videos — don't orphan real data
+                channel_dir = Path(SHOWS_DIR) / name
+                has_videos = False
+                if channel_dir.is_dir():
+                    video_extensions = {'.mp4', '.mkv', '.webm', '.avi', '.mov'}
+                    for root, dirs, files in os.walk(str(channel_dir)):
+                        for f in files:
+                            if os.path.splitext(f)[1].lower() in video_extensions:
+                                has_videos = True
+                                break
+                        if has_videos:
+                            break
+
+                if has_videos:
+                    # Has real video files but no channels.txt entry — skip, don't orphan
+                    continue
+
+                # Safe to remove — no channels.txt entry and no video files
+                video_ids = [r['id'] for r in conn.execute(
+                    "SELECT id FROM videos WHERE channel_name = ?", (name,)
+                ).fetchall()]
+                if video_ids:
+                    placeholders = ",".join("?" * len(video_ids))
+                    conn.execute(f"DELETE FROM video_playlists WHERE video_id IN ({placeholders})", video_ids)
+                    conn.execute(f"DELETE FROM watch_history WHERE video_id IN ({placeholders})", video_ids)
+                    conn.execute(f"DELETE FROM videos WHERE channel_name = ?", (name,))
+                try:
+                    conn.execute("DELETE FROM videos_fts WHERE channel_name = ?", (name,))
+                except Exception:
+                    pass
+                conn.execute("DELETE FROM playlists WHERE channel_name = ?", (name,))
+                conn.execute("DELETE FROM channels WHERE name = ?", (name,))
+                removed.append(name)
+
+                # Also remove empty folder if it exists
+                if channel_dir.is_dir():
+                    import shutil
+                    try:
+                        shutil.rmtree(str(channel_dir))
+                    except Exception:
+                        pass
+
+        conn.commit()
+
+        # Also deduplicate: if multiple DB rows have the same channel name, keep only one
+        dupes_removed = []
+        all_names = conn.execute("SELECT name, COUNT(*) as cnt FROM channels GROUP BY name HAVING cnt > 1").fetchall()
+        for row in all_names:
+            name = row['name']
+            # Keep the row with the highest rowid (most recent), delete older duplicates
+            conn.execute("""
+                DELETE FROM channels WHERE name = ? AND rowid NOT IN (
+                    SELECT MAX(rowid) FROM channels WHERE name = ?
+                )
+            """, (name, name))
+            dupes_removed.append(name)
+        if dupes_removed:
+            conn.commit()
+            removed.extend([f"{n} (dedup)" for n in dupes_removed])
+
+        msg = f"Cleaned {len(removed)} ghost(s): {', '.join(removed)}" if removed else "No ghosts found"
+        return _ajax_or_redirect(msg, fallback="channels")
+
+    except Exception as e:
+        if _is_ajax():
+            return jsonify({"status": "error", "message": str(e)}), 500
+        return redirect(request.referrer or url_for("channels"))
+
+
 @app.route("/api/index-status")
 def api_index_status():
     from indexer import get_index_status

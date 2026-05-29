@@ -271,6 +271,7 @@
             <form method="POST" action="/api/reindex?force=true" style="display:inline;" onsubmit="return confirmAction('Rebuild Library Index', 'This rebuilds your library database by scanning existing video files. It does NOT download new videos &mdash; it just updates the index of what\'s already on disk. Continue?', this);">
                 <button type="submit" class="btn btn-green" {% if job.status == 'running' %}disabled{% endif %} title="Rebuild the database by scanning all video files on disk. Does NOT download anything.">Rebuild Library Index</button>
             </form>
+            <button class="btn btn-ghost" title="Remove database entries for channels no longer in your channel list, and deduplicate entries" onclick="fetch('/api/cleanup-ghosts',{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'}}).then(r=>r.json()).then(d=>showToast(d.message||'Done')).catch(e=>showToast('Error: '+e))">Clean Ghost Entries</button>
             <form onsubmit="event.preventDefault(); restartTour();" style="display:inline;">
                 <button type="submit" class="btn btn-accent" id="restart-tour-btn" title="Start the interactive feature tour">Show Feature Walkthrough</button>
             </form>
