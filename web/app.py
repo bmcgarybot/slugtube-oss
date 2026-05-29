@@ -215,8 +215,9 @@ def _scan_channel_stats():
         for channel_dir in sorted(shows.iterdir()):
             if not channel_dir.is_dir():
                 continue
-            # Skip internal/metadata subdirs (e.g. "Channel#playlists" from TubeArchivist)
-            if '#' in channel_dir.name:
+            # Skip TubeArchivist metadata dirs (e.g. "Channel#playlists") but NOT
+            # regular channel folders that happen to contain '#' (yt-dlp creates these)
+            if channel_dir.name.endswith('#playlists'):
                 continue
             video_count = 0
             total_size = 0
@@ -831,13 +832,14 @@ def channels():
             except Exception as e:
                 app.logger.error(f"Failed to create folder for {ch['name']}: {e}")
 
-    # Auto-delete ghost #playlists folders (TubeArchivist leftovers)
+    # Auto-delete ghost TubeArchivist "#playlists" folders only
+    # (NOT regular folders with # — yt-dlp creates channel folders like "Travel Channel#")
     try:
         import shutil
         shows = Path(SHOWS_DIR)
         if shows.is_dir():
             for d in shows.iterdir():
-                if d.is_dir() and '#' in d.name:
+                if d.is_dir() and d.name.endswith('#playlists'):
                     shutil.rmtree(str(d), ignore_errors=True)
                     app.logger.info(f"Removed ghost folder: {d.name}")
     except Exception as e:
