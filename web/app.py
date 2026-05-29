@@ -676,6 +676,95 @@ def run_update():
         jobs["log"] = str(e)
 
 
+@app.route("/api/self-update", methods=["POST"])
+def api_self_update():
+    """Pull latest SlugTube code from GitHub and overwrite /app/web and /app/scripts.
+    Also merges new channels from the repo's channels.txt into local channels.txt."""
+    import urllib.request
+    import tarfile
+    import io
+    import shutil
+
+    REPO = "bmcgarybot/slugtube"
+    BRANCH = "main"
+    TARBALL_URL = f"https://api.github.com/repos/{REPO}/tarball/{BRANCH}"
+    LOCAL_CHANNELS = "/config/channels.txt"
+
+    try:
+        # Download tarball from GitHub
+        req = urllib.request.Request(TARBALL_URL, headers={"User-Agent": "SlugTube-Updater"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            tarball_data = resp.read()
+
+        # Extract to temp dir
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tar = tarfile.open(fileobj=io.BytesIO(tarball_data), mode="r:gz")
+            tar.extractall(tmpdir)
+            tar.close()
+
+            # GitHub tarballs extract to a single top-level dir like "bmcgarybot-slugtube-abc1234/"
+            extracted_dirs = os.listdir(tmpdir)
+            if not extracted_dirs:
+                return jsonify({"status": "error", "message": "Empty tarball"}), 500
+            repo_root = os.path.join(tmpdir, extracted_dirs[0])
+
+            updated = []
+
+            # Update /app/web
+            src_web = os.path.join(repo_root, "web")
+            if os.path.isdir(src_web):
+                # Copy all files, overwriting existing
+                for root, dirs, files in os.walk(src_web):
+                    rel = os.path.relpath(root, src_web)
+                    dest_dir = os.path.join("/app/web", rel)
+                    os.makedirs(dest_dir, exist_ok=True)
+                    for f in files:
+                        shutil.copy2(os.path.join(root, f), os.path.join(dest_dir, f))
+                updated.append("web")
+
+            # Update /app/scripts
+            src_scripts = os.path.join(repo_root, "scripts")
+            if os.path.isdir(src_scripts):
+                for root, dirs, files in os.walk(src_scripts):
+                    rel = os.path.relpath(root, src_scripts)
+                    dest_dir = os.path.join("/app/scripts", rel)
+                    os.makedirs(dest_dir, exist_ok=True)
+                    for f in files:
+                        dest_file = os.path.join(dest_dir, f)
+                        shutil.copy2(os.path.join(root, f), dest_file)
+                        # Re-apply executable bit for shell scripts
+                        if f.endswith('.sh'):
+                            os.chmod(dest_file, 0o755)
+                updated.append("scripts")
+
+            # Merge channels.txt — add new entries from repo without removing local ones
+            src_channels = os.path.join(repo_root, "channels.txt")
+            if os.path.isfile(src_channels) and os.path.isfile(LOCAL_CHANNELS):
+                with open(LOCAL_CHANNELS, "r", errors="replace") as f:
+                    local_lines = set(f.read().splitlines())
+                with open(src_channels, "r", errors="replace") as f:
+                    repo_lines = [l for l in f.read().splitlines() if l.strip()]
+
+                new_lines = [l for l in repo_lines if l not in local_lines]
+                if new_lines:
+                    with open(LOCAL_CHANNELS, "a") as f:
+                        for l in new_lines:
+                            f.write(l + "\n")
+                    updated.append(f"channels (+{len(new_lines)} new)")
+            elif os.path.isfile(src_channels) and not os.path.isfile(LOCAL_CHANNELS):
+                shutil.copy2(src_channels, LOCAL_CHANNELS)
+                updated.append("channels (fresh copy)")
+
+        msg = f"Updated: {', '.join(updated)}. Refresh your browser (Ctrl+Shift+R)." if updated else "Already up to date."
+        return _ajax_or_redirect(msg, fallback="settings")
+
+    except Exception as e:
+        if _is_ajax():
+            return jsonify({"status": "error", "message": f"Update failed: {e}"}), 500
+        return redirect(request.referrer or url_for("settings"))
+
+
 # ── Original Routes ──────────────────────────────────────────────
 
 @app.route("/")
@@ -1952,6 +2041,7 @@ def api_reindex():
 def api_cleanup_ghosts():
     """Remove database channel entries that don't match any entry in channels.txt.
     Only cleans DB records — never deletes video files from disk."""
+    from indexer import get_db
     try:
         # Get all channel names from channels.txt
         valid_names = set()
