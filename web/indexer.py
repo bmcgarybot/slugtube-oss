@@ -903,26 +903,38 @@ def start_background_index(force=False, playlist_channels=None):
 def reindex_single_channel(channel_name):
     """Re-index a single channel directory."""
     shows = Path(SHOWS_DIR)
+    
+    # Collect all matching dirs: exact name + '#' suffix variant
+    candidates = []
     channel_dir = shows / channel_name
-    if not channel_dir.is_dir():
-        # Try with '#' suffix — yt-dlp appends this to some folder names
-        alt_dir = shows / (channel_name + '#')
-        if alt_dir.is_dir():
-            channel_dir = alt_dir
-            log(f"📚 Found channel at '{channel_name}#' (# suffix variant)")
-        else:
-            log_warn(f"⚠️ Channel directory not found: {channel_name}")
-            return False
+    if channel_dir.is_dir():
+        candidates.append(channel_dir)
+    alt_dir = shows / (channel_name + '#')
+    if alt_dir.is_dir():
+        candidates.append(alt_dir)
+    # Also check if the name already has '#' — don't double-append
+    if channel_name.endswith('#'):
+        bare_dir = shows / channel_name.rstrip('#')
+        if bare_dir.is_dir() and bare_dir not in candidates:
+            candidates.append(bare_dir)
+    
+    if not candidates:
+        log_warn(f"⚠️ Channel directory not found: {channel_name}")
+        return False
 
     try:
         conn = get_db()
         init_db()
-        log(f"📚 Re-indexing single channel: {channel_name}")
-        ch_start = time.time()
-        vcount, _ = _scan_channel(conn, channel_dir)
+        total_vcount = 0
+        for cdir in candidates:
+            log(f"📚 Re-indexing single channel: {cdir.name}")
+            ch_start = time.time()
+            vcount, _ = _scan_channel(conn, cdir)
+            total_vcount += vcount
+            elapsed = time.time() - ch_start
+            log(f"📚 ✅ {cdir.name}: {vcount} videos ({elapsed:.1f}s)")
         conn.commit()
-        elapsed = time.time() - ch_start
-        log(f"📚 ✅ {channel_name}: {vcount} videos ({elapsed:.1f}s)")
+        log(f"📚 Total for '{channel_name}': {total_vcount} videos across {len(candidates)} dir(s)")
         conn.close()
         return True
     except BaseException as e:
