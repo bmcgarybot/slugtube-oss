@@ -340,6 +340,11 @@ while IFS= read -r line || [ -n "$line" ]; do
         FOLDER_NAME=""
     fi
 
+    # Skip if URL is empty after parsing (malformed entry like lone "|" or whitespace)
+    if [ -z "$CHANNEL_URL" ]; then
+        continue
+    fi
+
     echo ""
     if [ -n "$FOLDER_NAME" ]; then
         echo "📺 Channel: $CHANNEL_URL → 📁 $FOLDER_NAME"

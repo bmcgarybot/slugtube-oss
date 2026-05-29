@@ -194,6 +194,9 @@ def get_channels():
                         parts = raw.split("|")
                         url = parts[0].strip()
                         name = parts[1].strip() if len(parts) > 1 else url
+                        # Skip malformed entries (empty URL)
+                        if not url:
+                            continue
                         # Check for |playlists flag (third field or any field after name)
                         for extra in parts[2:]:
                             if extra.strip().lower() == 'playlists':
