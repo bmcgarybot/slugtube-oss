@@ -327,7 +327,7 @@ def get_ytdlp_version():
 
 
 def check_cookie_health():
-    """Check cookie file health: expiration, age, existence."""
+    """Check cookie file health: expiration, age, existence, AND YouTube rejection signals from logs."""
     cookie_path = "/config/Cookie/cookies.txt"
     if not os.path.isfile(cookie_path):
         return {"status": "missing", "message": "No cookie file found", "age_days": 0, "expired_count": 0, "total_count": 0}
@@ -360,13 +360,153 @@ def check_cookie_health():
         if expired > total * 0.5:
             return {"status": "expired", "message": f"{expired}/{total} cookies expired", "age_days": round(file_age_days, 1), "expired_count": expired, "total_count": total}
 
+        # Check logs for YouTube server-side rejection (cookies look fine on paper but YouTube says no)
+        rejection = _check_logs_for_cookie_rejection(file_age_days)
+        if rejection:
+            return rejection
+
         if file_age_days > 7:
-            return {"status": "warning", "message": f"Cookie file is {round(file_age_days)} days old", "age_days": round(file_age_days, 1), "expired_count": expired, "total_count": total}
+            return {"status": "warning", "message": f"Cookie file is {round(file_age_days)} days old — consider refreshing", "age_days": round(file_age_days, 1), "expired_count": expired, "total_count": total}
 
         return {"status": "ok", "message": f"Cookies OK ({round(file_age_days, 1)} days old)", "age_days": round(file_age_days, 1), "expired_count": expired, "total_count": total}
 
     except Exception as e:
         return {"status": "missing", "message": f"Error reading cookies: {e}", "age_days": 0, "expired_count": 0, "total_count": 0}
+
+
+def _check_logs_for_cookie_rejection(file_age_days=0):
+    """Scan recent logs for signs YouTube is rejecting cookies, even if the file looks fine."""
+    import re
+
+    # Patterns that indicate YouTube is rejecting/ignoring cookies
+    REJECTION_PATTERNS = [
+        "cookies are no longer valid",
+        "UNEXPECTED_EOF_WHILE_READING",
+        "SSL: UNEXPECTED_EOF",
+        "unable to download webpage",
+        "Sign in to confirm your age",
+        "Sign in to confirm you",
+        "This video requires authentication",
+        "HTTP Error 403",
+        "HTTP Error 429",
+        "IncompleteRead",
+        "got an empty response",
+    ]
+
+    try:
+        if not os.path.isfile(LOG_FILE):
+            return None
+
+        with open(LOG_FILE, "r", errors="replace") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            # Read last 100KB to catch recent errors
+            f.seek(max(0, size - 100000))
+            recent = f.read()
+
+        if not recent:
+            return None
+
+        recent_lower = recent.lower()
+
+        # Count how many different rejection signals we see
+        signals_found = []
+        for pattern in REJECTION_PATTERNS:
+            if pattern.lower() in recent_lower:
+                signals_found.append(pattern)
+
+        if not signals_found:
+            return None
+
+        # Check if errors are recent (within last 2 hours)
+        # Look for timestamps near the rejection messages
+        now_ts = time.time()
+        is_recent = False
+
+        # Try to find timestamps in format "YYYY-MM-DD HH:MM:SS" near errors
+        for pattern in signals_found[:3]:  # Check first few
+            escaped = re.escape(pattern)
+            matches = re.findall(
+                r"(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}).*?" + escaped,
+                recent, re.IGNORECASE | re.DOTALL
+            )
+            if matches:
+                try:
+                    from datetime import datetime
+                    last_time = datetime.strptime(matches[-1].replace("T", " "), "%Y-%m-%d %H:%M:%S")
+                    age_hours = (datetime.utcnow() - last_time).total_seconds() / 3600
+                    if age_hours < 2:
+                        is_recent = True
+                        break
+                except (ValueError, TypeError):
+                    pass
+
+        # If no timestamp found but the log was recently written, assume recent
+        if not is_recent:
+            try:
+                log_age_hours = (now_ts - os.path.getmtime(LOG_FILE)) / 3600
+                if log_age_hours < 1:
+                    is_recent = True
+            except OSError:
+                pass
+
+        if not is_recent:
+            return None
+
+        # Determine severity based on which signals we see
+        hard_reject = ["cookies are no longer valid", "HTTP Error 403", "Sign in to confirm"]
+        ssl_errors = ["UNEXPECTED_EOF_WHILE_READING", "SSL: UNEXPECTED_EOF", "IncompleteRead"]
+
+        has_hard_reject = any(p.lower() in recent_lower for p in hard_reject)
+        has_ssl_errors = any(p.lower() in recent_lower for p in ssl_errors)
+
+        if has_hard_reject:
+            return {
+                "status": "rejected",
+                "message": f"YouTube rejected cookies — refresh from browser",
+                "age_days": round(file_age_days, 1),
+                "expired_count": 0,
+                "total_count": 0,
+                "signals": signals_found[:3]
+            }
+        elif has_ssl_errors:
+            # SSL errors could be rate limiting OR cookie issues
+            # Count how many SSL errors in recent log
+            ssl_count = recent_lower.count("unexpected_eof")
+            if ssl_count >= 3:
+                return {
+                    "status": "rejected",
+                    "message": f"YouTube blocking connections ({ssl_count} SSL errors) — refresh cookies",
+                    "age_days": round(file_age_days, 1),
+                    "expired_count": 0,
+                    "total_count": 0,
+                    "signals": signals_found[:3]
+                }
+            else:
+                return {
+                    "status": "warning",
+                    "message": f"Some YouTube connection errors — may need cookie refresh",
+                    "age_days": round(file_age_days, 1),
+                    "expired_count": 0,
+                    "total_count": 0,
+                    "signals": signals_found[:3]
+                }
+
+        # Generic rejection with multiple signals
+        if len(signals_found) >= 2:
+            return {
+                "status": "warning",
+                "message": f"YouTube may be rejecting cookies ({len(signals_found)} warning signs)",
+                "age_days": round(file_age_days, 1),
+                "expired_count": 0,
+                "total_count": 0,
+                "signals": signals_found[:3]
+            }
+
+        return None
+
+    except Exception:
+        return None
 
 
 def run_single_channel(url, folder_name=None, fast=False):
@@ -1154,27 +1294,6 @@ def api_status():
 @app.route("/api/cookie-health")
 def api_cookie_health():
     health = check_cookie_health()
-    # Also check recent logs for YouTube's server-side cookie rejection
-    try:
-        if os.path.isfile(LOG_FILE):
-            with open(LOG_FILE, "r", errors="replace") as f:
-                # Read last 50KB of log to check for recent cookie warnings
-                f.seek(0, 2)
-                size = f.tell()
-                f.seek(max(0, size - 50000))
-                recent = f.read()
-            if "cookies are no longer valid" in recent or "cookie" in recent.lower() and "expired" in recent.lower():
-                # Find the most recent cookie warning timestamp
-                import re
-                matches = re.findall(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*cookies are no longer valid", recent)
-                if matches:
-                    last_warning = matches[-1]
-                    # If file health says OK but logs show rejection, override
-                    if health["status"] == "ok":
-                        health["status"] = "rejected"
-                        health["message"] = f"YouTube rejected cookies at {last_warning}"
-    except Exception:
-        pass
     return jsonify(health)
 
 
