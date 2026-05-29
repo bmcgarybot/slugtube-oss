@@ -9,11 +9,11 @@
         <a href="/library/{{ channel_name | urlencode }}" class="pl-back">← {{ channel_name }}</a>
         {% if channel_url %}
         <form method="POST" action="/api/reindex-playlists/{{ channel_name | urlencode }}" style="display:inline">
-            <button type="submit" class="btn btn-sm" style="border-color:var(--accent);color:var(--accent);font-size:12px;">🎵 Reindex Playlists</button>
+            <button type="submit" class="btn btn-sm" style="border-color:var(--accent);color:var(--accent);font-size:12px;" title="Re-scan playlists from YouTube for this channel">Reindex Playlists</button>
         </form>
         {% endif %}
     </div>
-    <h1 class="pl-page-title">📋 Playlists</h1>
+    <h1 class="pl-page-title">Playlists</h1>
     <p class="pl-page-subtitle">{{ playlists | length }} playlists from {{ channel_name }}</p>
 </div>
 
@@ -26,7 +26,7 @@
             {% if pl.thumb_video_id %}
             <img src="/media/thumb/{{ pl.thumb_video_id }}" alt="{{ pl.title }}" loading="lazy">
             {% else %}
-            <div class="playlist-thumb-placeholder">📋</div>
+            <div class="playlist-thumb-placeholder">PL</div>
             {% endif %}
             <div class="playlist-count-badge">{{ pl.video_count }} videos</div>
         </div>
@@ -39,10 +39,10 @@
 </div>
 {% else %}
 <div class="pl-empty">
-    <div class="pl-empty-icon">📋</div>
+    <div class="pl-empty-icon"></div>
     <p>No playlists indexed for this channel yet.</p>
     {% if channel_url %}
-    <p style="color:var(--text-dimmer);font-size:13px;">Hit "🎵 Reindex Playlists" above to fetch them from YouTube.</p>
+    <p style="color:var(--text-dimmer);font-size:13px;">Hit "Reindex Playlists" above to fetch them from YouTube.</p>
     {% endif %}
 </div>
 {% endif %}

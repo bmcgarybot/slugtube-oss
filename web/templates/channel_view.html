@@ -64,7 +64,7 @@
             {% if latest_video.thumbnail_path %}
             <img src="/media/thumb/{{ latest_video.id }}" alt="{{ latest_video.title }}" loading="lazy">
             {% else %}
-            <div class="thumb-placeholder">🎬</div>
+            <div class="thumb-placeholder">▶</div>
             {% endif %}
             <span class="video-duration">{{ format_duration(latest_video.duration) }}</span>
         </div>
@@ -78,7 +78,7 @@
 <!-- Playlist Title Banner -->
 {% if active_playlist %}
 <div class="playlist-banner">
-    <span class="playlist-banner-icon">📋</span>
+    <span class="playlist-banner-icon">PL</span>
     <span class="playlist-banner-title">{{ active_playlist.title }}</span>
     <span class="playlist-banner-count">{{ total }} videos</span>
 </div>
@@ -108,7 +108,7 @@
             {% if v.thumbnail_path %}
             <img src="/media/thumb/{{ v.id }}" alt="{{ v.title }}" loading="lazy">
             {% else %}
-            <div class="thumb-placeholder">🎬</div>
+            <div class="thumb-placeholder">▶</div>
             {% endif %}
             <span class="video-duration">{{ format_duration(v.duration) }}</span>
             {% if v.watched %}<span class="watched-badge">✓</span>{% endif %}

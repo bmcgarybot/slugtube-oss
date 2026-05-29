@@ -155,7 +155,7 @@ function goBackToBrowse() {
     document.getElementById('video-toggle').style.display = 'none';
 
     // Update title
-    document.querySelector('.page-header h1').innerHTML = '📺 Channels <span class="text-dim text-sm" style="font-weight:400;">' + document.getElementById('channel-count').textContent + '</span>';
+    document.querySelector('.page-header h1').innerHTML = 'Channels <span class="text-dim text-sm" style="font-weight:400;">' + document.getElementById('channel-count').textContent + '</span>';
 
     // Deactivate strip cards
     document.querySelectorAll('.channel-strip-card.active').forEach(function(c) { c.classList.remove('active'); });
@@ -200,7 +200,7 @@ function selectChannel(name) {
     });
 
     // Update page title
-    document.querySelector('.page-header h1').innerHTML = '📺 ' + escHtml(name);
+    document.querySelector('.page-header h1').innerHTML = escHtml(name);
 
     // Loading state
     document.getElementById('detail-stats').textContent = 'Loading...';
@@ -285,29 +285,29 @@ function renderChannelDetail(d) {
     var disabled = _st.jobRunning ? ' disabled' : '';
 
     if (d.channel_url) {
-        btns += '<button class="btn btn-accent btn-sm" onclick="channelAction(\'quick-check\',\'' + escAttr(d.name) + '\',\'' + escAttr(d.channel_url) + '\')"' + disabled + '>Quick Check</button>';
-        btns += '<button class="btn btn-blue btn-sm" onclick="channelAction(\'download\',\'' + escAttr(d.name) + '\',\'' + escAttr(d.channel_url) + '\')"' + disabled + '>Download All</button>';
+        btns += '<button class="btn btn-accent btn-sm" title="Scan this channel for new videos" onclick="channelAction(\'quick-check\',\'' + escAttr(d.name) + '\',\'' + escAttr(d.channel_url) + '\')"' + disabled + '>Quick Check</button>';
+        btns += '<button class="btn btn-blue btn-sm" title="Download all videos from this channel" onclick="channelAction(\'download\',\'' + escAttr(d.name) + '\',\'' + escAttr(d.channel_url) + '\')"' + disabled + '>Download All</button>';
     }
     if (d.on_disk) {
-        btns += '<button class="btn btn-ghost btn-sm" onclick="channelAction(\'reindex\',\'' + escAttr(d.name) + '\')">Reindex</button>';
+        btns += '<button class="btn btn-ghost btn-sm" title="Rescan local files for this channel" onclick="channelAction(\'reindex\',\'' + escAttr(d.name) + '\')">Reindex</button>';
     }
     if (d.channel_url) {
-        btns += '<button class="btn btn-ghost btn-sm" onclick="channelAction(\'reindex-playlists\',\'' + escAttr(d.name) + '\')">Reindex Playlists</button>';
+        btns += '<button class="btn btn-ghost btn-sm" title="Re-scan playlists from YouTube for this channel" onclick="channelAction(\'reindex-playlists\',\'' + escAttr(d.name) + '\')">Reindex Playlists</button>';
     }
     if (d.playlists && d.playlists.length > 0) {
-        btns += '<a href="/library/' + encodeURIComponent(d.name) + '/playlists" class="btn btn-ghost btn-sm">View Playlists</a>';
+        btns += '<a href="/library/' + encodeURIComponent(d.name) + '/playlists" class="btn btn-ghost btn-sm" title="Browse playlists for this channel">View Playlists</a>';
     }
     if (!d.has_poster && d.channel_url) {
-        btns += '<button class="btn btn-orange btn-sm" onclick="channelAction(\'fetch-art\',\'' + escAttr(d.name) + '\')">Fetch Art</button>';
+        btns += '<button class="btn btn-orange btn-sm" title="Download profile picture and banner from YouTube" onclick="channelAction(\'fetch-art\',\'' + escAttr(d.name) + '\')">Fetch Art</button>';
     }
     if (d.channel_url) {
-        btns += '<a href="' + escAttr(d.channel_url) + '" target="_blank" class="btn btn-ghost btn-sm">YouTube ↗</a>';
+        btns += '<a href="' + escAttr(d.channel_url) + '" target="_blank" class="btn btn-ghost btn-sm" title="Open this channel on YouTube">YouTube ↗</a>';
     }
     if (d.subscribed) {
-        btns += '<button class="btn btn-danger btn-sm" onclick="channelAction(\'unsubscribe\',\'' + escAttr(d.name) + '\',\'' + escAttr(d.channel_url || '') + '\')">Unsubscribe</button>';
+        btns += '<button class="btn btn-danger btn-sm" title="Stop tracking this channel for new videos" onclick="channelAction(\'unsubscribe\',\'' + escAttr(d.name) + '\',\'' + escAttr(d.channel_url || '') + '\')">Unsubscribe</button>';
     }
     if (d.on_disk) {
-        btns += '<button class="btn btn-danger btn-sm" onclick="channelAction(\'delete\',\'' + escAttr(d.name) + '\')">Delete Folder</button>';
+        btns += '<button class="btn btn-danger btn-sm" title="Delete all downloaded files for this channel" onclick="channelAction(\'delete\',\'' + escAttr(d.name) + '\')">Delete Folder</button>';
     }
     acts.innerHTML = btns;
 
@@ -392,7 +392,7 @@ function renderVideoGrid(videos) {
         var thumbStyle = v.has_thumb
             ? "background-image:url('/media/thumb/" + encodeURIComponent(v.id) + "')"
             : '';
-        var thumbPh = v.has_thumb ? '' : '<div class="video-thumb-ph">🎬</div>';
+        var thumbPh = v.has_thumb ? '' : '<div class="video-thumb-ph">▶</div>';
         var dur = v.duration ? '<span class="video-duration">' + fmtDuration(v.duration) + '</span>' : '';
         var watched = v.watched ? '<span class="video-watched-badge">✓ Watched</span>' : '';
         var progress = '';
@@ -430,7 +430,7 @@ function renderVideoList(videos) {
             '<td class="text-center nowrap">' + fmtDuration(v.duration) + '</td>' +
             '<td class="text-right nowrap">' + fmtSize(v.size) + '</td>' +
             '<td class="text-right nowrap">' + (v.view_count > 0 ? fmtViews(v.view_count) : '\u2014') + '</td>' +
-            '<td class="text-center">' + (v.watched ? '<span class="badge badge-green">✓</span>' : (v.progress > 5 ? '<span class="badge badge-blue">⏳</span>' : '\u2014')) + '</td>' +
+            '<td class="text-center">' + (v.watched ? '<span class="badge badge-green">✓</span>' : (v.progress > 5 ? '<span class="badge badge-blue">...</span>' : '\u2014')) + '</td>' +
             '</tr>';
     });
     tbody.innerHTML = html;
@@ -464,10 +464,33 @@ function sortVideos() {
 function channelAction(action, channelName, channelUrl) {
     var encoded = encodeURIComponent(channelName);
 
-    if (action === 'unsubscribe' && !confirm('Unsubscribe from ' + channelName + '?')) return;
-    if (action === 'delete' && !confirm('Delete folder for ' + channelName + '? This removes all files.')) return;
+    // Actions that need confirmation via modal
+    if (action === 'unsubscribe') {
+        if (typeof confirmAction === 'function') {
+            var _form = _buildChannelForm(action, channelName, channelUrl);
+            document.body.appendChild(_form);
+            confirmAction('Unsubscribe', 'Unsubscribe from ' + channelName + '? You will stop tracking this channel for new videos.', _form);
+            return;
+        }
+        if (!confirm('Unsubscribe from ' + channelName + '?')) return;
+    }
+    if (action === 'delete') {
+        if (typeof confirmAction === 'function') {
+            var _form2 = _buildChannelForm(action, channelName, channelUrl);
+            document.body.appendChild(_form2);
+            confirmAction('Delete Folder', 'Delete folder for ' + channelName + '? This removes all downloaded video files for this channel. This cannot be undone.', _form2);
+            return;
+        }
+        if (!confirm('Delete folder for ' + channelName + '? This removes all files.')) return;
+    }
 
-    // Build form and submit for actions that need POST
+    var form = _buildChannelForm(action, channelName, channelUrl);
+    document.body.appendChild(form);
+    form.submit();
+}
+
+function _buildChannelForm(action, channelName, channelUrl) {
+    var encoded = encodeURIComponent(channelName);
     var form = document.createElement('form');
     form.method = 'POST';
     form.style.display = 'none';
@@ -501,11 +524,10 @@ function channelAction(action, channelName, channelUrl) {
             form.action = '/api/delete-folder/' + encoded;
             break;
         default:
-            return;
+            return form;
     }
 
-    document.body.appendChild(form);
-    form.submit();
+    return form;
 }
 
 function addField(form, name, value) {

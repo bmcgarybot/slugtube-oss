@@ -3,7 +3,7 @@
 {% block content %}
 
 <div class="page-header">
-    <h1>📋 Logs</h1>
+    <h1>Logs</h1>
     <div class="btn-group">
         <span class="text-dim text-sm" style="align-self: center;">Log file: {% if log_size >= 1048576 %}{{ "%.1f"|format(log_size / 1048576) }} MB{% elif log_size >= 1024 %}{{ "%.1f"|format(log_size / 1024) }} KB{% else %}{{ log_size }} B{% endif %}</span>
         <a href="/logs/export" class="btn btn-ghost" title="Download log as .txt file">Export</a>

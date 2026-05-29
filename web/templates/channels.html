@@ -3,9 +3,9 @@
 {% block content %}
 
 <div class="page-header">
-    <h1>📺 Channels <span class="text-dim text-sm" style="font-weight:400;" id="channel-count">({{ unified | length }})</span></h1>
+    <h1>Channels <span class="text-dim text-sm" style="font-weight:400;" id="channel-count">({{ unified | length }})</span></h1>
     <div class="view-toggle" id="browse-toggle">
-        <button class="btn btn-sm btn-ghost mix-toggle-btn" onclick="toggleMixMode()" id="mix-mode-btn" title="Select multiple channels to mix">🎲 Mix</button>
+        <button class="btn btn-sm btn-ghost mix-toggle-btn" onclick="toggleMixMode()" id="mix-mode-btn" title="Select multiple channels to mix">Mix</button>
         <button class="btn btn-sm btn-ghost" onclick="setBrowseView('table')" id="browse-table-btn" title="Table view">☰ Table</button>
         <button class="btn btn-sm btn-ghost" onclick="setBrowseView('grid')" id="browse-grid-btn" title="Grid view">⊞ Grid</button>
     </div>
@@ -82,12 +82,12 @@
         <table class="channels-table"><thead><tr><th>Channel</th><th class="text-center">Status</th><th class="text-center">Videos</th><th class="text-right">Size</th><th class="text-center">NFO</th><th class="text-center">Art</th><th>Category</th><th class="text-center ch-actions-th">Actions</th></tr></thead>
             <tbody>{% for ch in unified | sort(attribute='name') %}
                 <tr style="cursor:pointer;" onclick="selectChannel(this.getAttribute('data-name'))" data-name="{{ ch.name }}">
-                    <td class="channel-name" data-label="Channel">{{ ch.name }}{% if ch.index_playlists %} <span class="ch-playlist-icon" title="Playlist indexing">📋</span>{% endif %}</td>
-                    <td class="text-center nowrap" data-label="Status">{% if ch.subscribed and ch.on_disk %}<span class="badge badge-green">✅ Active</span>{% elif ch.subscribed %}<span class="badge badge-blue">📋 Sub'd</span>{% else %}<span class="badge badge-orange">📁 Library</span>{% endif %}</td>
+                    <td class="channel-name" data-label="Channel">{{ ch.name }}{% if ch.index_playlists %} <span class="ch-playlist-icon" title="Playlist indexing">PL</span>{% endif %}</td>
+                    <td class="text-center nowrap" data-label="Status">{% if ch.subscribed and ch.on_disk %}<span class="badge badge-green">Active</span>{% elif ch.subscribed %}<span class="badge badge-blue">Sub'd</span>{% else %}<span class="badge badge-orange">Library</span>{% endif %}</td>
                     <td class="text-center" data-label="Videos">{% if ch.on_disk %}<span class="badge badge-green">{{ ch.video_count }}</span>{% else %}—{% endif %}</td>
                     <td class="text-right text-dim" data-label="Size">{% if ch.on_disk %}{{ "%.1f"|format((ch.total_size_bytes or 0) / 1073741824) }} GB{% else %}—{% endif %}</td>
-                    <td class="text-center" data-label="NFO">{% if ch.on_disk and ch.has_nfo %}✅{% else %}—{% endif %}</td>
-                    <td class="text-center" data-label="Art">{% if ch.on_disk and ch.has_poster %}🖼️{% else %}—{% endif %}</td>
+                    <td class="text-center" data-label="NFO">{% if ch.on_disk and ch.has_nfo %}Yes{% else %}—{% endif %}</td>
+                    <td class="text-center" data-label="Art">{% if ch.on_disk and ch.has_poster %}Yes{% else %}—{% endif %}</td>
                     <td data-label="Category"><span class="badge badge-blue">{{ ch.section }}</span></td>
                     <td class="ch-actions" data-label="Actions" onclick="event.stopPropagation()"><div class="ch-actions-row">{% if ch.url %}<form method="POST" action="/run/fast-single" class="form-inline"><input type="hidden" name="url" value="{{ ch.url }}"><input type="hidden" name="folder" value="{{ ch.name }}"><button type="submit" class="btn btn-accent btn-sm" {% if job.status == 'running' %}disabled{% endif %}>Quick Check</button></form>{% endif %}{% if ch.subscribed or ch.on_disk %}<div class="dropdown"><button type="button" class="dropdown-trigger">⋮</button><div class="dropdown-menu">{% if ch.url %}<form method="POST" action="/run/single" class="form-inline"><input type="hidden" name="url" value="{{ ch.url }}"><input type="hidden" name="folder" value="{{ ch.name }}"><button type="submit" class="dropdown-item" {% if job.status == 'running' %}disabled{% endif %}>Download All</button></form>{% endif %}{% if ch.on_disk %}<form method="POST" action="/api/reindex/{{ ch.name | urlencode }}" class="form-inline"><button type="submit" class="dropdown-item">Reindex</button></form>{% endif %}{% if ch.subscribed %}<form method="POST" action="/api/toggle-playlists/{{ ch.name | urlencode }}"><button type="submit" class="dropdown-item">{% if ch.index_playlists %}Disable{% else %}Enable{% endif %} Playlists</button></form><div class="dropdown-divider"></div><form method="POST" action="/remove"><input type="hidden" name="url" value="{{ ch.url }}"><input type="hidden" name="name" value="{{ ch.name }}"><button type="submit" class="dropdown-item dropdown-danger" onclick="return confirm('Unsubscribe from {{ ch.name }}?')">Unsubscribe</button></form>{% endif %}{% if ch.on_disk %}<form method="POST" action="/api/delete-folder/{{ ch.name | urlencode }}"><button type="submit" class="dropdown-item dropdown-danger" onclick="return confirm('DELETE {{ ch.name }} folder?')">Delete Folder</button></form>{% endif %}</div></div>{% endif %}</div></td>
                 </tr>{% endfor %}
@@ -188,7 +188,7 @@
 <!-- Mix bar (shows when channels selected) -->
 <div class="mix-bar" id="mix-bar" style="display:none;">
     <span class="mix-bar-text" id="mix-bar-text">0 channels selected</span>
-    <button class="btn btn-sm btn-accent" onclick="shufflePlayMix()">🔀 Shuffle Play</button>
+    <button class="btn btn-sm btn-accent" onclick="shufflePlayMix()">Shuffle Play</button>
     <button class="btn btn-sm btn-ghost" onclick="clearMixSelection()">✕ Clear</button>
 </div>
 
