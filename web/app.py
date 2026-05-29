@@ -375,8 +375,13 @@ def check_cookie_health():
 
 
 def _check_logs_for_cookie_rejection(file_age_days=0):
-    """Scan recent logs for signs YouTube is rejecting cookies, even if the file looks fine."""
+    """Scan recent logs for signs YouTube is rejecting cookies, even if the file looks fine.
+    
+    Only flags errors that occurred AFTER the cookie file was last saved.
+    This prevents stale log entries from keeping the dot red after a cookie refresh.
+    """
     import re
+    from datetime import datetime
 
     # Patterns that indicate YouTube is rejecting/ignoring cookies
     REJECTION_PATTERNS = [
@@ -396,6 +401,12 @@ def _check_logs_for_cookie_rejection(file_age_days=0):
     try:
         if not os.path.isfile(LOG_FILE):
             return None
+
+        # Get cookie file modification time — errors BEFORE this don't count
+        cookie_path = "/config/Cookie/cookies.txt"
+        cookie_mtime = None
+        if os.path.isfile(cookie_path):
+            cookie_mtime = os.path.getmtime(cookie_path)
 
         with open(LOG_FILE, "r", errors="replace") as f:
             f.seek(0, 2)
@@ -418,10 +429,9 @@ def _check_logs_for_cookie_rejection(file_age_days=0):
         if not signals_found:
             return None
 
-        # Check if errors are recent (within last 2 hours)
-        # Look for timestamps near the rejection messages
+        # Check if errors are BOTH recent (within 2 hours) AND after cookie refresh
         now_ts = time.time()
-        is_recent = False
+        is_recent_and_post_refresh = False
 
         # Try to find timestamps in format "YYYY-MM-DD HH:MM:SS" near errors
         for pattern in signals_found[:3]:  # Check first few
@@ -432,25 +442,41 @@ def _check_logs_for_cookie_rejection(file_age_days=0):
             )
             if matches:
                 try:
-                    from datetime import datetime
                     last_time = datetime.strptime(matches[-1].replace("T", " "), "%Y-%m-%d %H:%M:%S")
+                    last_time_ts = last_time.timestamp()
                     age_hours = (datetime.utcnow() - last_time).total_seconds() / 3600
+
+                    # Must be recent AND after the cookie file was saved
                     if age_hours < 2:
-                        is_recent = True
-                        break
+                        if cookie_mtime is None or last_time_ts > cookie_mtime:
+                            is_recent_and_post_refresh = True
+                            break
+                        # else: error is from before cookies were refreshed — ignore it
                 except (ValueError, TypeError):
                     pass
 
-        # If no timestamp found but the log was recently written, assume recent
-        if not is_recent:
+        # Fallback: if no parseable timestamps, only flag if log was written
+        # AFTER cookies AND within last hour (both conditions required)
+        if not is_recent_and_post_refresh:
             try:
-                log_age_hours = (now_ts - os.path.getmtime(LOG_FILE)) / 3600
+                log_mtime = os.path.getmtime(LOG_FILE)
+                log_age_hours = (now_ts - log_mtime) / 3600
                 if log_age_hours < 1:
-                    is_recent = True
+                    # Log is fresh, but only flag if cookies are OLDER than the log
+                    # (meaning errors happened after the last cookie save)
+                    if cookie_mtime is not None and log_mtime > cookie_mtime:
+                        # Log written after cookies — but we can't tell if the ERRORS
+                        # are post-refresh without timestamps. Give cookies the benefit
+                        # of the doubt for the first 10 minutes after refresh.
+                        cookie_age_min = (now_ts - cookie_mtime) / 60
+                        if cookie_age_min > 10:
+                            is_recent_and_post_refresh = True
+                    elif cookie_mtime is None:
+                        is_recent_and_post_refresh = True
             except OSError:
                 pass
 
-        if not is_recent:
+        if not is_recent_and_post_refresh:
             return None
 
         # Determine severity based on which signals we see
