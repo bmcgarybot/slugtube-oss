@@ -3,14 +3,14 @@
 
 {% block content %}
 <div class="page-header">
-    <h1>📜 Watch History</h1>
+    <h1>Watch History</h1>
     <div class="btn-group">
         <a href="/history?filter=all" class="btn {% if filter_type == 'all' %}btn-blue{% endif %}">All ({{ stats.total }})</a>
-        <a href="/history?filter=in-progress" class="btn {% if filter_type == 'in-progress' %}btn-purple{% endif %}">▶️ In Progress ({{ stats.in_progress }})</a>
-        <a href="/history?filter=watched" class="btn {% if filter_type == 'watched' %}btn-primary{% endif %}">✅ Watched ({{ stats.watched }})</a>
+        <a href="/history?filter=in-progress" class="btn {% if filter_type == 'in-progress' %}btn-purple{% endif %}">In Progress ({{ stats.in_progress }})</a>
+        <a href="/history?filter=watched" class="btn {% if filter_type == 'watched' %}btn-primary{% endif %}">Watched ({{ stats.watched }})</a>
         {% if stats.total > 0 %}
-        <form method="POST" action="/history/clear" style="display:inline">
-            <button type="submit" class="btn btn-danger" onclick="return confirm('Clear all watch history? This cannot be undone.')">🗑️ Clear History</button>
+        <form method="POST" action="/history/clear" style="display:inline" onsubmit="return confirmAction('Clear Watch History', 'Clear all watch history? This cannot be undone.', this);">
+            <button type="submit" class="btn btn-danger" title="Remove all watch history entries">Clear History</button>
         </form>
         {% endif %}
     </div>
@@ -24,7 +24,7 @@
             {% if v.thumbnail_path %}
             <img src="/media/thumb/{{ v.id }}" alt="{{ v.title }}" loading="lazy">
             {% else %}
-            <div class="thumb-placeholder">🎬</div>
+            <div class="thumb-placeholder">▶</div>
             {% endif %}
             <span class="video-duration">{{ format_duration(v.duration) }}</span>
             {% if v.watched %}<span class="watched-badge">✓</span>{% endif %}
@@ -39,9 +39,9 @@
             <div class="video-meta">{{ v.channel_name }} · {{ v.upload_date or 'Unknown' }}</div>
             <div class="video-meta">
                 {% if v.watched %}
-                    ✅ Watched
+                    Watched
                 {% elif v.position_seconds and v.duration %}
-                    ▶️ {{ format_duration(v.position_seconds | int) }} / {{ format_duration(v.duration) }}
+                    {{ format_duration(v.position_seconds | int) }} / {{ format_duration(v.duration) }}
                 {% endif %}
                 · {{ v.last_watched[:16] if v.last_watched else '' }}
             </div>
@@ -52,15 +52,15 @@
 {% else %}
 <div style="text-align:center; color: var(--text-dimmer); padding: 80px 20px;">
     {% if filter_type == 'in-progress' %}
-        <p style="font-size: 48px; margin-bottom: 16px;">▶️</p>
+        <p style="font-size: 48px; margin-bottom: 16px;">▶</p>
         <p style="font-size: 16px;">No videos in progress</p>
         <p style="font-size: 13px; margin-top: 8px;">Start watching something and your progress will be saved automatically.</p>
     {% elif filter_type == 'watched' %}
-        <p style="font-size: 48px; margin-bottom: 16px;">✅</p>
+        <p style="font-size: 48px; margin-bottom: 16px;">✓</p>
         <p style="font-size: 16px;">No watched videos yet</p>
         <p style="font-size: 13px; margin-top: 8px;">Videos are marked as watched when they finish playing or you click "Mark Watched".</p>
     {% else %}
-        <p style="font-size: 48px; margin-bottom: 16px;">📜</p>
+        <p style="font-size: 48px; margin-bottom: 16px;"></p>
         <p style="font-size: 16px;">No watch history yet</p>
         <p style="font-size: 13px; margin-top: 8px;">Go to the <a href="/library" style="color:var(--accent);">Library</a> and start watching!</p>
     {% endif %}

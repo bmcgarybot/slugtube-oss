@@ -30,11 +30,11 @@
 <!-- Cookie Health Warning -->
 {% if cookie_health and cookie_health.status in ('expired', 'missing') %}
 <div class="job-banner job-error mb-16">
-    ❌ {{ cookie_health.message }} — <a href="/cookies" style="color: var(--red); text-decoration: underline;">Update cookies</a>
+    {{ cookie_health.message }} — <a href="/cookies" style="color: var(--red); text-decoration: underline;">Update cookies</a>
 </div>
 {% elif cookie_health and cookie_health.status == 'warning' %}
 <div class="alert alert-warning mb-16">
-    ⚠️ {{ cookie_health.message }} — <a href="/cookies" style="color: var(--orange); text-decoration: underline;">Check cookies</a>
+    {{ cookie_health.message }} — <a href="/cookies" style="color: var(--orange); text-decoration: underline;">Check cookies</a>
 </div>
 {% endif %}
 
@@ -47,7 +47,7 @@
 {% endif %}
 <div class="stat-grid">
     <div class="stat-card">
-        <div class="stat-icon" style="background: rgba(88,166,255,0.15); color: var(--accent);">📺</div>
+        <div class="stat-icon" style="background: rgba(88,166,255,0.15); color: var(--accent);"></div>
         <div class="stat-content">
             <div class="stat-value">{{ channel_count }}</div>
             <div class="stat-label">Subscribed Channels</div>
@@ -55,7 +55,7 @@
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-icon" style="background: rgba(76,175,80,0.15); color: var(--green);">🎬</div>
+        <div class="stat-icon" style="background: rgba(76,175,80,0.15); color: var(--green);"></div>
         <div class="stat-content">
             <div class="stat-value">{{ "{:,}".format(total_videos) }}</div>
             <div class="stat-label">Videos in Library</div>
@@ -63,7 +63,7 @@
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-icon" style="background: rgba(137,87,229,0.15); color: var(--purple);">📋</div>
+        <div class="stat-icon" style="background: rgba(137,87,229,0.15); color: var(--purple);"></div>
         <div class="stat-content">
             <div class="stat-value">{{ "{:,}".format(archive_count) }}</div>
             <div class="stat-label">Archive Entries</div>
@@ -71,7 +71,7 @@
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-icon" style="background: rgba(210,153,34,0.15); color: var(--orange);">💾</div>
+        <div class="stat-icon" style="background: rgba(210,153,34,0.15); color: var(--orange);"></div>
         <div class="stat-content">
             <div class="stat-value">{{ disk_usage }}</div>
             <div class="stat-label">Library Size</div>
@@ -84,29 +84,29 @@
 <div class="status-bar">
     {% if cookie_health %}
         {% if cookie_health.status == 'ok' %}
-    <span class="status-item status-ok">🍪 Cookies: OK ({{ cookie_health.age_days }} days)</span>
+    <span class="status-item status-ok">Cookies: OK ({{ cookie_health.age_days }} days)</span>
         {% elif cookie_health.status == 'warning' %}
-    <span class="status-item status-warn">🍪 Cookies: {{ cookie_health.age_days }} days old</span>
+    <span class="status-item status-warn">Cookies: {{ cookie_health.age_days }} days old</span>
         {% elif cookie_health.status == 'expired' %}
-    <span class="status-item status-err">🍪 Cookies: Expired!</span>
+    <span class="status-item status-err">Cookies: Expired!</span>
         {% elif cookie_health.status == 'missing' %}
-    <span class="status-item status-err">🍪 Cookies: Missing!</span>
+    <span class="status-item status-err">Cookies: Missing!</span>
         {% endif %}
     {% endif %}
     {% if state.last_fast %}
-    <span class="status-item">⏰ Last check: {{ state.last_fast }}</span>
+    <span class="status-item">Last check: {{ state.last_fast }}</span>
     {% endif %}
     {% if state.last_full %}
-    <span class="status-item">📚 Last full: {{ state.last_full }}</span>
+    <span class="status-item">Last full: {{ state.last_full }}</span>
     {% endif %}
-    <span class="status-item status-ok">📡 yt-dlp: v{{ ytdlp_version }}</span>
+    <span class="status-item status-ok">yt-dlp: v{{ ytdlp_version }}</span>
 </div>
 
 <!-- Latest Downloads Grid -->
 {% if recent_videos %}
 <div class="card" style="margin-bottom: 20px;">
     <div class="card-header">
-        🎬 Latest Downloads
+        Latest Downloads
         <a href="/library/recent" style="color: var(--accent); text-decoration: none; font-size: 13px;">View all →</a>
     </div>
     <div class="recent-videos-grid">
@@ -137,7 +137,7 @@
     <!-- Top Channels — Bar Chart -->
     <div class="card">
         <div class="card-header">
-            🏆 Largest Channels
+            Largest Channels
             <a href="/channels" style="color: var(--accent); text-decoration: none; font-size: 13px;">View all →</a>
         </div>
         <div class="card-body">
@@ -162,7 +162,7 @@
     <!-- Recent Activity — Clean Feed -->
     <div class="card">
         <div class="card-header">
-            📡 Recent Activity
+            Recent Activity
             <a href="/logs" style="color: var(--accent); text-decoration: none; font-size: 13px;">Full logs →</a>
         </div>
         <div class="card-body">
@@ -185,9 +185,9 @@
 <!-- Schedule Info -->
 <div class="card mt-8">
     <div class="card-body flex-center gap-32 text-sm text-dim">
-        <span>⚡ Fast check: every 6 hours</span>
-        <span>📚 Full index: Sundays 3 AM</span>
-        <span>🔄 yt-dlp update: daily 1 AM</span>
+        <span>Fast check: every 6 hours</span>
+        <span>Full index: Sundays 3 AM</span>
+        <span>yt-dlp update: daily 1 AM</span>
     </div>
 </div>
 

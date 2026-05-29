@@ -37,24 +37,24 @@
 <div class="video-details">
     <h1 class="video-detail-title">{{ video.title }}</h1>
     <div class="video-detail-meta">
-        <span>📺 <a href="/library/{{ video.channel_name | urlencode }}" style="color:var(--accent);text-decoration:none;">{{ video.channel_name }}</a></span>
-        <span>📅 {{ video.upload_date or 'Unknown' }}</span>
-        <span>⏱️ {{ format_duration(video.duration) }}</span>
-        <span>📦 {{ format_size(video.file_size) }}</span>
-        {% if video.view_count %}<span>👁️ {{ "{:,}".format(video.view_count) }} views</span>{% endif %}
-        {% if video.like_count %}<span>👍 {{ "{:,}".format(video.like_count) }} likes</span>{% endif %}
-        {% if video.width and video.height %}<span>🖥️ {{ video.width }}×{{ video.height }}</span>{% endif %}
+        <span><a href="/library/{{ video.channel_name | urlencode }}" style="color:var(--accent);text-decoration:none;">{{ video.channel_name }}</a></span>
+        <span>{{ video.upload_date or 'Unknown' }}</span>
+        <span>{{ format_duration(video.duration) }}</span>
+        <span>{{ format_size(video.file_size) }}</span>
+        {% if video.view_count %}<span>{{ "{:,}".format(video.view_count) }} views</span>{% endif %}
+        {% if video.like_count %}<span>{{ "{:,}".format(video.like_count) }} likes</span>{% endif %}
+        {% if video.width and video.height %}<span>{{ video.width }}×{{ video.height }}</span>{% endif %}
     </div>
 
     <div class="video-detail-actions">
         <button id="mark-watched-btn" class="btn btn-sm {% if video.watched %}btn-primary{% endif %}" onclick="toggleWatched()">
-            {% if video.watched %}✅ Watched{% else %}👁️ Mark Watched{% endif %}
+            {% if video.watched %}Watched{% else %}Mark Watched{% endif %}
         </button>
         {% if prev_video %}
-        <a href="/watch/{{ prev_video.id }}" class="btn btn-sm" id="prev-btn">⏮️ Previous</a>
+        <a href="/watch/{{ prev_video.id }}" class="btn btn-sm" id="prev-btn">Previous</a>
         {% endif %}
         {% if next_video %}
-        <a href="/watch/{{ next_video.id }}" class="btn btn-sm" id="next-btn">⏭️ Next</a>
+        <a href="/watch/{{ next_video.id }}" class="btn btn-sm" id="next-btn">Next</a>
         {% endif %}
         <div class="player-toggles">
             <button id="autoplay-btn" class="btn btn-sm toggle-btn" onclick="toggleAutoplay()" title="Auto-play next video when current ends">
@@ -70,14 +70,14 @@
                 Queue (<span id="queue-count-badge">0</span>)
             </button>
         </div>
-        <form method="POST" action="/delete/{{ video.id }}" style="display:inline; margin-left:auto;">
-            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('🗑️ Delete this video permanently?\n\n{{ video.title }}\n\nThis will remove the video file, thumbnail, subtitles, and database entry. This cannot be undone.')">🗑️ Delete</button>
+        <form method="POST" action="/delete/{{ video.id }}" style="display:inline; margin-left:auto;" onsubmit="return confirmAction('Delete Video', 'Permanently delete this video?\n\n{{ video.title }}\n\nThis will remove the video file, thumbnail, subtitles, and database entry. This cannot be undone.', this);">
+            <button type="submit" class="btn btn-sm btn-danger" title="Permanently delete this video from disk">Delete</button>
         </form>
     </div>
 
     {% if video.description %}
     <details class="description-block">
-        <summary style="cursor:pointer;color:var(--text-dim);font-size:13px;padding:8px 0;">📝 Description</summary>
+        <summary style="cursor:pointer;color:var(--text-dim);font-size:13px;padding:8px 0;">Description</summary>
         <div class="description-text">{{ video.description }}</div>
     </details>
     {% endif %}
@@ -86,7 +86,7 @@
 <!-- Queue Panel -->
 <div class="queue-panel" id="queue-panel">
     <div class="queue-panel-header">
-        <span>🎶 Play Queue <span id="queue-panel-count" class="text-dim text-sm"></span></span>
+        <span>Play Queue <span id="queue-panel-count" class="text-dim text-sm"></span></span>
         <button class="queue-panel-close" onclick="toggleQueuePanel()" title="Close">✕</button>
     </div>
     <div class="queue-panel-body" id="queue-panel-body">
@@ -281,7 +281,7 @@ function renderQueuePanel() {
         var isPlaying = item.id === videoId;
         var thumbStyle = item.thumb_url ? "background-image:url('" + item.thumb_url + "')" : '';
         html += '<div class="queue-item' + (isPlaying ? ' playing' : '') + '" data-id="' + item.id + '">' +
-            '<div class="queue-item-thumb" style="' + thumbStyle + '">' + (item.thumb_url ? '' : '<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--text-dimmer)">🎬</span>') + '</div>' +
+            '<div class="queue-item-thumb" style="' + thumbStyle + '">' + (item.thumb_url ? '' : '<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--text-dimmer)"></span>') + '</div>' +
             '<div class="queue-item-info" onclick="playQueueItem(\'' + item.id + '\')">' +
             '<div class="queue-item-title">' + escQHtml(item.title) + '</div>' +
             '<div class="queue-item-channel">' + escQHtml(item.channel || '') + '</div>' +
@@ -432,7 +432,7 @@ player.addEventListener('ended', () => {
         })
     });
     const btn = document.getElementById('mark-watched-btn');
-    btn.textContent = '✅ Watched';
+    btn.textContent = 'Watched';
     btn.classList.add('btn-primary');
 
     // Queue-aware autoplay logic
@@ -481,7 +481,7 @@ player.addEventListener('ended', () => {
 // ── Toggle watched ──
 function toggleWatched() {
     const btn = document.getElementById('mark-watched-btn');
-    const isWatched = btn.textContent.includes('✅');
+    const isWatched = btn.textContent.includes('Watched') && !btn.textContent.includes('Mark');
     fetch('/api/watch-progress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -492,10 +492,10 @@ function toggleWatched() {
         })
     });
     if (isWatched) {
-        btn.textContent = '👁️ Mark Watched';
+        btn.textContent = 'Mark Watched';
         btn.classList.remove('btn-primary');
     } else {
-        btn.textContent = '✅ Watched';
+        btn.textContent = 'Watched';
         btn.classList.add('btn-primary');
     }
 }

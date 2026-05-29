@@ -1283,43 +1283,39 @@
     <div class="sidebar-brand"><span>🐌</span> SlugTube <span id="cookie-dot" class="cookie-dot" title="Checking cookies...">●</span></div>
     <nav class="sidebar-nav" onclick="if(window.innerWidth<=900){document.querySelector('.sidebar').classList.remove('open');document.querySelector('.sidebar-overlay').classList.remove('open');}">
         <a href="/" class="{% if page == 'dashboard' %}active{% endif %}">
-            <span class="icon">📊</span> Dashboard
+            <span class="icon"></span> Dashboard
         </a>
-        <!-- Library merged into Channels page -->
-        <!-- <a href="/library">
-            <span class="icon">🎬</span> Library
-        </a> -->
         <a href="/history" class="{% if page == 'history' %}active{% endif %}">
-            <span class="icon">📜</span> History
+            <span class="icon"></span> History
         </a>
         <a href="/channels" class="{% if page == 'channels' %}active{% endif %}">
-            <span class="icon">📺</span> Channels
+            <span class="icon"></span> Channels
         </a>
         <a href="/logs" class="{% if page == 'logs' %}active{% endif %}">
-            <span class="icon">📋</span> Logs
+            <span class="icon"></span> Logs
         </a>
         <a href="/cookies" class="{% if page == 'cookies' %}active{% endif %}">
-            <span class="icon">🍪</span> Cookies
+            <span class="icon"></span> Cookies
         </a>
         <a href="/settings" class="{% if page == 'settings' %}active{% endif %}">
-            <span class="icon">⚙️</span> Settings
+            <span class="icon"></span> Settings
         </a>
     </nav>
     <div class="sidebar-theme-picker">
-        <div class="picker-label">🎨 Theme</div>
+        <div class="picker-label">Theme</div>
         <select id="theme-select" onchange="applyTheme()">
-            <option value="midnight">🌙 Midnight</option>
-            <option value="jellyfin">🟦 Jellyfin</option>
-            <option value="playnite">🎮 Playnite</option>
-            <option value="amoled">⚫ AMOLED</option>
+            <option value="midnight">Midnight</option>
+            <option value="jellyfin">Jellyfin</option>
+            <option value="playnite">Playnite</option>
+            <option value="amoled">AMOLED</option>
         </select>
         <div class="mode-toggle">
-            <button type="button" class="mode-btn" id="mode-dark-btn" onclick="setMode('dark')" title="Dark mode">🌙</button>
-            <button type="button" class="mode-btn" id="mode-light-btn" onclick="setMode('light')" title="Light mode">☀️</button>
+            <button type="button" class="mode-btn" id="mode-dark-btn" onclick="setMode('dark')" title="Dark mode">Dark</button>
+            <button type="button" class="mode-btn" id="mode-light-btn" onclick="setMode('light')" title="Light mode">Light</button>
         </div>
     </div>
     <div class="sidebar-footer">
-        Built with SlugTube 🐌<br>
+        Built by Obsidian Slug 🐌<br>
         No UI that breaks.
     </div>
 </aside>
@@ -1333,11 +1329,11 @@
     </div>
     {% elif job.status == 'done' %}
     <div class="job-banner job-done">
-        ✅ Last {{ job.mode }} download completed successfully
+        Last {{ job.mode }} download completed successfully
     </div>
     {% elif job.status == 'error' %}
     <div class="job-banner job-error">
-        ❌ Error: {{ job.log[:200] }}
+        Error: {{ job.log[:200] }}
     </div>
     {% endif %}
 
@@ -1347,7 +1343,7 @@
 <!-- Global pause bar -->
 {% if paused is defined and paused %}
 <div class="pause-bar">
-    <span class="pause-bar-text">⏸️ Downloads Paused — scheduled checks will be skipped</span>
+    <span class="pause-bar-text">Downloads Paused — scheduled checks will be skipped</span>
     <form method="POST" action="/resume"><button type="submit" class="btn btn-primary">Resume</button></form>
 </div>
 {% endif %}
@@ -1558,7 +1554,7 @@ var SlugTubeTour = {
            ═══════════════════════════════════════════ */
 
         // 1 — Welcome
-        { target: null, title: 'Welcome to SlugTube! 🎉', desc: 'This tour will walk you through every feature. Use Next/Back or arrow keys to navigate, Escape to skip. Let\'s go!', page: 'dashboard', noHighlight: true },
+        { target: null, title: 'Welcome to SlugTube!', desc: 'This tour will walk you through every feature. Use Next/Back or arrow keys to navigate, Escape to skip. Let\'s go!', page: 'dashboard', noHighlight: true },
 
         // 2 — Cookie Health Dot
         { target: '#cookie-dot', title: 'Cookie Health Dot', desc: 'Green = cookies are fresh. Orange = getting stale, refresh soon. Red = expired or rejected — paste new cookies in Settings. Hover this dot anytime for details.', page: 'dashboard' },
@@ -1650,7 +1646,7 @@ var SlugTubeTour = {
         { target: null, title: 'Bookmarkable URLs', desc: 'URLs like /channels#ChannelName are bookmarkable. Browser back/forward works too — deep-link straight to any channel.', page: 'channels', noHighlight: true },
 
         // 29 — Mix Mode
-        { target: '#mix-toggle-btn', title: '🎲 Mix Mode', desc: 'Hit the Mix button to select multiple channels. Checkboxes appear on each channel card. Pick your favorites, then Shuffle Play to get random videos from across all of them.', page: 'channels', optional: true },
+        { target: '#mix-toggle-btn', title: 'Mix Mode', desc: 'Hit the Mix button to select multiple channels. Checkboxes appear on each channel card. Pick your favorites, then Shuffle Play to get random videos from across all of them.', page: 'channels', optional: true },
 
         // 30 — Mix Bar
         { target: '#mix-bar', title: 'Mix Shuffle Play', desc: 'Once you have selected channels, this bar shows how many are picked. Shuffle Play opens a random video from any of them. Clear resets your selection.', page: 'channels', optional: true },
@@ -1696,7 +1692,7 @@ var SlugTubeTour = {
         { target: '#delete-btn', title: 'Delete Video', desc: 'Permanently removes the video file from disk. Always asks for confirmation first. Deleted videos won\'t be re-downloaded.', page: 'watch', optional: true },
 
         // 37 — Keyboard Shortcuts
-        { target: '.player-container', title: 'Keyboard Shortcuts ⌨️', desc: 'Space/K = play/pause · J/← = back 10s · L/→ = forward 10s · N = next · P = previous · F = fullscreen · M = mute', page: 'watch', optional: true },
+        { target: '.player-container', title: 'Keyboard Shortcuts', desc: 'Space/K = play/pause · J/← = back 10s · L/→ = forward 10s · N = next · P = previous · F = fullscreen · M = mute', page: 'watch', optional: true },
 
         /* ═══════════════════════════════════════════
            SETTINGS  (page: 'settings')
@@ -1764,7 +1760,7 @@ var SlugTubeTour = {
            ═══════════════════════════════════════════ */
 
         // 55
-        { target: null, title: 'You\'re All Set! 🎉', desc: 'SlugTube will remember you\'ve seen this tour. To revisit it anytime, go to Settings → 🎓 Show Feature Walkthrough. Enjoy your library!', page: 'any', noHighlight: true }
+        { target: null, title: 'You\'re All Set!', desc: 'SlugTube will remember you\'ve seen this tour. To revisit it anytime, go to Settings → Show Feature Walkthrough. Enjoy your library!', page: 'any', noHighlight: true }
     ],
 
     init: function() {
@@ -1929,6 +1925,43 @@ if (!localStorage.getItem('slugtube-tour-done')) {
 function restartTour() {
     localStorage.removeItem('slugtube-tour-done');
     SlugTubeTour.start();
+}
+</script>
+
+<!-- Confirm Action Modal (global) -->
+<script>
+function confirmAction(title, message, formEl) {
+    // Remove old modal if exists
+    var old = document.getElementById('confirm-action-overlay');
+    if (old) old.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'confirm-action-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px 24px;min-width:320px;max-width:440px;box-shadow:0 16px 48px rgba(0,0,0,0.3);';
+    modal.innerHTML =
+        '<h3 style="margin:0 0 12px;font-size:16px;color:var(--text);">' + title + '</h3>' +
+        '<p style="font-size:13px;color:var(--text-dim);margin:0 0 20px;line-height:1.5;">' + message + '</p>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+        '<button class="btn btn-sm btn-ghost" id="confirm-action-cancel">Cancel</button>' +
+        '<button class="btn btn-sm btn-primary" id="confirm-action-ok">Confirm</button>' +
+        '</div>';
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    document.getElementById('confirm-action-cancel').onclick = function() { overlay.remove(); };
+    document.getElementById('confirm-action-ok').onclick = function() {
+        overlay.remove();
+        // Bypass onsubmit to avoid re-triggering confirmation
+        formEl.removeAttribute('onsubmit');
+        formEl.submit();
+    };
+
+    return false; // prevent original form submit
 }
 </script>
 

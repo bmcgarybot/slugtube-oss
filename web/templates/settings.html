@@ -3,18 +3,18 @@
 {% block content %}
 
 <div class="page-header">
-    <h1>⚙️ Settings</h1>
+    <h1>Settings</h1>
 </div>
 
 {% if save_status == 'success' %}
 <div style="margin-bottom: 16px; padding: 10px 16px; background: rgba(63,185,80,0.08); border: 1px solid rgba(63,185,80,0.3); border-radius: 6px; color: var(--green); font-size: 13px;">
-    ✅ Settings saved! Changes apply on next download.
+    Settings saved! Changes apply on next download.
 </div>
 {% endif %}
 
 <!-- Theme Selector -->
 <div class="card">
-    <div class="card-header">🎨 Theme</div>
+    <div class="card-header">Theme</div>
     <div class="card-body">
         <div class="theme-grid">
             <div class="theme-card" data-theme="midnight" onclick="setThemeFromCard('midnight')">
@@ -23,7 +23,7 @@
                     <div class="swatch" style="background:#f6f8fa;flex:1;"></div>
                     <div class="swatch" style="background:#58a6ff;flex:0.4;"></div>
                 </div>
-                <div class="theme-card-name">🌙 Midnight</div>
+                <div class="theme-card-name">Midnight</div>
             </div>
             <div class="theme-card" data-theme="jellyfin" onclick="setThemeFromCard('jellyfin')">
                 <div class="theme-card-swatches">
@@ -31,7 +31,7 @@
                     <div class="swatch" style="background:#eef2f7;flex:1;"></div>
                     <div class="swatch" style="background:#00a4dc;flex:0.4;"></div>
                 </div>
-                <div class="theme-card-name">🟦 Jellyfin</div>
+                <div class="theme-card-name">Jellyfin</div>
             </div>
             <div class="theme-card" data-theme="playnite" onclick="setThemeFromCard('playnite')">
                 <div class="theme-card-swatches">
@@ -39,7 +39,7 @@
                     <div class="swatch" style="background:#f0eff5;flex:1;"></div>
                     <div class="swatch" style="background:#7c4dff;flex:0.4;"></div>
                 </div>
-                <div class="theme-card-name">🎮 Playnite</div>
+                <div class="theme-card-name">Playnite</div>
             </div>
             <div class="theme-card" data-theme="amoled" onclick="setThemeFromCard('amoled')">
                 <div class="theme-card-swatches">
@@ -47,7 +47,7 @@
                     <div class="swatch" style="background:#0a0a0a;flex:1;"></div>
                     <div class="swatch" style="background:#bb86fc;flex:0.4;"></div>
                 </div>
-                <div class="theme-card-name">⚫ AMOLED</div>
+                <div class="theme-card-name">AMOLED</div>
             </div>
         </div>
         <div style="margin-top: 12px; font-size: 12px; color: var(--text-dimmer);">
@@ -62,7 +62,7 @@
 
     <!-- Quality Profile -->
     <div class="card">
-        <div class="card-header">🎬 Quality Profile</div>
+        <div class="card-header">Quality Profile</div>
         <div class="card-body">
             <div class="setting-row">
                 <div>
@@ -103,7 +103,7 @@
 
     <!-- Metadata & Files -->
     <div class="card">
-        <div class="card-header">📝 Metadata & Files</div>
+        <div class="card-header">Metadata &amp; Files</div>
         <div class="card-body">
             <div class="setting-row">
                 <div>
@@ -171,7 +171,7 @@
 </div>
 
 <div style="margin: 16px 0;">
-    <button type="submit" class="btn btn-primary" style="padding: 10px 24px;">💾 Save Settings</button>
+    <button type="submit" class="btn btn-primary" style="padding: 10px 24px;" title="Save quality and metadata preferences">Save Settings</button>
 </div>
 
 </form>
@@ -180,25 +180,25 @@
 
     <!-- Schedule -->
     <div class="card">
-        <div class="card-header">⏰ Schedule</div>
+        <div class="card-header">Schedule</div>
         <div class="card-body">
             <div class="setting-row">
                 <div>
-                    <div class="setting-label">⚡ Fast Check</div>
+                    <div class="setting-label">Fast Check</div>
                     <div class="setting-desc">Recent 50 videos per channel</div>
                 </div>
                 <div class="setting-value">{{ fast_cron }}</div>
             </div>
             <div class="setting-row">
                 <div>
-                    <div class="setting-label">📚 Full Index</div>
+                    <div class="setting-label">Full Index</div>
                     <div class="setting-desc">Entire channel playlists</div>
                 </div>
                 <div class="setting-value">{{ full_cron }}</div>
             </div>
             <div class="setting-row">
                 <div>
-                    <div class="setting-label">🔄 yt-dlp Update</div>
+                    <div class="setting-label">yt-dlp Update</div>
                     <div class="setting-desc">Auto-update to latest version</div>
                 </div>
                 <div class="setting-value">{{ update_cron }}</div>
@@ -211,7 +211,7 @@
 
     <!-- System -->
     <div class="card">
-        <div class="card-header">🔧 System</div>
+        <div class="card-header">System</div>
         <div class="card-body">
             <div class="setting-row">
                 <div>
@@ -244,35 +244,35 @@
 
 <!-- Manual Actions -->
 <div class="card">
-    <div class="card-header">🎮 Manual Actions</div>
+    <div class="card-header">Manual Actions</div>
     <div class="card-body">
         <div class="btn-group">
             {% if paused %}
             <form method="POST" action="/resume">
-                <button type="submit" class="btn btn-primary">▶️ Resume Downloads</button>
+                <button type="submit" class="btn btn-primary" title="Resume paused downloads">Resume Downloads</button>
             </form>
             {% else %}
-            <form method="POST" action="/pause">
-                <button type="submit" class="btn" style="border-color:var(--orange);color:var(--orange);">⏸️ Pause Downloads</button>
+            <form method="POST" action="/pause" onsubmit="return confirmAction('Pause Downloads', 'This will pause all scheduled downloads. New videos won\'t be downloaded until you resume. Continue?', this);">
+                <button type="submit" class="btn" style="border-color:var(--orange);color:var(--orange);" title="Temporarily stop all scheduled downloads">Pause Downloads</button>
             </form>
             {% endif %}
-            <form method="POST" action="/run/fast">
-                <button type="submit" class="btn btn-blue" {% if job.status == 'running' %}disabled{% endif %}>⚡ Run Fast Check</button>
+            <form method="POST" action="/run/fast" onsubmit="return confirmAction('Check for New Videos', 'This will scan all channels for new videos (last 50 per channel). This may take a few minutes. Continue?', this);">
+                <button type="submit" class="btn btn-blue" {% if job.status == 'running' %}disabled{% endif %} title="Check each channel for new videos (last 50 per channel)">Check for New Videos</button>
             </form>
-            <form method="POST" action="/run/full">
-                <button type="submit" class="btn btn-purple" {% if job.status == 'running' %}disabled{% endif %}>📚 Run Full Index</button>
+            <form method="POST" action="/run/full" onsubmit="return confirmAction('Download Full History', 'This downloads the COMPLETE video history for all channels, not just recent videos. This can take a very long time for large libraries. Continue?', this);">
+                <button type="submit" class="btn btn-purple" {% if job.status == 'running' %}disabled{% endif %} title="Download complete video history for all channels. This takes much longer than a fast check.">Download Full History</button>
             </form>
-            <form method="POST" action="/run/update">
-                <button type="submit" class="btn" {% if job.status == 'running' %}disabled{% endif %}>🔄 Update yt-dlp</button>
+            <form method="POST" action="/run/update" onsubmit="return confirmAction('Update Downloader', 'This will update yt-dlp to the latest version. Continue?', this);">
+                <button type="submit" class="btn" {% if job.status == 'running' %}disabled{% endif %} title="Update the video downloader to the latest version">Update Downloader</button>
             </form>
-            <form method="POST" action="/run/banners">
-                <button type="submit" class="btn btn-orange" {% if job.status == 'running' %}disabled{% endif %}>🎨 Fetch All Channel Art</button>
+            <form method="POST" action="/run/banners" onsubmit="return confirmAction('Download Channel Art', 'This will attempt to download profile pictures and banner images for all your channels from YouTube. Continue?', this);">
+                <button type="submit" class="btn btn-orange" {% if job.status == 'running' %}disabled{% endif %} title="Download profile pictures and banner images for all channels">Download Channel Art</button>
             </form>
-            <form method="POST" action="/api/reindex?force=true" style="display:inline;">
-                <button type="submit" class="btn btn-green" {% if job.status == 'running' %}disabled{% endif %}>📂 Re-Index Library</button>
+            <form method="POST" action="/api/reindex?force=true" style="display:inline;" onsubmit="return confirmAction('Rebuild Library Index', 'This rebuilds your library database by scanning existing video files. It does NOT download new videos &mdash; it just updates the index of what\'s already on disk. Continue?', this);">
+                <button type="submit" class="btn btn-green" {% if job.status == 'running' %}disabled{% endif %} title="Rebuild the database by scanning all video files on disk. Does NOT download anything.">Rebuild Library Index</button>
             </form>
             <form onsubmit="event.preventDefault(); restartTour();" style="display:inline;">
-                <button type="submit" class="btn btn-accent" id="restart-tour-btn">🎓 Show Feature Walkthrough</button>
+                <button type="submit" class="btn btn-accent" id="restart-tour-btn" title="Start the interactive feature tour">Show Feature Walkthrough</button>
             </form>
         </div>
     </div>
@@ -280,7 +280,7 @@
 
 <!-- ── Import Channels ── -->
 <div class="card" style="margin-top: 24px;">
-    <div class="card-header">📥 Import Channels</div>
+    <div class="card-header">Import Channels</div>
     <div class="card-body">
         <p style="font-size: 13px; color: var(--text-dim); margin-bottom: 20px;">
             Bring your subscriptions from another app. Channels are appended to your channels.txt — nothing is overwritten.
@@ -289,7 +289,7 @@
         <!-- 1. Scan Existing Library (primary) -->
         <div class="card" style="border-color: var(--accent);">
             <div class="card-header" style="border-color: var(--accent);">
-                <span>🔍 Scan Existing Library</span>
+                <span>Scan Existing Library</span>
                 <span class="badge badge-blue">Recommended</span>
             </div>
             <div class="card-body">
@@ -323,7 +323,7 @@
 
         <!-- 2. TubeArchivist Backup ZIP -->
         <div class="card">
-            <div class="card-header">🗃️ Import from TubeArchivist Backup</div>
+            <div class="card-header">Import from TubeArchivist Backup</div>
             <div class="card-body">
                 <p style="font-size: 12px; color: var(--text-dimmer); margin-bottom: 12px;">
                     Upload your TubeArchivist backup ZIP file (Settings &rarr; Backup in TubeArchivist).
@@ -355,7 +355,7 @@
 
         <!-- 3. PinchFlat Database -->
         <div class="card" style="margin-bottom: 0;">
-            <div class="card-header">📌 Import from PinchFlat Database</div>
+            <div class="card-header">Import from PinchFlat Database</div>
             <div class="card-body">
                 <p style="font-size: 12px; color: var(--text-dimmer); margin-bottom: 12px;">
                     Upload your PinchFlat database file (pinchflat.db from your config directory).

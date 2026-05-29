@@ -223,32 +223,32 @@
     <!-- Job Status -->
     <div class="job-banner job-{{ job.status }}">
         {% if job.status == 'idle' %}
-            ⏸️ Idle — waiting for next scheduled check
+            Idle — waiting for next scheduled check
         {% elif job.status == 'running' %}
-            🔄 {{ job.mode | capitalize }} download running (started {{ job.started }})...
+            {{ job.mode | capitalize }} download running (started {{ job.started }})...
         {% elif job.status == 'done' %}
-            ✅ Last {{ job.mode }} download completed
+            Last {{ job.mode }} download completed
         {% elif job.status == 'error' %}
-            ❌ Error: {{ job.log[:200] }}
+            Error: {{ job.log[:200] }}
         {% endif %}
     </div>
 
     <!-- Controls -->
     <div class="card">
         <div class="card-header">
-            <h2>⚡ Controls</h2>
-            <a href="/logs" class="log-link">📋 View Logs</a>
+            <h2>Controls</h2>
+            <a href="/logs" class="log-link">View Logs</a>
         </div>
         <div class="card-body">
             <div class="btn-group">
                 <form method="POST" action="/run/fast" style="display:inline">
                     <button type="submit" class="btn btn-fast" {% if job.status == 'running' %}disabled{% endif %}>
-                        ⚡ Fast Check (Recent 50)
+                        Fast Check (Recent 50)
                     </button>
                 </form>
                 <form method="POST" action="/run/full" style="display:inline">
                     <button type="submit" class="btn btn-full" {% if job.status == 'running' %}disabled{% endif %}>
-                        📚 Full Index (All Videos)
+                        Full Index (All Videos)
                     </button>
                 </form>
             </div>
@@ -261,7 +261,7 @@
     <!-- Channels -->
     <div class="card">
         <div class="card-header">
-            <h2>📺 Channels ({{ channel_count }})</h2>
+            <h2>Channels ({{ channel_count }})</h2>
         </div>
         <div class="card-body">
             <form method="POST" action="/add" class="add-form">

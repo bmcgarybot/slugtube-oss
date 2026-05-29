@@ -3,7 +3,7 @@
 {% block content %}
 
 <div class="page-header">
-    <h1>🍪 Cookies</h1>
+    <h1>Cookies</h1>
 </div>
 
 <div class="card">
@@ -11,9 +11,9 @@
         YouTube Cookies
         <span class="text-sm text-dim" style="font-weight: 400;">
             {% if cookie_exists %}
-                ✅ Cookie file found ({{ cookie_size }}) — Last modified: {{ cookie_modified }}
+                Cookie file found ({{ cookie_size }}) — Last modified: {{ cookie_modified }}
             {% else %}
-                ⚠️ No cookie file found
+                No cookie file found
             {% endif %}
         </span>
     </div>
@@ -31,7 +31,7 @@
 .youtube.com	TRUE	/	TRUE	0	LOGIN_INFO	...
 .youtube.com	TRUE	/	FALSE	0	SID	...">{{ cookie_content }}</textarea>
             <div id="cookie-warning" class="alert alert-warning mt-8" style="display:none;">
-                ⚠️ <strong>Tab characters missing!</strong> Cookie files require tab-separated values. Your paste may have converted tabs to spaces. Trying to auto-fix...
+                <strong>Tab characters missing!</strong> Cookie files require tab-separated values. Your paste may have converted tabs to spaces. Trying to auto-fix...
             </div>
             <script>
             (function() {
@@ -81,7 +81,7 @@
                         warning.style.display = 'block';
                         setTimeout(function() {
                             if (validateCookies(editor.value)) {
-                                warning.innerHTML = '✅ <strong>Auto-fixed!</strong> Tab characters were restored. Please verify the content looks correct before saving.';
+                                warning.innerHTML = '<strong>Auto-fixed!</strong> Tab characters were restored. Please verify the content looks correct before saving.';
                                 warning.className = 'alert alert-success mt-8';
                             }
                         }, 100);
@@ -109,7 +109,7 @@
 
                 if (editor.value && !validateCookies(editor.value)) {
                     warning.style.display = 'block';
-                    warning.innerHTML = '⚠️ <strong>Warning:</strong> Current cookie file may have corrupted tab formatting. Re-paste fresh cookies or upload the file directly.';
+                    warning.innerHTML = '<strong>Warning:</strong> Current cookie file may have corrupted tab formatting. Re-paste fresh cookies or upload the file directly.';
                 }
             })();
             </script>
@@ -124,11 +124,11 @@
 
         {% if save_status == 'success' %}
         <div class="alert alert-success mt-12">
-            ✅ Cookies saved successfully!
+            Cookies saved successfully!
         </div>
         {% elif save_status == 'error' %}
         <div class="alert alert-error mt-12">
-            ❌ Error saving cookies. Check the logs.
+            Error saving cookies. Check the logs.
         </div>
         {% endif %}
     </div>
@@ -145,7 +145,7 @@
             <li>Paste it in the box above and hit <strong>Save Cookies</strong></li>
         </ol>
         <p class="mt-12" style="color: var(--orange);">
-            ⚠️ Cookies expire periodically. If downloads start failing, refresh them with the steps above.
+            Cookies expire periodically. If downloads start failing, refresh them with the steps above.
         </p>
     </div>
 </div>
