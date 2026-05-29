@@ -21,7 +21,6 @@ copy /Y "C:\SlugTube-new\web\indexer.py" "C:\SlugTube\app\web\indexer.py"
 xcopy "C:\SlugTube-new\web\templates\*" "C:\SlugTube\app\web\templates\" /E /Y
 xcopy "C:\SlugTube-new\web\static\*" "C:\SlugTube\app\web\static\" /E /Y
 xcopy "C:\SlugTube-new\scripts\*" "C:\SlugTube\app\scripts\" /E /Y
-copy /Y "C:\SlugTube-new\channels.txt" "C:\SlugTube\channels.txt"
 echo.
 
 echo Restarting container...
