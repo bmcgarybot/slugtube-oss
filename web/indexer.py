@@ -799,7 +799,7 @@ def run_index(force=False):
             total_videos = 0
             total_channels = 0
 
-            channel_dirs = sorted([d for d in shows.iterdir() if d.is_dir() and '#' not in d.name])
+            channel_dirs = sorted([d for d in shows.iterdir() if d.is_dir()])
             num_dirs = len(channel_dirs)
 
             for i, channel_dir in enumerate(channel_dirs, 1):
@@ -905,8 +905,14 @@ def reindex_single_channel(channel_name):
     shows = Path(SHOWS_DIR)
     channel_dir = shows / channel_name
     if not channel_dir.is_dir():
-        log_warn(f"⚠️ Channel directory not found: {channel_name}")
-        return False
+        # Try with '#' suffix — yt-dlp appends this to some folder names
+        alt_dir = shows / (channel_name + '#')
+        if alt_dir.is_dir():
+            channel_dir = alt_dir
+            log(f"📚 Found channel at '{channel_name}#' (# suffix variant)")
+        else:
+            log_warn(f"⚠️ Channel directory not found: {channel_name}")
+            return False
 
     try:
         conn = get_db()
