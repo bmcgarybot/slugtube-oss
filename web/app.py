@@ -15,6 +15,13 @@ from pathlib import Path
 
 app = Flask(__name__)
 
+
+@app.route("/api/version")
+def api_version():
+    """Quick check: what code version is the container running?"""
+    return jsonify({"version": "2026-05-29a", "status": "ok"})
+
+
 CHANNELS_FILE = "/config/channels.txt"
 ARCHIVE_FILE = "/config/archive/downloaded.txt"
 LOG_FILE = "/config/logs/slugtube.log"
@@ -764,6 +771,8 @@ def api_self_update():
             return jsonify({"status": "error", "message": f"Update failed: {e}"}), 500
         return redirect(request.referrer or url_for("settings"))
 
+
+SLUGTUBE_CODE_VERSION = "2026-05-29a"
 
 # ── Original Routes ──────────────────────────────────────────────
 
