@@ -269,51 +269,35 @@ function renderChannelDetail(d) {
     }
     document.getElementById('detail-playlists').innerHTML = plHtml;
 
-    // Action buttons — grouped for clean layout
+    // Action buttons
     var acts = document.getElementById('detail-actions');
     var btns = '';
     var disabled = _st.jobRunning ? ' disabled' : '';
 
-    // Primary actions (always visible)
-    btns += '<div class="btn-group-primary">';
     if (d.channel_url) {
         btns += '<button class="btn btn-accent btn-sm" title="Scan this channel for new videos" onclick="channelAction(\'quick-check\',\'' + escAttr(d.name) + '\',\'' + escAttr(d.channel_url) + '\')"' + disabled + '>Quick Check</button>';
         btns += '<button class="btn btn-blue btn-sm" title="Download all videos from this channel" onclick="channelAction(\'download\',\'' + escAttr(d.name) + '\',\'' + escAttr(d.channel_url) + '\')"' + disabled + '>Download All</button>';
     }
+    if (d.on_disk) {
+        btns += '<button class="btn btn-ghost btn-sm" title="Rescan local files for this channel" onclick="channelAction(\'reindex\',\'' + escAttr(d.name) + '\')">Reindex</button>';
+    }
+    if (d.channel_url) {
+        btns += '<button class="btn btn-ghost btn-sm" title="Re-scan playlists from YouTube for this channel" onclick="channelAction(\'reindex-playlists\',\'' + escAttr(d.name) + '\')">Reindex Playlists</button>';
+    }
+    if (d.playlists && d.playlists.length > 0) {
+        btns += '<a href="/library/' + encodeURIComponent(d.name) + '/playlists" class="btn btn-ghost btn-sm" title="Browse playlists for this channel">View Playlists</a>';
+    }
+    if (!d.has_poster && d.channel_url) {
+        btns += '<button class="btn btn-orange btn-sm" title="Download profile picture and banner from YouTube" onclick="channelAction(\'fetch-art\',\'' + escAttr(d.name) + '\')">Fetch Art</button>';
+    }
     if (d.channel_url) {
         btns += '<a href="' + escAttr(d.channel_url) + '" target="_blank" class="btn btn-ghost btn-sm" title="Open this channel on YouTube">YouTube ↗</a>';
     }
-    btns += '</div>';
-
-    // Secondary actions (management)
-    var hasSecondary = d.on_disk || (d.playlists && d.playlists.length > 0) || (!d.has_poster && d.channel_url);
-    if (hasSecondary || d.channel_url) {
-        btns += '<div class="btn-group-secondary">';
-        if (d.on_disk) {
-            btns += '<button class="btn btn-ghost btn-sm" title="Rescan local files for this channel" onclick="channelAction(\'reindex\',\'' + escAttr(d.name) + '\')">Reindex</button>';
-        }
-        if (d.channel_url) {
-            btns += '<button class="btn btn-ghost btn-sm" title="Re-scan playlists from YouTube for this channel" onclick="channelAction(\'reindex-playlists\',\'' + escAttr(d.name) + '\')">Reindex Playlists</button>';
-        }
-        if (d.playlists && d.playlists.length > 0) {
-            btns += '<a href="/library/' + encodeURIComponent(d.name) + '/playlists" class="btn btn-ghost btn-sm" title="Browse playlists for this channel">View Playlists</a>';
-        }
-        if (!d.has_poster && d.channel_url) {
-            btns += '<button class="btn btn-orange btn-sm" title="Download profile picture and banner from YouTube" onclick="channelAction(\'fetch-art\',\'' + escAttr(d.name) + '\')">Fetch Art</button>';
-        }
-        btns += '</div>';
+    if (d.subscribed) {
+        btns += '<button class="btn btn-danger btn-sm" title="Stop tracking this channel for new videos" onclick="channelAction(\'unsubscribe\',\'' + escAttr(d.name) + '\',\'' + escAttr(d.channel_url || '') + '\')">Unsubscribe</button>';
     }
-
-    // Danger zone (separated visually)
-    if (d.subscribed || d.on_disk) {
-        btns += '<div class="btn-group-danger">';
-        if (d.subscribed) {
-            btns += '<button class="btn btn-danger btn-sm" title="Stop tracking this channel for new videos" onclick="channelAction(\'unsubscribe\',\'' + escAttr(d.name) + '\',\'' + escAttr(d.channel_url || '') + '\')">Unsubscribe</button>';
-        }
-        if (d.on_disk) {
-            btns += '<button class="btn btn-danger btn-sm" title="Delete all downloaded files for this channel" onclick="channelAction(\'delete\',\'' + escAttr(d.name) + '\')">Delete Folder</button>';
-        }
-        btns += '</div>';
+    if (d.on_disk) {
+        btns += '<button class="btn btn-danger btn-sm" title="Delete all downloaded files for this channel" onclick="channelAction(\'delete\',\'' + escAttr(d.name) + '\')">Delete Folder</button>';
     }
     acts.innerHTML = btns;
 
