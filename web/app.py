@@ -19,7 +19,7 @@ app = Flask(__name__)
 @app.route("/api/version")
 def api_version():
     """Quick check: what code version is the container running?"""
-    return jsonify({"version": "2026-05-29a", "status": "ok"})
+    return jsonify({"version": "2026-05-29b", "status": "ok"})
 
 
 CHANNELS_FILE = "/config/channels.txt"
@@ -773,7 +773,7 @@ def api_self_update():
         return redirect(request.referrer or url_for("settings"))
 
 
-SLUGTUBE_CODE_VERSION = "2026-05-29a"
+SLUGTUBE_CODE_VERSION = "2026-05-29b"
 
 # ── Original Routes ──────────────────────────────────────────────
 
