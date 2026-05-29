@@ -560,35 +560,77 @@ function bulkDeleteSelected() {
     var ids = [];
     checks.forEach(function(cb) { ids.push(cb.dataset.id); });
 
-    var excludeChecked = true;
-    var msg = 'Delete ' + ids.length + ' video' + (ids.length > 1 ? 's' : '') + ' permanently?\n\n' +
-        'This removes files, thumbnails, subtitles, and database entries.\n\n' +
-        'Click OK to also exclude these from future downloads.\n' +
-        'Click Cancel to abort.';
+    showDeleteModal(ids);
+}
 
-    if (!confirm(msg)) return;
+/* ═══ Delete Confirmation Modal ═══ */
+function showDeleteModal(videoIds) {
+    // Remove old modal if exists
+    var old = document.getElementById('delete-modal-overlay');
+    if (old) old.remove();
 
-    // Delete each video and optionally exclude
+    var count = videoIds.length;
+    var overlay = document.createElement('div');
+    overlay.id = 'delete-modal-overlay';
+    overlay.className = 'modal-overlay';
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+    var modal = document.createElement('div');
+    modal.className = 'modal-dialog';
+    modal.innerHTML =
+        '<h3 style="margin:0 0 12px;font-size:16px;color:var(--text);">Delete ' + count + ' video' + (count > 1 ? 's' : '') + '?</h3>' +
+        '<p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">This will permanently remove the selected files from disk.</p>' +
+        '<label class="delete-exclude-label">' +
+        '<input type="checkbox" id="delete-exclude-cb" checked>' +
+        '<div>' +
+        '<span style="font-size:13px;font-weight:600;color:var(--text);">Also exclude from future downloads</span>' +
+        '<div style="font-size:12px;color:var(--text-dimmer,var(--text-dim));margin-top:2px;">Prevents these videos from being re-downloaded. To get them back, you\'d need to unsubscribe and re-subscribe to the channel.</div>' +
+        '</div></label>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">' +
+        '<button class="btn btn-sm btn-ghost" onclick="document.getElementById(\'delete-modal-overlay\').remove()">Cancel</button>' +
+        '<button class="btn btn-sm btn-danger" id="confirm-delete-btn">Delete</button>' +
+        '</div>';
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Wire up the confirm button
+    document.getElementById('confirm-delete-btn').onclick = function() {
+        var exclude = document.getElementById('delete-exclude-cb').checked;
+        overlay.remove();
+        executeDelete(videoIds, exclude);
+    };
+}
+
+function executeDelete(ids, exclude) {
     var done = 0;
     var errors = 0;
-    ids.forEach(function(id) {
-        fetch('/api/bulk-delete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ video_ids: [id], exclude: excludeChecked })
-        }).then(function(r) {
-            done++;
-            if (!r.ok) errors++;
-            if (done >= ids.length) {
-                // Refresh channel view
-                if (errors > 0) alert('Deleted ' + (done - errors) + ' videos. ' + errors + ' failed.');
-                selectChannel(_st.current);
-            }
-        }).catch(function() {
-            done++;
-            errors++;
-            if (done >= ids.length) selectChannel(_st.current);
-        });
+    var total = ids.length;
+
+    // Send all IDs in one request
+    fetch('/api/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_ids: ids, exclude: exclude })
+    }).then(function(r) {
+        return r.json();
+    }).then(function(data) {
+        if (data.status === 'ok') {
+            var msg = 'Deleted ' + (data.deleted || total) + ' video' + ((data.deleted || total) > 1 ? 's' : '') + '.';
+            if (exclude) msg += ' Excluded from future downloads.';
+            showToast(msg);
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+        // Refresh channel
+        if (_st.current) {
+            _st.current = null; // force reload
+            selectChannel(data._channel || history.state || location.hash.replace('#', ''));
+        }
+        location.reload();
+    }).catch(function(err) {
+        alert('Request failed: ' + err);
+        location.reload();
     });
 }
 
