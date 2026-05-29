@@ -119,6 +119,18 @@ def save_state(state):
         json.dump(state, f, indent=2)
 
 
+def _is_ajax():
+    """Return True if the request came from an AJAX/fetch call."""
+    return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+
+def _ajax_or_redirect(msg, fallback="channels", status="ok"):
+    """Return JSON for AJAX requests, redirect for normal form posts."""
+    if _is_ajax():
+        return jsonify({"status": status, "message": msg})
+    return redirect(request.referrer or url_for(fallback))
+
+
 def is_paused():
     return os.path.isfile(PAUSE_FILE)
 
@@ -1062,7 +1074,7 @@ def remove_channel():
                 except Exception as e:
                     print(f"[remove_channel] Failed to delete folder {channel_dir}: {e}")
 
-    return redirect(request.referrer or url_for("channels"))
+    return _ajax_or_redirect(f"Unsubscribed from {name or 'channel'}")
 
 
 @app.route("/pause", methods=["POST"])
@@ -1226,12 +1238,12 @@ def run_single():
                     pass
         thread = threading.Thread(target=_queue_single, daemon=True)
         thread.start()
-        return redirect(request.referrer or url_for("channels"))
+        return _ajax_or_redirect(f"Queued download for {folder_name or 'channel'}...")
     if is_paused():
         set_paused(False)
     thread = threading.Thread(target=run_single_channel, args=(url, folder_name), daemon=True)
     thread.start()
-    return redirect(request.referrer or url_for("channels"))
+    return _ajax_or_redirect(f"Downloading {folder_name or 'channel'}...")
 
 
 @app.route("/run/fast-single", methods=["POST"])
@@ -1265,12 +1277,12 @@ def run_fast_single():
                     pass
         thread = threading.Thread(target=_queue_fast_single, daemon=True)
         thread.start()
-        return redirect(request.referrer or url_for("channels"))
+        return _ajax_or_redirect(f"Queued quick check for {folder_name or 'channel'}...")
     if is_paused():
         set_paused(False)
     thread = threading.Thread(target=run_single_channel, args=(url, folder_name, True), daemon=True)
     thread.start()
-    return redirect(request.referrer or url_for("channels"))
+    return _ajax_or_redirect(f"Checking {folder_name or 'channel'} for new videos...")
 
 
 @app.route("/logs/export")
@@ -1957,6 +1969,8 @@ def api_reindex_channel(channel_name):
 
     if not channel_dir.is_dir():
         app.logger.warning(f"Channel dir NOT FOUND: {channel_dir}")
+        if _is_ajax():
+            return jsonify({"status": "error", "message": f"Directory not found: {channel_name}"}), 404
         if request.referrer:
             return redirect(request.referrer)
         return jsonify({"status": "error", "message": f"Directory not found: {channel_name}"}), 404
@@ -1964,9 +1978,7 @@ def api_reindex_channel(channel_name):
     # Run synchronously so the redirect shows updated counts
     result = reindex_single_channel(channel_name)
 
-    if request.referrer:
-        return redirect(request.referrer)
-    return jsonify({"status": "done" if result else "error", "channel": channel_name})
+    return _ajax_or_redirect(f"Reindexed {channel_name}" if result else f"Error reindexing {channel_name}")
 
 
 @app.route("/api/delete-folder/<path:channel_name>", methods=["POST"])
@@ -2012,6 +2024,8 @@ def api_delete_folder(channel_name):
             conn.commit()
         except Exception as e:
             app.logger.error(f"DB cleanup error for {channel_name}: {e}")
+        if _is_ajax():
+            return jsonify({"status": "deleted", "channel": channel_name, "note": "database only, no folder found"})
         if request.referrer:
             return redirect(request.referrer)
         return jsonify({"status": "deleted", "channel": channel_name, "note": "database only, no folder found"})
@@ -2021,6 +2035,8 @@ def api_delete_folder(channel_name):
         app.logger.info(f"Deleted folder: {channel_dir}")
     except Exception as e:
         app.logger.error(f"Failed to delete folder {channel_dir}: {e}")
+        if _is_ajax():
+            return jsonify({"status": "error", "message": str(e)}), 500
         if request.referrer:
             return redirect(request.referrer)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -2044,9 +2060,7 @@ def api_delete_folder(channel_name):
     except Exception as e:
         app.logger.error(f"DB cleanup error for {channel_name}: {e}")
 
-    if request.referrer:
-        return redirect(request.referrer)
-    return jsonify({"status": "deleted", "channel": channel_name})
+    return _ajax_or_redirect(f"Deleted {channel_name}")
 
 
 @app.route("/api/reindex-playlists/<path:channel_name>", methods=["POST"])
@@ -2065,6 +2079,8 @@ def api_reindex_playlists(channel_name):
             break
 
     if not channel_url:
+        if _is_ajax():
+            return jsonify({"status": "error", "message": f"Channel not found in channels.txt: {channel_name}"}), 404
         if request.referrer:
             return redirect(request.referrer)
         return jsonify({"status": "error", "message": f"Channel not found in channels.txt: {channel_name}"}), 404
@@ -2080,9 +2096,7 @@ def api_reindex_playlists(channel_name):
     thread = threading.Thread(target=_run_playlist_index, daemon=True)
     thread.start()
 
-    if request.referrer:
-        return redirect(request.referrer)
-    return jsonify({"status": "started", "channel": channel_name})
+    return _ajax_or_redirect(f"Reindexing playlists for {channel_name}...")
 
 
 @app.route("/api/fetch-art/<path:channel_name>", methods=["POST"])
@@ -2101,6 +2115,8 @@ def api_fetch_art(channel_name):
             break
 
     if not channel_url:
+        if _is_ajax():
+            return jsonify({"status": "error", "message": f"Channel not found: {channel_name}"}), 404
         if request.referrer:
             return redirect(request.referrer)
         return jsonify({"status": "error", "message": f"Channel not found: {channel_name}"}), 404
@@ -2143,9 +2159,7 @@ def api_fetch_art(channel_name):
     thread = threading.Thread(target=_fetch_art, daemon=True)
     thread.start()
 
-    if request.referrer:
-        return redirect(request.referrer)
-    return jsonify({"status": "started", "channel": channel_name})
+    return _ajax_or_redirect(f"Fetching artwork for {channel_name}...")
 
 
 @app.route("/api/toggle-playlists/<path:channel_name>", methods=["POST"])

@@ -1956,9 +1956,14 @@ function confirmAction(title, message, formEl) {
     document.getElementById('confirm-action-cancel').onclick = function() { overlay.remove(); };
     document.getElementById('confirm-action-ok').onclick = function() {
         overlay.remove();
-        // Bypass onsubmit to avoid re-triggering confirmation
-        formEl.removeAttribute('onsubmit');
-        formEl.submit();
+        // Support both form elements and callback functions
+        if (typeof formEl === 'function') {
+            formEl();
+        } else if (formEl && formEl.submit) {
+            // Bypass onsubmit to avoid re-triggering confirmation
+            formEl.removeAttribute('onsubmit');
+            formEl.submit();
+        }
     };
 
     return false; // prevent original form submit
