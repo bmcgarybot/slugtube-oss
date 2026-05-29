@@ -532,6 +532,70 @@ def _scan_channel(conn, channel_dir):
     return video_count, total_size
 
 
+def _index_single_playlist(playlist_url, channel_name):
+    """Index a single playlist URL (not a channel's /playlists tab).
+    Used when channels.txt has a direct playlist URL like youtube.com/playlist?list=..."""
+    import subprocess as _sp
+    import json as _json
+    import re as _re
+    from urllib.parse import parse_qs, urlparse
+
+    # Extract playlist ID from URL
+    parsed = urlparse(playlist_url)
+    qs = parse_qs(parsed.query)
+    pl_id = qs.get('list', [''])[0]
+    if not pl_id:
+        log_warn(f"  ⚠️ Could not extract playlist ID from {playlist_url}")
+        return
+
+    pl_title = channel_name  # Use channel name as playlist title
+
+    log(f"  📋 Indexing playlist: {pl_title} ({pl_id})")
+
+    # Get videos in this playlist
+    try:
+        result = _sp.run(
+            ['yt-dlp', '--no-check-certificates', '--flat-playlist', '--dump-json', playlist_url],
+            capture_output=True, text=True, timeout=300
+        )
+    except Exception as e:
+        log_warn(f"  ⚠️ Timeout fetching playlist {pl_title}: {e}")
+        return
+
+    video_ids = []
+    for line in (result.stdout or '').strip().split('\n'):
+        if not line.strip():
+            continue
+        try:
+            entry = _json.loads(line)
+            vid = entry.get('id', '')
+            if vid and _re.match(r'^[A-Za-z0-9_-]{11}$', vid):
+                video_ids.append(vid)
+        except _json.JSONDecodeError:
+            continue
+
+    log(f"    Found {len(video_ids)} videos in playlist")
+
+    # Store in DB
+    conn = get_db()
+    conn.execute("""
+        INSERT OR REPLACE INTO playlists (id, channel_name, title, video_count, updated_at)
+        VALUES (?, ?, ?, ?, datetime('now'))
+    """, (pl_id, channel_name, pl_title, len(video_ids)))
+
+    # Link videos
+    conn.execute("DELETE FROM video_playlists WHERE playlist_id = ?", (pl_id,))
+    for idx, vid in enumerate(video_ids):
+        db_vid = conn.execute("SELECT id FROM videos WHERE youtube_id = ?", (vid,)).fetchone()
+        if db_vid:
+            conn.execute("""
+                INSERT OR REPLACE INTO video_playlists (video_id, playlist_id, playlist_index)
+                VALUES (?, ?, ?)
+            """, (db_vid['id'], pl_id, idx))
+    conn.commit()
+    log(f"    Stored playlist {pl_title} ({len(video_ids)} videos)")
+
+
 def index_channel_playlists(channel_url, channel_name):
     """Fetch real playlists from YouTube for a channel and populate the DB.
 
@@ -545,6 +609,13 @@ def index_channel_playlists(channel_url, channel_name):
 
     # Derive the /playlists URL from the channel URL
     # e.g. https://www.youtube.com/@MeatCanyon/videos -> https://www.youtube.com/@MeatCanyon/playlists
+    # But if it's already a playlist URL (youtube.com/playlist?list=...), skip — it IS a playlist
+    if '/playlist?list=' in channel_url:
+        log(f"🎵 {channel_name} is a playlist URL — indexing directly as single playlist")
+        # This IS a playlist, not a channel. Index it directly instead of looking for /playlists tab
+        _index_single_playlist(channel_url, channel_name)
+        return
+
     base_url = channel_url.split('/videos')[0].split('/playlists')[0].rstrip('/')
     playlists_url = base_url + '/playlists'
 
