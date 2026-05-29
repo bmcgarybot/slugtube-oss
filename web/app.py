@@ -22,6 +22,21 @@ def api_version():
     return jsonify({"version": "2026-05-29b", "status": "ok"})
 
 
+@app.route("/api/index-video", methods=["POST"])
+def api_index_video():
+    """Index a single video file immediately after download.
+    Called by yt-dlp --exec after_move hook from download.sh."""
+    file_path = request.form.get("file", "").strip() or request.args.get("file", "").strip()
+    if not file_path:
+        return jsonify({"error": "missing 'file' parameter"}), 400
+    from indexer import index_single_video
+    video_id, result = index_single_video(file_path)
+    if video_id:
+        return jsonify({"status": "ok", "video_id": video_id, "channel": result})
+    else:
+        return jsonify({"status": "error", "error": result}), 500
+
+
 CHANNELS_FILE = "/config/channels.txt"
 ARCHIVE_FILE = "/config/archive/downloaded.txt"
 LOG_FILE = "/config/logs/slugtube.log"
