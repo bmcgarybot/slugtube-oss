@@ -73,6 +73,20 @@
         .cookie-dot.expired { color: #f85149; }
         .cookie-dot.missing { color: #f85149; }
         .cookie-dot.rejected { color: #f85149; }
+        .sidebar-search { padding: 12px 16px 4px; }
+        .sidebar-search input {
+            width: 100%;
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 13px;
+            outline: none;
+            box-sizing: border-box;
+        }
+        .sidebar-search input:focus { border-color: var(--accent); background: rgba(255,255,255,0.1); }
+        .sidebar-search input::placeholder { color: var(--text-dim); }
         .sidebar-nav { padding: 12px 0; }
         .sidebar-nav a {
             display: flex;
@@ -1281,12 +1295,18 @@
 
 <aside class="sidebar">
     <div class="sidebar-brand"><span>🐌</span> SlugTube <span id="cookie-dot" class="cookie-dot" title="Checking cookies...">●</span></div>
+    <form class="sidebar-search" action="/library" method="GET">
+        <input type="text" name="q" placeholder="Search videos..." aria-label="Search videos">
+    </form>
     <nav class="sidebar-nav" onclick="if(window.innerWidth<=900){document.querySelector('.sidebar').classList.remove('open');document.querySelector('.sidebar-overlay').classList.remove('open');}">
         <a href="/" class="{% if page == 'dashboard' %}active{% endif %}">
             <span class="icon"></span> Dashboard
         </a>
         <a href="/history" class="{% if page == 'history' %}active{% endif %}">
             <span class="icon"></span> History
+        </a>
+        <a href="/library" class="{% if page == 'library' %}active{% endif %}">
+            <span class="icon"></span> Library
         </a>
         <a href="/channels" class="{% if page == 'channels' %}active{% endif %}">
             <span class="icon"></span> Channels
