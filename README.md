@@ -1,33 +1,39 @@
 # SlugTube
 
-### Your YouTube library, your rules. No cloud. No subscriptions. No compromises.
+### Own your YouTube. Forever.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-green.svg)](https://python.org)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://docker.com)
-[![yt-dlp](https://img.shields.io/badge/Powered%20by-yt--dlp-red.svg)](https://github.com/yt-dlp/yt-dlp)
 
-SlugTube is a self-hosted YouTube channel archiver with a fully-featured dark-themed web UI. One `docker compose up` gives you automated downloads, a searchable video library, a built-in player with resume, playlist management, and Jellyfin/Kodi-ready output — all running on your own hardware.
+YouTube channels vanish. Videos get deleted. Creators disappear. SlugTube makes sure your favorite content survives — downloaded, organized, and searchable on your own machine. No subscriptions, no cloud, no asking permission.
 
-**12,000+ lines of code. 57 API endpoints. 13 pages. Zero dependencies on anyone else's servers.**
+**One command to install. Set it and forget it. Your library grows while you sleep.**
 
-> Built as a modern alternative to PinchFlat and TubeArchivist — simpler to deploy, easier to use, and designed to get out of your way.
+Think of it as a personal Netflix for YouTube — but you own every file, it runs on your hardware, and nothing depends on someone else's server staying online.
 
 ---
 
-## Why SlugTube?
+## What It Does
+
+- **Automatically downloads** new videos from your favorite channels — every 6 hours, no intervention needed
+- **Organizes everything** into a clean library that works with Jellyfin, Kodi, or Plex
+- **Searchable** — find any video across your entire collection instantly
+- **Built-in player** with resume — pick up right where you left off
+- **Cookie manager** — handles YouTube's login requirements through a simple paste-and-go interface
+- **Smart about storage** — bulk delete or exclude content you don't want, and it never re-downloads what you've removed
+- **Imports your existing library** — already using TubeArchivist or PinchFlat? Bring everything over in one click
+- **Updates itself** — one button in Settings pulls the latest version
+
+## How It Compares
 
 | | SlugTube | TubeArchivist | PinchFlat |
 |---|---------|---------------|-----------|
-| **Setup** | `docker compose up` | Requires Elasticsearch + Redis | Requires Elixir runtime |
-| **Dependencies** | Flask + SQLite | 3 containers minimum | PostgreSQL |
-| **Search** | SQLite FTS5 (instant) | Elasticsearch (heavy) | Basic |
-| **Live indexing** | Videos appear instantly | Requires re-scan | Requires re-scan |
-| **Cookie management** | Built-in web UI | Manual file edit | Manual file edit |
-| **Import from others** | TubeArchivist + PinchFlat import | N/A | N/A |
-| **Resource usage** | ~50MB RAM | ~2GB+ RAM | ~500MB RAM |
-| **Bulk operations** | Select, delete, exclude | Limited | Limited |
-| **Self-update** | One click from Settings | Manual | Manual |
+| **Setup time** | 2 minutes | 30+ minutes | 15+ minutes |
+| **Memory usage** | ~50MB | ~2GB+ | ~500MB |
+| **Dependencies** | Just Docker | Docker + Elasticsearch + Redis | Docker + PostgreSQL |
+| **New videos appear** | Instantly | After re-scan | After re-scan |
+| **Cookie management** | Built into the UI | Edit files manually | Edit files manually |
+| **Import from competitors** | Yes | No | No |
 
 ---
 
@@ -443,4 +449,4 @@ If SlugTube saves you from another TubeArchivist migration headache, consider st
 
 ---
 
-*12,058 lines of code. 57 endpoints. 13 pages. 10 automation scripts. Zero JavaScript frameworks. Built with yt-dlp, Flask, SQLite, and stubbornness.*
+*12,000+ lines of handcrafted code. Zero JavaScript frameworks. Built with stubbornness and a mass amount of AI pair programming.*
