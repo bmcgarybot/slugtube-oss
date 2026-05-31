@@ -233,10 +233,15 @@ def _scan_channel_stats():
         for channel_dir in sorted(shows.iterdir()):
             if not channel_dir.is_dir():
                 continue
-            # Skip TubeArchivist metadata dirs (e.g. "Channel#playlists") but NOT
-            # regular channel folders that happen to contain '#' (yt-dlp creates these)
+            # Skip TubeArchivist metadata dirs (e.g. "Channel#playlists") AND
+            # YouTube '#' variant folders (e.g. "Channel#") when the base folder exists
             if channel_dir.name.endswith('#playlists'):
                 continue
+            if channel_dir.name.endswith('#'):
+                base_name = channel_dir.name.rstrip('#')
+                base_path = channel_dir.parent / base_name
+                if base_path.is_dir():
+                    continue
             video_count = 0
             total_size = 0
             seasons = []
