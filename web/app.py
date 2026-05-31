@@ -233,14 +233,26 @@ def _scan_channel_stats():
         for channel_dir in sorted(shows.iterdir()):
             if not channel_dir.is_dir():
                 continue
-            # Skip TubeArchivist metadata dirs (e.g. "Channel#playlists") AND
-            # YouTube '#' variant folders (e.g. "Channel#") when the base folder exists
+            # Skip TubeArchivist metadata dirs (e.g. "Channel#playlists")
             if channel_dir.name.endswith('#playlists'):
                 continue
+            # Auto-merge Channel# folders into base Channel folder
             if channel_dir.name.endswith('#'):
                 base_name = channel_dir.name.rstrip('#')
                 base_path = channel_dir.parent / base_name
                 if base_path.is_dir():
+                    import shutil
+                    for root, dirs, files in os.walk(str(channel_dir)):
+                        rel_root = os.path.relpath(root, str(channel_dir))
+                        dest_root = base_path / rel_root
+                        for f in files:
+                            src = Path(root) / f
+                            dest = dest_root / f
+                            if not dest.exists():
+                                dest_root.mkdir(parents=True, exist_ok=True)
+                                shutil.move(str(src), str(dest))
+                    shutil.rmtree(str(channel_dir), ignore_errors=True)
+                    app.logger.info(f"Auto-merged and removed: {channel_dir.name} → {base_name}")
                     continue
             video_count = 0
             total_size = 0

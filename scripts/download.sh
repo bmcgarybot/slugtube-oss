@@ -247,8 +247,10 @@ fi
 echo "📺 Processing $CHANNEL_COUNT channels..."
 
 # ── Build yt-dlp options ──
+# Use %(channel)s but strip trailing # via --replace-in-metadata
 YT_OPTS=(
     -o "${OUTPUT_DIR}/%(channel)s/Season %(upload_date>%Y,release_date>%Y,modified_date>%Y)s/s%(upload_date>%Y,release_date>%Y,modified_date>%Y)se%(upload_date,release_date,modified_date)s - %(title).150s [%(id)s].%(ext)s"
+    --replace-in-metadata "channel" "#$" ""
     --download-archive "$ARCHIVE_FILE"
     --cookies "$COOKIES_FILE"
 
