@@ -115,6 +115,107 @@ SlugTube automatically downloads, organizes, and indexes YouTube channels into a
 
 ---
 
+## Walkthrough: Your First Hour with SlugTube
+
+This takes you from zero to a working media library, step by step.
+
+### Step 1: Install and Launch
+
+```bash
+git clone https://github.com/bmcgarybot/slugtube-oss.git
+cd slugtube-oss
+cp channels.txt.example channels.txt
+docker compose up -d
+```
+
+Open `http://localhost:5000` in your browser. You'll see the **Dashboard** — it's empty right now, and that's fine.
+
+### Step 2: Add Your First Channel
+
+Click **Channels** in the sidebar. You'll see an empty table with an input bar at the top.
+
+1. Paste a YouTube channel URL (e.g. `https://www.youtube.com/@veritasium/videos`)
+2. Give it a folder name (e.g. `Veritasium`)
+3. Click **Add Channel**
+
+The channel appears in the table with an "Active" status badge. A folder is automatically created on disk.
+
+### Step 3: Set Up Cookies (Recommended)
+
+YouTube blocks unauthenticated downloads quickly. Click **Cookies** in the sidebar.
+
+1. Install the [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) browser extension
+2. Go to youtube.com while logged in
+3. Click the extension to export your cookies
+4. Paste them into the text box on the Cookies page and save
+
+The cookie health dot next to the SlugTube logo in the sidebar will turn green when cookies are valid.
+
+### Step 4: Download Your First Videos
+
+Go back to **Channels**. Find your channel in the table and click **Quick Check**. A toast notification pops up confirming the scan started — the page stays put, no redirect.
+
+Switch to the **Dashboard** to watch progress. You'll see:
+- Active download count
+- Current video being downloaded
+- Download speed and progress
+
+Videos appear in the library as soon as each one finishes downloading (live indexing — no need to wait for the full batch).
+
+### Step 5: Browse Your Library
+
+Once some videos are downloaded, click on a channel name to see the **Channel View**:
+- Video grid with thumbnails, titles, dates, durations, and view counts
+- Sort by Newest, Oldest, Most Viewed, Shortest, or Smallest
+- Paginate through large collections
+
+Or use the **Search Bar** at the top of the sidebar — type any keyword and hit Enter to search across all videos in your library.
+
+### Step 6: Watch Something
+
+Click any video thumbnail to open the **Watch** page:
+- Built-in web player
+- Resume where you left off (position saved automatically)
+- Keyboard shortcuts for playback
+
+Your watch history appears on the **History** page in the sidebar.
+
+### Step 7: Clean Up What You Don't Want
+
+On any channel page, click **Select** to enter bulk mode:
+- Check individual videos or **Select All**
+- **Delete Selected** removes files AND blocks re-download
+- **Exclude from Future** blocks future downloads without deleting what's already there
+
+Great for removing shorts, intros, or content that doesn't belong in your library.
+
+### Step 8: Set It and Forget It
+
+SlugTube runs on autopilot:
+- **Every 6 hours** — fast check for new videos across all channels
+- **Sundays at 3 AM** — full index of complete channel histories
+- **Daily at 1 AM** — yt-dlp auto-updates to the latest version
+
+All schedules are configurable via environment variables. Point Jellyfin or Kodi at your shows directory and your media library stays current automatically.
+
+### Step 9: Ongoing Maintenance
+
+- **Cookie health dot turns yellow/red?** Refresh your cookies on the Cookies page
+- **Channel disappeared from YouTube?** Use **Clean Ghost Entries** on Settings to remove stale DB records
+- **Want the latest SlugTube code?** Click **Update SlugTube** on Settings (pulls from GitHub)
+- **Check the Logs page** for download errors, skipped videos, or connection issues
+
+### Optional: Import an Existing Library
+
+Already have videos from TubeArchivist, PinchFlat, or plain yt-dlp? Go to **Settings** and use the import tools:
+- **Scan Existing Library** — reads `.info.json` files from any folder
+- **TubeArchivist Backup** — upload a backup ZIP
+- **PinchFlat Database** — upload your `pinchflat.db`
+
+All imports detect duplicates and never overwrite your existing channels.
+
+---
+
 ## Quick Start
 
 ```bash
