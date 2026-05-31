@@ -176,6 +176,7 @@ if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_
         --retry-sleep 30
         --no-overwrites
         --windows-filenames
+        --trim-filenames 200
         --exec "after_move:curl -sf -X POST http://localhost:5000/api/index-video -d file={} || true"
     )
 
@@ -270,6 +271,7 @@ YT_OPTS=(
     --retry-sleep 30
     --no-overwrites
     --windows-filenames
+    --trim-filenames 200
 
     # Live-index: notify Flask to index each video as soon as it's downloaded
     --exec "after_move:curl -sf -X POST http://localhost:5000/api/index-video -d file={} || true"
