@@ -1,0 +1,19 @@
+# ============================================================
+# SlugTube Channels — Example Configuration
+# ============================================================
+# Format: URL|FolderName
+# The folder name is locked — yt-dlp will always use it,
+# regardless of what YouTube calls the channel.
+#
+# Examples:
+# https://www.youtube.com/@MrBeast|MrBeast
+# https://www.youtube.com/@veritasium|Veritasium
+# https://www.youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf|Numberphile Playlist
+#
+# Notes:
+# - One entry per line
+# - Lines starting with # are comments
+# - Blank lines are ignored
+# - Playlist URLs are supported (use playlist?list= format)
+# - Folder names should be filesystem-safe (avoid special characters)
+# ============================================================

@@ -1,4 +1,4 @@
-# 🐌 SlugTube
+# SlugTube
 
 **A self-hosted YouTube channel archiver with a dark-themed web UI.**
 
@@ -6,38 +6,125 @@ SlugTube automatically downloads, organizes, and indexes YouTube channels into a
 
 ---
 
-## ✨ Features
+## Features
 
-- **📊 Dashboard** — Live download status, job queue, disk usage, cookie health, recent activity
-- **🎬 Library** — Channel grid with poster art, video browsing, full-text search
-- **📺 Unified Channels** — One table for everything: Active (subscribed + on disk), Subscribed (pending), Library (untracked). Status badges, category column, all actions in one row
-- **📋 Playlist Support** — Index YouTube playlists, browse by playlist, playlist overview pages
-- **▶️ Video Player** — Built-in player with resume playback, watch history, keyboard shortcuts
-- **🍪 Cookie Manager** — Paste & manage YouTube cookies from the web UI (with tab-fix auto-repair)
-- **⚙️ Settings** — Quality profiles (720p–4K), format selection, metadata toggles
-- **⏰ Scheduled Downloads** — Cron-based fast checks, full indexing, yt-dlp auto-updates
-- **🎨 Channel Art** — Auto-fetches poster/banner artwork + manual "Fetch Art" button
-- **📁 Jellyfin-Compatible** — `Season YYYY` folder structure, `.nfo` files, embedded metadata
-- **🔍 Full-Text Search** — SQLite FTS5 index across all video titles and descriptions
-- **📜 Watch History** — Track watched/in-progress videos with resume positions
-- **☑️ Bulk Operations** — Select multiple videos → bulk delete (removes files + blocks re-download) or bulk exclude (blocks without deleting)
-- **🗑️ Video & Channel Management** — Delete individual videos or entire channel folders from the UI
-- **📋 Logs** — Real-time log viewer with filters (All / Errors / Downloads / Skipped), full-log view, export to file
-- **⏸️ Pause/Resume** — Pause all downloads globally from the dashboard
-- **⛔ Cancel** — Kill running downloads and clear the job queue
-- **📱 Responsive** — Full desktop layout, medium breakpoint (hides columns), mobile card layout
-- **🧹 Auto-Cleanup** — Ghost DB entries auto-purged when folders disappear. Folders auto-created for subscribed channels.
+### Dashboard
+- Live download status with progress indicators
+- Job queue with current/pending downloads
+- Disk usage stats per drive
+- Cookie health indicator with smart log analysis
+- Recent activity feed
+- Pause/Resume all downloads globally
+- Cancel running downloads and clear the queue
 
-## 🚀 Quick Start
+### Channels
+- Unified channel table: Active (subscribed + on disk), Subscribed (pending), Library-only (untracked)
+- Status badges and category columns
+- All channel actions in one row — no page reloads:
+  - **Quick Check** — scan for new videos (AJAX, stays on page)
+  - **Download** — trigger full channel download
+  - **Reindex** — rebuild database entries from disk
+  - **Reindex Playlists** — fetch playlist data from YouTube
+  - **Fetch Art** — grab poster/banner artwork
+  - **Unsubscribe** — remove from active downloads
+  - **Delete** — remove channel and all files
+- All actions use fetch/AJAX with toast notifications — page never reloads
+- Confirmation modals with hover tooltips on destructive actions
+
+### Channel Detail View
+- Video grid with thumbnails, titles, dates, durations, view counts
+- Sort by: Newest, Oldest, Most Viewed, Shortest, Smallest
+- Pagination for large libraries
+- Latest video preview with thumbnail
+- Playlist link showing count of indexed playlists
+- Bulk select mode: select all, delete selected, exclude from future downloads
+
+### Video Player
+- Built-in web player with resume playback
+- Watch history tracking (watched/in-progress)
+- Keyboard shortcuts for playback control
+- Add to playlist functionality
+
+### Library
+- Full channel grid with poster art
+- Browse all videos across all channels
+- Full-text search (SQLite FTS5) across video titles and descriptions
+
+### Global Search Bar
+- Search input in the sidebar, accessible from every page
+- Type and hit Enter — routes to Library with filtered results
+- Always visible, no need to navigate to a specific page first
+
+### Playlist Support
+- Index a channel's curated YouTube playlists
+- Browse videos organized by playlist
+- Playlist overview page across all channels
+- Smart URL detection — playlist URLs don't get mangled
+
+### Cookie Manager
+- Paste and manage YouTube cookies from the web UI
+- Tab-fix auto-repair for common formatting issues
+- Smart health indicator:
+  - Checks cookie file age and expiration
+  - Scans yt-dlp logs for YouTube rejection signals
+  - Ignores errors from before the last cookie refresh (10-minute grace period)
+  - Color-coded dot in sidebar: green (OK), yellow (warning), red (rejected)
+
+### Settings
+- Quality profiles: 720p, 1080p, 1440p, 4K
+- Format selection (mp4, mkv, webm)
+- Metadata toggles (subtitles, thumbnails, descriptions)
+- Ghost cleanup: removes database entries for channels no longer in your subscription list
+- Self-update: pull latest code from GitHub directly from the UI
+
+### Logs
+- Real-time log viewer
+- Filter tabs: All / Errors Only / Downloads / Skipped
+- Full log view (not just last 200 lines)
+- Export logs as timestamped `.txt` file
+- Smart error filtering that strips noise
+
+### Watch History
+- Track watched and in-progress videos
+- Resume positions saved per video
+- Recently watched page
+
+### Live Indexing
+- Videos are indexed into the database immediately after download completes
+- Uses yt-dlp's `--exec after_move` hook to POST to the indexing API
+- No need to wait for a full reindex — new videos appear instantly
+
+### Responsive Design
+- Full desktop layout with sidebar navigation
+- Medium breakpoint with hidden columns
+- Mobile card layout
+- Dark theme throughout
+
+### Scheduled Automation
+- Fast check every 6 hours (latest 50 videos per channel)
+- Full index Sundays at 3 AM
+- yt-dlp auto-update daily at 1 AM
+- All schedules configurable via environment variables
+
+### Safety Features
+- Blank/malformed channel entries are skipped (won't crash downloads)
+- Channels with `#` in their YouTube-assigned name are handled correctly
+- Local `channels.txt` is never overwritten by updates
+- Confirmation modals on all destructive actions
+- Ghost cleanup only removes DB entries, not files (unless folder is empty)
+
+---
+
+## Quick Start
 
 ```bash
 # Clone the repo
-git clone https://github.com/youruser/slugtube.git
-cd slugtube
+git clone https://github.com/bmcgarybot/slugtube-oss.git
+cd slugtube-oss
 
-# Copy the example environment file and edit it
-cp .env.example .env
-# Edit .env to set your paths (at minimum: SHOWS_DIR and CONFIG_DIR)
+# Copy the example channels file
+cp channels.txt.example channels.txt
+# Edit channels.txt — add your YouTube channel URLs
 
 # Start SlugTube
 docker compose up -d
@@ -46,15 +133,15 @@ docker compose up -d
 open http://localhost:5000
 ```
 
-That's it. On first run, SlugTube will:
+On first run, SlugTube will:
 1. Create default config files
 2. Show a "Getting Started" page if no channels are configured
 3. Update yt-dlp to the latest nightly build
 4. Start the web dashboard on port 5000
 
-## ⚙️ Configuration
+## Configuration
 
-All configuration is done through environment variables in `.env` (or `docker-compose.yml`).
+All configuration is done through environment variables in `docker-compose.yml` or `.env`.
 
 ### Required Paths
 
@@ -67,7 +154,7 @@ All configuration is done through environment variables in `.env` (or `docker-co
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FAST_CRON` | `0 */6 * * *` | Fast check — latest 50 videos per channel (every 6 hours) |
+| `FAST_CRON` | `0 */6 * * *` | Fast check — latest 50 videos per channel (every 6h) |
 | `FULL_CRON` | `0 3 * * 0` | Full index — entire channel history (Sundays 3 AM) |
 | `UPDATE_CRON` | `0 1 * * *` | yt-dlp auto-update (daily 1 AM) |
 
@@ -80,122 +167,59 @@ All configuration is done through environment variables in `.env` (or `docker-co
 | `PUID` | `1000` | User ID for file permissions |
 | `PGID` | `1000` | Group ID for file permissions |
 
-## 📺 Adding Channels
-
-### Migrating from TubeArchivist or PinchFlat
-
-SlugTube has built-in import tools on the **Settings** page. Three methods:
-
-#### 1. Scan Existing Library (Recommended)
-
-If you already have a media folder full of downloaded videos (from TubeArchivist, PinchFlat, or plain yt-dlp), just point SlugTube at it:
-
-1. Go to **Settings → Import Channels**
-2. Enter the path to your media folder (e.g. `/youtube/` or `/downloads/shows/`)
-3. Click **Scan** — SlugTube reads `.info.json` files to find channel names and URLs
-4. Review the list, check the ones you want, click **Import Selected**
-
-This works with any yt-dlp-based folder structure. No backup files needed.
-
-#### 2. TubeArchivist Backup ZIP
-
-1. In TubeArchivist: **Settings → Backup → Create Backup**
-2. Download the backup ZIP
-3. In SlugTube: **Settings → Import → TubeArchivist Backup → Upload**
-4. SlugTube extracts your subscribed channels from the metadata
-5. Review and import
-
-#### 3. PinchFlat Database
-
-1. Find your PinchFlat database file: `pinchflat.db` (in your PinchFlat config directory, usually `/config/`)
-2. In SlugTube: **Settings → Import → PinchFlat Database → Upload**
-3. SlugTube reads your sources from the SQLite database
-4. Review and import
-
-All import methods:
-- **Never overwrite** your existing channels — only append new ones
-- **Detect duplicates** by URL, channel name, and channel ID
-- **Auto-create folders** for imported channels
-- Show a preview with checkboxes so you can pick exactly what to import
-
-> **Note on file naming:** TubeArchivist and PinchFlat use different file naming conventions. Imported channels will download NEW videos in SlugTube's format. Existing files from your old app will still be indexed and playable, but won't have the `Season YYYY/` folder structure until re-downloaded.
+## Adding Channels
 
 ### From the Web UI
 
-1. Go to **Channels** page
+1. Go to the **Channels** page
 2. Paste a YouTube channel URL (e.g. `https://www.youtube.com/@ChannelName/videos`)
 3. Optionally set a display name and enable playlist indexing
-4. Click **+ Add Channel**
-
-Channels appear immediately with ✅ Active status. A folder is auto-created on disk.
+4. Click **Add Channel**
 
 ### From `channels.txt`
 
-Edit the `channels.txt` file in your config directory:
+Edit `channels.txt` in your config directory:
 
 ```
-# Format: URL or URL|DisplayName or URL|DisplayName|playlists
-#
-# Section headers (optional):
-# # --- Horror ---
-# # --- Comedy ---
+# Format: URL|FolderName
+https://www.youtube.com/@SomeChannel/videos|My Channel Name
+https://www.youtube.com/@AnotherOne/videos|Another Channel
 
-https://www.youtube.com/@SomeChannel/videos
-https://www.youtube.com/@AnotherOne/videos|My Custom Name
-https://www.youtube.com/@WithPlaylists/videos|Channel Name|playlists
-
-# You can also add individual playlists:
+# Playlists work too:
 https://youtube.com/playlist?list=PLxxxxxxxx|Playlist Name
 ```
 
-The `|playlists` flag tells SlugTube to also index the channel's curated YouTube playlists.
+### Migrating from TubeArchivist or PinchFlat
 
-## ☑️ Bulk Operations
+SlugTube has built-in import tools on the **Settings** page:
 
-On channel pages, click the **☑️ Select** button to enter bulk mode:
+1. **Scan Existing Library** — Point SlugTube at a folder of yt-dlp downloads. It reads `.info.json` files to find channels.
+2. **TubeArchivist Backup** — Upload a TubeArchivist backup ZIP.
+3. **PinchFlat Database** — Upload your `pinchflat.db` file.
 
-- **Select All** — toggle all visible videos
-- **🗑️ Delete Selected** — removes files from disk AND adds to archive (blocks re-download)
-- **🚫 Exclude from Future** — adds to archive without deleting existing files (blocks future downloads)
-- **Sort by Smallest/Shortest** — find junk content fast
+All import methods detect duplicates and never overwrite existing channels.
 
-Useful for cleaning up shorts, intros, or content you don't want in your library.
+## Cookies
 
-## 📋 Playlist Support
+YouTube requires cookies for age-restricted content and to avoid bot detection.
 
-SlugTube can index a channel's curated YouTube playlists and let you browse videos by playlist:
-
-1. **Enable** — Add `|playlists` to a channel entry in `channels.txt`, or toggle the 📋 button on the Channels page
-2. **Index** — Click "🎵 Reindex Playlists" on a channel page (fetches playlist data from YouTube)
-3. **Browse** — Playlists appear on the channel page as a card grid with thumbnails
-
-Playlists only show videos you've already downloaded — they're an organizational layer, not a download trigger.
-
-## 🍪 Cookies
-
-YouTube requires cookies for:
-- Age-restricted content
-- Avoiding "Sign in to confirm you're not a bot" errors
-- Higher rate limits
-
-**To set up cookies:**
 1. Install [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) in Chrome/Edge
-2. Go to youtube.com (make sure you're logged in)
+2. Go to youtube.com (logged in)
 3. Export cookies with the extension
 4. Paste them on the **Cookies** page in SlugTube
 
-Cookies expire periodically — refresh them when downloads start failing.
+The cookie health dot in the sidebar tells you when cookies need refreshing — it checks both the file itself and recent download logs for YouTube rejection signals.
 
-## 📁 Folder Structure
+## Folder Structure
 
-SlugTube organizes downloads in a Jellyfin/Kodi-compatible structure:
+SlugTube organizes downloads for Jellyfin/Kodi compatibility:
 
 ```
 /shows/
 ├── Channel Name/
-│   ├── poster.jpg           # Channel avatar
-│   ├── banner.jpg           # Channel banner
-│   ├── tvshow.nfo           # Jellyfin metadata
+│   ├── poster.jpg
+│   ├── banner.jpg
+│   ├── tvshow.nfo
 │   ├── Season 2024/
 │   │   ├── s2024e20240315 - Video Title [VIDEO_ID].mp4
 │   │   ├── s2024e20240315 - Video Title [VIDEO_ID].info.json
@@ -207,38 +231,61 @@ SlugTube organizes downloads in a Jellyfin/Kodi-compatible structure:
     └── ...
 ```
 
-## 📋 Log Viewer
+## Bulk Operations
 
-The logs page includes:
-- **Filter tabs** — All / ❌ Errors Only / ⬇️ Downloads / ⏭️ Skipped
-- **Full log** — View the entire log file (not just last 200 lines)
-- **📥 Export** — Download logs as a timestamped `.txt` file
-- Smart error filtering that strips noise (already-downloaded notifications, skip messages)
+On any channel page, click **Select** to enter bulk mode:
 
-## 🔧 Development
+- **Select All** — toggle all visible videos
+- **Delete Selected** — removes files and blocks re-download
+- **Exclude from Future** — blocks future downloads without deleting
+- **Sort by Smallest/Shortest** — find junk content fast
+
+## Tech Stack
+
+- **Backend:** Python / Flask
+- **Database:** SQLite with FTS5 full-text search
+- **Downloads:** yt-dlp with ffmpeg
+- **Frontend:** Vanilla HTML/CSS/JS (no frameworks)
+- **Deployment:** Docker
+- **Media server:** Jellyfin/Kodi compatible output
+
+## Pages
+
+| Page | Path | Description |
+|------|------|-------------|
+| Dashboard | `/` | Status overview, controls, recent activity |
+| Channels | `/channels` | Channel management table with all actions |
+| Channel View | `/channel/<name>` | Video grid for a specific channel |
+| Watch | `/watch/<id>` | Video player with resume |
+| History | `/history` | Recently watched videos |
+| Library | `/library` | Browse all videos, full-text search |
+| Playlists | `/playlists` | Overview of all indexed playlists |
+| Recent | `/recent` | Recently downloaded videos |
+| Logs | `/logs` | Download logs with filters |
+| Cookies | `/cookies` | Cookie management |
+| Settings | `/settings` | Quality, imports, cleanup, updates |
+
+## Development
 
 ```bash
-# Run without Docker (requires Python 3.10+, yt-dlp, ffmpeg)
+# Run without Docker (Python 3.10+, yt-dlp, ffmpeg required)
 cd web
 pip install flask
 python app.py
 
-# The app reads these environment variables:
+# Environment variables:
 export SHOWS_DIR=/path/to/your/shows
 export CONFIG_DIR=/path/to/your/config
 ```
 
-## 🤝 Contributing
-
-Contributions welcome! Please:
+## Contributing
 
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/cool-thing`)
-3. Commit your changes (`git commit -m 'Add cool thing'`)
-4. Push to the branch (`git push origin feature/cool-thing`)
-5. Open a Pull Request
+3. Commit your changes
+4. Push and open a Pull Request
 
-## 📄 License
+## License
 
 [MIT](LICENSE) — do whatever you want with it.
 

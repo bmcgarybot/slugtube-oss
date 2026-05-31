@@ -176,6 +176,7 @@ if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_
         --retry-sleep 30
         --no-overwrites
         --windows-filenames
+        --exec "after_move:curl -sf -X POST http://localhost:5000/api/index-video -d file={} || true"
     )
 
     if [ "$EMBED_SUBS" = "true" ]; then
@@ -269,6 +270,9 @@ YT_OPTS=(
     --retry-sleep 30
     --no-overwrites
     --windows-filenames
+
+    # Live-index: notify Flask to index each video as soon as it's downloaded
+    --exec "after_move:curl -sf -X POST http://localhost:5000/api/index-video -d file={} || true"
 )
 
 # ── Conditional options based on config ──
@@ -334,6 +338,11 @@ while IFS= read -r line || [ -n "$line" ]; do
     else
         CHANNEL_URL="$(echo "$line" | xargs)"
         FOLDER_NAME=""
+    fi
+
+    # Skip if URL is empty after parsing (malformed entry like lone "|" or whitespace)
+    if [ -z "$CHANNEL_URL" ]; then
+        continue
     fi
 
     echo ""

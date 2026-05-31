@@ -15,6 +15,28 @@ from pathlib import Path
 
 app = Flask(__name__)
 
+
+@app.route("/api/version")
+def api_version():
+    """Quick check: what code version is the container running?"""
+    return jsonify({"version": "2026-05-29b", "status": "ok"})
+
+
+@app.route("/api/index-video", methods=["POST"])
+def api_index_video():
+    """Index a single video file immediately after download.
+    Called by yt-dlp --exec after_move hook from download.sh."""
+    file_path = request.form.get("file", "").strip() or request.args.get("file", "").strip()
+    if not file_path:
+        return jsonify({"error": "missing 'file' parameter"}), 400
+    from indexer import index_single_video
+    video_id, result = index_single_video(file_path)
+    if video_id:
+        return jsonify({"status": "ok", "video_id": video_id, "channel": result})
+    else:
+        return jsonify({"status": "error", "error": result}), 500
+
+
 CHANNELS_FILE = "/config/channels.txt"
 ARCHIVE_FILE = "/config/archive/downloaded.txt"
 LOG_FILE = "/config/logs/slugtube.log"
@@ -119,6 +141,18 @@ def save_state(state):
         json.dump(state, f, indent=2)
 
 
+def _is_ajax():
+    """Return True if the request came from an AJAX/fetch call."""
+    return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+
+def _ajax_or_redirect(msg, fallback="channels", status="ok"):
+    """Return JSON for AJAX requests, redirect for normal form posts."""
+    if _is_ajax():
+        return jsonify({"status": status, "message": msg})
+    return redirect(request.referrer or url_for(fallback))
+
+
 def is_paused():
     return os.path.isfile(PAUSE_FILE)
 
@@ -160,6 +194,9 @@ def get_channels():
                         parts = raw.split("|")
                         url = parts[0].strip()
                         name = parts[1].strip() if len(parts) > 1 else url
+                        # Skip malformed entries (empty URL)
+                        if not url:
+                            continue
                         # Check for |playlists flag (third field or any field after name)
                         for extra in parts[2:]:
                             if extra.strip().lower() == 'playlists':
@@ -196,8 +233,9 @@ def _scan_channel_stats():
         for channel_dir in sorted(shows.iterdir()):
             if not channel_dir.is_dir():
                 continue
-            # Skip internal/metadata subdirs (e.g. "Channel#playlists" from TubeArchivist)
-            if '#' in channel_dir.name:
+            # Skip TubeArchivist metadata dirs (e.g. "Channel#playlists") but NOT
+            # regular channel folders that happen to contain '#' (yt-dlp creates these)
+            if channel_dir.name.endswith('#playlists'):
                 continue
             video_count = 0
             total_size = 0
@@ -375,8 +413,13 @@ def check_cookie_health():
 
 
 def _check_logs_for_cookie_rejection(file_age_days=0):
-    """Scan recent logs for signs YouTube is rejecting cookies, even if the file looks fine."""
+    """Scan recent logs for signs YouTube is rejecting cookies, even if the file looks fine.
+    
+    Only flags errors that occurred AFTER the cookie file was last saved.
+    This prevents stale log entries from keeping the dot red after a cookie refresh.
+    """
     import re
+    from datetime import datetime
 
     # Patterns that indicate YouTube is rejecting/ignoring cookies
     REJECTION_PATTERNS = [
@@ -396,6 +439,12 @@ def _check_logs_for_cookie_rejection(file_age_days=0):
     try:
         if not os.path.isfile(LOG_FILE):
             return None
+
+        # Get cookie file modification time — errors BEFORE this don't count
+        cookie_path = "/config/Cookie/cookies.txt"
+        cookie_mtime = None
+        if os.path.isfile(cookie_path):
+            cookie_mtime = os.path.getmtime(cookie_path)
 
         with open(LOG_FILE, "r", errors="replace") as f:
             f.seek(0, 2)
@@ -418,10 +467,9 @@ def _check_logs_for_cookie_rejection(file_age_days=0):
         if not signals_found:
             return None
 
-        # Check if errors are recent (within last 2 hours)
-        # Look for timestamps near the rejection messages
+        # Check if errors are BOTH recent (within 2 hours) AND after cookie refresh
         now_ts = time.time()
-        is_recent = False
+        is_recent_and_post_refresh = False
 
         # Try to find timestamps in format "YYYY-MM-DD HH:MM:SS" near errors
         for pattern in signals_found[:3]:  # Check first few
@@ -432,25 +480,41 @@ def _check_logs_for_cookie_rejection(file_age_days=0):
             )
             if matches:
                 try:
-                    from datetime import datetime
                     last_time = datetime.strptime(matches[-1].replace("T", " "), "%Y-%m-%d %H:%M:%S")
+                    last_time_ts = last_time.timestamp()
                     age_hours = (datetime.utcnow() - last_time).total_seconds() / 3600
+
+                    # Must be recent AND after the cookie file was saved
                     if age_hours < 2:
-                        is_recent = True
-                        break
+                        if cookie_mtime is None or last_time_ts > cookie_mtime:
+                            is_recent_and_post_refresh = True
+                            break
+                        # else: error is from before cookies were refreshed — ignore it
                 except (ValueError, TypeError):
                     pass
 
-        # If no timestamp found but the log was recently written, assume recent
-        if not is_recent:
+        # Fallback: if no parseable timestamps, only flag if log was written
+        # AFTER cookies AND within last hour (both conditions required)
+        if not is_recent_and_post_refresh:
             try:
-                log_age_hours = (now_ts - os.path.getmtime(LOG_FILE)) / 3600
+                log_mtime = os.path.getmtime(LOG_FILE)
+                log_age_hours = (now_ts - log_mtime) / 3600
                 if log_age_hours < 1:
-                    is_recent = True
+                    # Log is fresh, but only flag if cookies are OLDER than the log
+                    # (meaning errors happened after the last cookie save)
+                    if cookie_mtime is not None and log_mtime > cookie_mtime:
+                        # Log written after cookies — but we can't tell if the ERRORS
+                        # are post-refresh without timestamps. Give cookies the benefit
+                        # of the doubt for the first 10 minutes after refresh.
+                        cookie_age_min = (now_ts - cookie_mtime) / 60
+                        if cookie_age_min > 10:
+                            is_recent_and_post_refresh = True
+                    elif cookie_mtime is None:
+                        is_recent_and_post_refresh = True
             except OSError:
                 pass
 
-        if not is_recent:
+        if not is_recent_and_post_refresh:
             return None
 
         # Determine severity based on which signals we see
@@ -638,6 +702,97 @@ def run_update():
         jobs["log"] = str(e)
 
 
+@app.route("/api/self-update", methods=["POST"])
+def api_self_update():
+    """Pull latest SlugTube code from GitHub and overwrite /app/web and /app/scripts.
+    Also merges new channels from the repo's channels.txt into local channels.txt."""
+    import urllib.request
+    import tarfile
+    import io
+    import shutil
+
+    REPO = "bmcgarybot/slugtube-oss"
+    BRANCH = "main"
+    TARBALL_URL = f"https://api.github.com/repos/{REPO}/tarball/{BRANCH}"
+    LOCAL_CHANNELS = "/config/channels.txt"
+
+    try:
+        # Download tarball from GitHub
+        req = urllib.request.Request(TARBALL_URL, headers={"User-Agent": "SlugTube-Updater"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            tarball_data = resp.read()
+
+        # Extract to temp dir
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tar = tarfile.open(fileobj=io.BytesIO(tarball_data), mode="r:gz")
+            tar.extractall(tmpdir)
+            tar.close()
+
+            # GitHub tarballs extract to a single top-level dir like "bmcgarybot-slugtube-abc1234/"
+            extracted_dirs = os.listdir(tmpdir)
+            if not extracted_dirs:
+                return jsonify({"status": "error", "message": "Empty tarball"}), 500
+            repo_root = os.path.join(tmpdir, extracted_dirs[0])
+
+            updated = []
+
+            # Update /app/web
+            src_web = os.path.join(repo_root, "web")
+            if os.path.isdir(src_web):
+                # Copy all files, overwriting existing
+                for root, dirs, files in os.walk(src_web):
+                    rel = os.path.relpath(root, src_web)
+                    dest_dir = os.path.join("/app/web", rel)
+                    os.makedirs(dest_dir, exist_ok=True)
+                    for f in files:
+                        shutil.copy2(os.path.join(root, f), os.path.join(dest_dir, f))
+                updated.append("web")
+
+            # Update /app/scripts
+            src_scripts = os.path.join(repo_root, "scripts")
+            if os.path.isdir(src_scripts):
+                for root, dirs, files in os.walk(src_scripts):
+                    rel = os.path.relpath(root, src_scripts)
+                    dest_dir = os.path.join("/app/scripts", rel)
+                    os.makedirs(dest_dir, exist_ok=True)
+                    for f in files:
+                        dest_file = os.path.join(dest_dir, f)
+                        shutil.copy2(os.path.join(root, f), dest_file)
+                        # Re-apply executable bit for shell scripts
+                        if f.endswith('.sh'):
+                            os.chmod(dest_file, 0o755)
+                updated.append("scripts")
+
+            # Merge channels.txt — add new entries from repo without removing local ones
+            src_channels = os.path.join(repo_root, "channels.txt")
+            if os.path.isfile(src_channels) and os.path.isfile(LOCAL_CHANNELS):
+                with open(LOCAL_CHANNELS, "r", errors="replace") as f:
+                    local_lines = set(f.read().splitlines())
+                with open(src_channels, "r", errors="replace") as f:
+                    repo_lines = [l for l in f.read().splitlines() if l.strip()]
+
+                new_lines = [l for l in repo_lines if l not in local_lines]
+                if new_lines:
+                    with open(LOCAL_CHANNELS, "a") as f:
+                        for l in new_lines:
+                            f.write(l + "\n")
+                    updated.append(f"channels (+{len(new_lines)} new)")
+            elif os.path.isfile(src_channels) and not os.path.isfile(LOCAL_CHANNELS):
+                shutil.copy2(src_channels, LOCAL_CHANNELS)
+                updated.append("channels (fresh copy)")
+
+        msg = f"Updated: {', '.join(updated)}. Refresh your browser (Ctrl+Shift+R)." if updated else "Already up to date."
+        return _ajax_or_redirect(msg, fallback="settings")
+
+    except Exception as e:
+        if _is_ajax():
+            return jsonify({"status": "error", "message": f"Update failed: {e}"}), 500
+        return redirect(request.referrer or url_for("settings"))
+
+
+SLUGTUBE_CODE_VERSION = "2026-05-29b"
+
 # ── Original Routes ──────────────────────────────────────────────
 
 @app.route("/")
@@ -695,13 +850,14 @@ def channels():
             except Exception as e:
                 app.logger.error(f"Failed to create folder for {ch['name']}: {e}")
 
-    # Auto-delete ghost #playlists folders (TubeArchivist leftovers)
+    # Auto-delete ghost TubeArchivist "#playlists" folders only
+    # (NOT regular folders with # — yt-dlp creates channel folders like "Travel Channel#")
     try:
         import shutil
         shows = Path(SHOWS_DIR)
         if shows.is_dir():
             for d in shows.iterdir():
-                if d.is_dir() and '#' in d.name:
+                if d.is_dir() and d.name.endswith('#playlists'):
                     shutil.rmtree(str(d), ignore_errors=True)
                     app.logger.info(f"Removed ghost folder: {d.name}")
     except Exception as e:
@@ -1036,7 +1192,7 @@ def remove_channel():
                 except Exception as e:
                     print(f"[remove_channel] Failed to delete folder {channel_dir}: {e}")
 
-    return redirect(request.referrer or url_for("channels"))
+    return _ajax_or_redirect(f"Unsubscribed from {name or 'channel'}")
 
 
 @app.route("/pause", methods=["POST"])
@@ -1200,12 +1356,12 @@ def run_single():
                     pass
         thread = threading.Thread(target=_queue_single, daemon=True)
         thread.start()
-        return redirect(request.referrer or url_for("channels"))
+        return _ajax_or_redirect(f"Queued download for {folder_name or 'channel'}...")
     if is_paused():
         set_paused(False)
     thread = threading.Thread(target=run_single_channel, args=(url, folder_name), daemon=True)
     thread.start()
-    return redirect(request.referrer or url_for("channels"))
+    return _ajax_or_redirect(f"Downloading {folder_name or 'channel'}...")
 
 
 @app.route("/run/fast-single", methods=["POST"])
@@ -1239,12 +1395,12 @@ def run_fast_single():
                     pass
         thread = threading.Thread(target=_queue_fast_single, daemon=True)
         thread.start()
-        return redirect(request.referrer or url_for("channels"))
+        return _ajax_or_redirect(f"Queued quick check for {folder_name or 'channel'}...")
     if is_paused():
         set_paused(False)
     thread = threading.Thread(target=run_single_channel, args=(url, folder_name, True), daemon=True)
     thread.start()
-    return redirect(request.referrer or url_for("channels"))
+    return _ajax_or_redirect(f"Checking {folder_name or 'channel'} for new videos...")
 
 
 @app.route("/logs/export")
@@ -1910,6 +2066,84 @@ def api_reindex():
     return jsonify({"status": "started"})
 
 
+@app.route("/api/cleanup-ghosts", methods=["POST"])
+def api_cleanup_ghosts():
+    """Remove database channel entries that don't match any entry in channels.txt.
+    Only cleans DB records — never deletes video files from disk."""
+    from indexer import get_db
+    try:
+        # Get all channel names from channels.txt
+        valid_names = set()
+        for ch in get_channels():
+            valid_names.add(ch['name'])
+
+        conn = get_db()
+        db_channels = conn.execute("SELECT name FROM channels").fetchall()
+        removed = []
+
+        for row in db_channels:
+            name = row['name']
+            if name not in valid_names:
+                # Channel not in channels.txt — clean DB entries
+                video_ids = [r['id'] for r in conn.execute(
+                    "SELECT id FROM videos WHERE channel_name = ?", (name,)
+                ).fetchall()]
+                if video_ids:
+                    placeholders = ",".join("?" * len(video_ids))
+                    conn.execute(f"DELETE FROM video_playlists WHERE video_id IN ({placeholders})", video_ids)
+                    conn.execute(f"DELETE FROM watch_history WHERE video_id IN ({placeholders})", video_ids)
+                    conn.execute(f"DELETE FROM videos WHERE channel_name = ?", (name,))
+                try:
+                    conn.execute("DELETE FROM videos_fts WHERE channel_name = ?", (name,))
+                except Exception:
+                    pass
+                conn.execute("DELETE FROM playlists WHERE channel_name = ?", (name,))
+                conn.execute("DELETE FROM channels WHERE name = ?", (name,))
+                removed.append(name)
+
+                # Remove empty folder (no video files) if it exists — leave folders with videos alone
+                channel_dir = Path(SHOWS_DIR) / name
+                if channel_dir.is_dir():
+                    video_extensions = {'.mp4', '.mkv', '.webm', '.avi', '.mov'}
+                    has_videos = any(
+                        os.path.splitext(f)[1].lower() in video_extensions
+                        for root, dirs, files in os.walk(str(channel_dir))
+                        for f in files
+                    )
+                    if not has_videos:
+                        import shutil
+                        try:
+                            shutil.rmtree(str(channel_dir))
+                        except Exception:
+                            pass
+
+        conn.commit()
+
+        # Also deduplicate: if multiple DB rows have the same channel name, keep only one
+        dupes_removed = []
+        all_names = conn.execute("SELECT name, COUNT(*) as cnt FROM channels GROUP BY name HAVING cnt > 1").fetchall()
+        for row in all_names:
+            name = row['name']
+            # Keep the row with the highest rowid (most recent), delete older duplicates
+            conn.execute("""
+                DELETE FROM channels WHERE name = ? AND rowid NOT IN (
+                    SELECT MAX(rowid) FROM channels WHERE name = ?
+                )
+            """, (name, name))
+            dupes_removed.append(name)
+        if dupes_removed:
+            conn.commit()
+            removed.extend([f"{n} (dedup)" for n in dupes_removed])
+
+        msg = f"Cleaned {len(removed)} ghost(s): {', '.join(removed)}" if removed else "No ghosts found"
+        return _ajax_or_redirect(msg, fallback="channels")
+
+    except Exception as e:
+        if _is_ajax():
+            return jsonify({"status": "error", "message": str(e)}), 500
+        return redirect(request.referrer or url_for("channels"))
+
+
 @app.route("/api/index-status")
 def api_index_status():
     from indexer import get_index_status
@@ -1931,6 +2165,8 @@ def api_reindex_channel(channel_name):
 
     if not channel_dir.is_dir():
         app.logger.warning(f"Channel dir NOT FOUND: {channel_dir}")
+        if _is_ajax():
+            return jsonify({"status": "error", "message": f"Directory not found: {channel_name}"}), 404
         if request.referrer:
             return redirect(request.referrer)
         return jsonify({"status": "error", "message": f"Directory not found: {channel_name}"}), 404
@@ -1938,9 +2174,7 @@ def api_reindex_channel(channel_name):
     # Run synchronously so the redirect shows updated counts
     result = reindex_single_channel(channel_name)
 
-    if request.referrer:
-        return redirect(request.referrer)
-    return jsonify({"status": "done" if result else "error", "channel": channel_name})
+    return _ajax_or_redirect(f"Reindexed {channel_name}" if result else f"Error reindexing {channel_name}")
 
 
 @app.route("/api/delete-folder/<path:channel_name>", methods=["POST"])
@@ -1986,6 +2220,8 @@ def api_delete_folder(channel_name):
             conn.commit()
         except Exception as e:
             app.logger.error(f"DB cleanup error for {channel_name}: {e}")
+        if _is_ajax():
+            return jsonify({"status": "deleted", "channel": channel_name, "note": "database only, no folder found"})
         if request.referrer:
             return redirect(request.referrer)
         return jsonify({"status": "deleted", "channel": channel_name, "note": "database only, no folder found"})
@@ -1995,6 +2231,8 @@ def api_delete_folder(channel_name):
         app.logger.info(f"Deleted folder: {channel_dir}")
     except Exception as e:
         app.logger.error(f"Failed to delete folder {channel_dir}: {e}")
+        if _is_ajax():
+            return jsonify({"status": "error", "message": str(e)}), 500
         if request.referrer:
             return redirect(request.referrer)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -2018,9 +2256,7 @@ def api_delete_folder(channel_name):
     except Exception as e:
         app.logger.error(f"DB cleanup error for {channel_name}: {e}")
 
-    if request.referrer:
-        return redirect(request.referrer)
-    return jsonify({"status": "deleted", "channel": channel_name})
+    return _ajax_or_redirect(f"Deleted {channel_name}")
 
 
 @app.route("/api/reindex-playlists/<path:channel_name>", methods=["POST"])
@@ -2039,6 +2275,8 @@ def api_reindex_playlists(channel_name):
             break
 
     if not channel_url:
+        if _is_ajax():
+            return jsonify({"status": "error", "message": f"Channel not found in channels.txt: {channel_name}"}), 404
         if request.referrer:
             return redirect(request.referrer)
         return jsonify({"status": "error", "message": f"Channel not found in channels.txt: {channel_name}"}), 404
@@ -2054,9 +2292,7 @@ def api_reindex_playlists(channel_name):
     thread = threading.Thread(target=_run_playlist_index, daemon=True)
     thread.start()
 
-    if request.referrer:
-        return redirect(request.referrer)
-    return jsonify({"status": "started", "channel": channel_name})
+    return _ajax_or_redirect(f"Reindexing playlists for {channel_name}...")
 
 
 @app.route("/api/fetch-art/<path:channel_name>", methods=["POST"])
@@ -2075,6 +2311,8 @@ def api_fetch_art(channel_name):
             break
 
     if not channel_url:
+        if _is_ajax():
+            return jsonify({"status": "error", "message": f"Channel not found: {channel_name}"}), 404
         if request.referrer:
             return redirect(request.referrer)
         return jsonify({"status": "error", "message": f"Channel not found: {channel_name}"}), 404
@@ -2117,9 +2355,7 @@ def api_fetch_art(channel_name):
     thread = threading.Thread(target=_fetch_art, daemon=True)
     thread.start()
 
-    if request.referrer:
-        return redirect(request.referrer)
-    return jsonify({"status": "started", "channel": channel_name})
+    return _ajax_or_redirect(f"Fetching artwork for {channel_name}...")
 
 
 @app.route("/api/toggle-playlists/<path:channel_name>", methods=["POST"])

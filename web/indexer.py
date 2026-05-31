@@ -532,6 +532,245 @@ def _scan_channel(conn, channel_dir):
     return video_count, total_size
 
 
+def index_single_video(file_path):
+    """Index a single video file immediately after download.
+    Called by the --exec after_move hook via /api/index-video.
+    Finds the .info.json, parses metadata, inserts into DB, and updates channel counts.
+    Returns (video_id, channel_name) on success or (None, error_msg) on failure.
+    """
+    from pathlib import Path as _P
+
+    fp = _P(file_path)
+    if not fp.exists():
+        return None, f"File not found: {file_path}"
+
+    VIDEO_EXTS = {'.mp4', '.mkv', '.webm', '.m4v'}
+    if fp.suffix.lower() not in VIDEO_EXTS:
+        return None, f"Not a video file: {file_path}"
+
+    # Derive channel name and season from path: /shows/ChannelName/Season YYYY/video.mp4
+    shows = _P(SHOWS_DIR)
+    try:
+        rel = fp.relative_to(shows)
+        parts = rel.parts  # ('ChannelName', 'Season 2026', 'video.mp4') or ('ChannelName', 'video.mp4')
+    except ValueError:
+        return None, f"File not under {SHOWS_DIR}: {file_path}"
+
+    if len(parts) < 2:
+        return None, f"Unexpected path structure: {file_path}"
+
+    channel_name = parts[0]
+    # Strip trailing '#' from channel folder name to match channels.txt naming
+    display_name = channel_name.rstrip('#') if channel_name.endswith('#') else channel_name
+    channel_dir = shows / channel_name
+    season = parts[1] if len(parts) >= 3 and parts[1].startswith('Season') else ''
+
+    # Find .info.json
+    base_name = fp.stem  # filename without extension
+    json_path = str(fp.with_suffix('.info.json'))
+    # yt-dlp sometimes names it differently — also check stripping the extension first
+    if not os.path.exists(json_path):
+        # Try: video.mp4 -> video.info.json  (already tried above)
+        # Try: video.f137.mp4 -> video.info.json (strip format code)
+        alt_base = base_name.rsplit('.', 1)[0] if '.' in base_name else base_name
+        alt_json = os.path.join(str(fp.parent), alt_base + '.info.json')
+        if os.path.exists(alt_json):
+            json_path = alt_json
+        else:
+            json_path = None
+
+    now = datetime.utcnow().isoformat()
+    file_size = fp.stat().st_size
+
+    conn = get_db()
+    try:
+        # Ensure channel exists in DB
+        conn.execute("""
+            INSERT OR IGNORE INTO channels (name, path, has_poster, has_banner, has_nfo, video_count, total_size_bytes, updated_at)
+            VALUES (?, ?, 0, 0, 0, 0, 0, ?)
+        """, (display_name, str(channel_dir), now))
+
+        if json_path and os.path.exists(json_path):
+            # Rich metadata from .info.json
+            try:
+                with open(json_path, 'r', errors='replace') as f:
+                    info = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                info = {}
+
+            video_id = info.get('id', '')
+            if not video_id:
+                # Extract from filename: ... [VIDEO_ID].mp4
+                import re
+                m = re.search(r'\[([A-Za-z0-9_-]{11})\]', base_name)
+                video_id = m.group(1) if m else 'f_' + base_name[:16]
+
+            upload_date = info.get('upload_date', '')
+            if upload_date and len(upload_date) == 8 and upload_date.isdigit():
+                upload_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}"
+
+            title = info.get('title', base_name)
+            description = (info.get('description', '') or '')[:2000]
+
+            # Find thumbnail
+            THUMB_EXTS = ('.jpg', '.png', '.webp')
+            thumb = ''
+            jbase = os.path.splitext(os.path.basename(json_path))[0].replace('.info', '')
+            for ext in THUMB_EXTS:
+                candidate = os.path.join(str(fp.parent), jbase + ext)
+                if os.path.exists(candidate):
+                    thumb = candidate
+                    break
+
+            # Find subtitle
+            subtitle = ''
+            for pat in ('.en.srt', '.en.vtt', '.srt', '.vtt'):
+                candidate = os.path.join(str(fp.parent), jbase + pat)
+                if os.path.exists(candidate):
+                    subtitle = candidate
+                    break
+
+            json_mtime = os.path.getmtime(json_path)
+
+            conn.execute("""
+                INSERT OR REPLACE INTO videos
+                (id, channel_name, title, description, upload_date, duration,
+                 view_count, like_count, file_path, file_size, thumbnail_path,
+                 subtitle_path, season, ext, width, height, json_path, json_mtime, indexed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                video_id, display_name, title, description, upload_date,
+                info.get('duration', 0) or 0,
+                info.get('view_count', 0) or 0,
+                info.get('like_count', 0) or 0,
+                str(fp), file_size, thumb, subtitle, season,
+                fp.suffix.lstrip('.').lower() or 'mp4',
+                info.get('width', 0) or 0,
+                info.get('height', 0) or 0,
+                json_path, json_mtime, now,
+            ))
+
+            conn.execute("""
+                INSERT OR REPLACE INTO videos_fts(rowid, id, title, description, channel_name)
+                SELECT rowid, id, title, description, channel_name FROM videos WHERE id = ?
+            """, (video_id,))
+
+        else:
+            # No .info.json — parse from filename
+            video_id, title, upload_date = _parse_filename(fp.name)
+            if not video_id:
+                import hashlib
+                video_id = 'f_' + hashlib.md5(file_path.encode()).hexdigest()[:10]
+            if not upload_date:
+                try:
+                    mtime = os.path.getmtime(str(fp))
+                    upload_date = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d')
+                except OSError:
+                    upload_date = ''
+
+            conn.execute("""
+                INSERT OR REPLACE INTO videos
+                (id, channel_name, title, description, upload_date, duration,
+                 view_count, like_count, file_path, file_size, thumbnail_path,
+                 subtitle_path, season, ext, width, height, json_path, json_mtime, indexed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                video_id, display_name, title or base_name, '', upload_date,
+                0, 0, 0, str(fp), file_size, '', '', season,
+                fp.suffix.lstrip('.').lower() or 'mp4',
+                0, 0, '', 0, now,
+            ))
+
+            conn.execute("""
+                INSERT OR REPLACE INTO videos_fts(rowid, id, title, description, channel_name)
+                SELECT rowid, id, title, description, channel_name FROM videos WHERE id = ?
+            """, (video_id,))
+
+        # Update channel video count and size
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt, COALESCE(SUM(file_size),0) as sz FROM videos WHERE channel_name = ?",
+            (display_name,)
+        ).fetchone()
+        conn.execute(
+            "UPDATE channels SET video_count = ?, total_size_bytes = ?, updated_at = ? WHERE name = ?",
+            (row['cnt'], row['sz'], now, display_name)
+        )
+
+        conn.commit()
+        log(f"  ✅ Indexed video: {title if json_path else base_name} ({video_id}) → {display_name}")
+        return video_id, display_name
+
+    except Exception as e:
+        log_warn(f"  ❌ index_single_video error: {e}")
+        return None, str(e)
+    finally:
+        conn.close()
+
+
+def _index_single_playlist(playlist_url, channel_name):
+    """Index a single playlist URL (not a channel's /playlists tab).
+    Used when channels.txt has a direct playlist URL like youtube.com/playlist?list=..."""
+    import subprocess as _sp
+    import json as _json
+    import re as _re
+    from urllib.parse import parse_qs, urlparse
+
+    # Extract playlist ID from URL
+    parsed = urlparse(playlist_url)
+    qs = parse_qs(parsed.query)
+    pl_id = qs.get('list', [''])[0]
+    if not pl_id:
+        log_warn(f"  ⚠️ Could not extract playlist ID from {playlist_url}")
+        return
+
+    pl_title = channel_name  # Use channel name as playlist title
+
+    log(f"  📋 Indexing playlist: {pl_title} ({pl_id})")
+
+    # Get videos in this playlist
+    try:
+        result = _sp.run(
+            ['yt-dlp', '--no-check-certificates', '--flat-playlist', '--dump-json', playlist_url],
+            capture_output=True, text=True, timeout=300
+        )
+    except Exception as e:
+        log_warn(f"  ⚠️ Timeout fetching playlist {pl_title}: {e}")
+        return
+
+    video_ids = []
+    for line in (result.stdout or '').strip().split('\n'):
+        if not line.strip():
+            continue
+        try:
+            entry = _json.loads(line)
+            vid = entry.get('id', '')
+            if vid and _re.match(r'^[A-Za-z0-9_-]{11}$', vid):
+                video_ids.append(vid)
+        except _json.JSONDecodeError:
+            continue
+
+    log(f"    Found {len(video_ids)} videos in playlist")
+
+    # Store in DB
+    conn = get_db()
+    conn.execute("""
+        INSERT OR REPLACE INTO playlists (id, channel_name, title, video_count, updated_at)
+        VALUES (?, ?, ?, ?, datetime('now'))
+    """, (pl_id, channel_name, pl_title, len(video_ids)))
+
+    # Link videos
+    conn.execute("DELETE FROM video_playlists WHERE playlist_id = ?", (pl_id,))
+    for idx, vid in enumerate(video_ids):
+        db_vid = conn.execute("SELECT id FROM videos WHERE youtube_id = ?", (vid,)).fetchone()
+        if db_vid:
+            conn.execute("""
+                INSERT OR REPLACE INTO video_playlists (video_id, playlist_id, playlist_index)
+                VALUES (?, ?, ?)
+            """, (db_vid['id'], pl_id, idx))
+    conn.commit()
+    log(f"    Stored playlist {pl_title} ({len(video_ids)} videos)")
+
+
 def index_channel_playlists(channel_url, channel_name):
     """Fetch real playlists from YouTube for a channel and populate the DB.
 
@@ -545,6 +784,13 @@ def index_channel_playlists(channel_url, channel_name):
 
     # Derive the /playlists URL from the channel URL
     # e.g. https://www.youtube.com/@MeatCanyon/videos -> https://www.youtube.com/@MeatCanyon/playlists
+    # But if it's already a playlist URL (youtube.com/playlist?list=...), skip — it IS a playlist
+    if '/playlist?list=' in channel_url:
+        log(f"🎵 {channel_name} is a playlist URL — indexing directly as single playlist")
+        # This IS a playlist, not a channel. Index it directly instead of looking for /playlists tab
+        _index_single_playlist(channel_url, channel_name)
+        return
+
     base_url = channel_url.split('/videos')[0].split('/playlists')[0].rstrip('/')
     playlists_url = base_url + '/playlists'
 
@@ -728,7 +974,7 @@ def run_index(force=False):
             total_videos = 0
             total_channels = 0
 
-            channel_dirs = sorted([d for d in shows.iterdir() if d.is_dir() and '#' not in d.name])
+            channel_dirs = sorted([d for d in shows.iterdir() if d.is_dir()])
             num_dirs = len(channel_dirs)
 
             for i, channel_dir in enumerate(channel_dirs, 1):
@@ -832,20 +1078,38 @@ def start_background_index(force=False, playlist_channels=None):
 def reindex_single_channel(channel_name):
     """Re-index a single channel directory."""
     shows = Path(SHOWS_DIR)
+    
+    # Collect all matching dirs: exact name + '#' suffix variant
+    candidates = []
     channel_dir = shows / channel_name
-    if not channel_dir.is_dir():
+    if channel_dir.is_dir():
+        candidates.append(channel_dir)
+    alt_dir = shows / (channel_name + '#')
+    if alt_dir.is_dir():
+        candidates.append(alt_dir)
+    # Also check if the name already has '#' — don't double-append
+    if channel_name.endswith('#'):
+        bare_dir = shows / channel_name.rstrip('#')
+        if bare_dir.is_dir() and bare_dir not in candidates:
+            candidates.append(bare_dir)
+    
+    if not candidates:
         log_warn(f"⚠️ Channel directory not found: {channel_name}")
         return False
 
     try:
         conn = get_db()
         init_db()
-        log(f"📚 Re-indexing single channel: {channel_name}")
-        ch_start = time.time()
-        vcount, _ = _scan_channel(conn, channel_dir)
+        total_vcount = 0
+        for cdir in candidates:
+            log(f"📚 Re-indexing single channel: {cdir.name}")
+            ch_start = time.time()
+            vcount, _ = _scan_channel(conn, cdir)
+            total_vcount += vcount
+            elapsed = time.time() - ch_start
+            log(f"📚 ✅ {cdir.name}: {vcount} videos ({elapsed:.1f}s)")
         conn.commit()
-        elapsed = time.time() - ch_start
-        log(f"📚 ✅ {channel_name}: {vcount} videos ({elapsed:.1f}s)")
+        log(f"📚 Total for '{channel_name}': {total_vcount} videos across {len(candidates)} dir(s)")
         conn.close()
         return True
     except BaseException as e:

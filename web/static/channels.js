@@ -260,21 +260,11 @@ function renderChannelDetail(d) {
     document.getElementById('detail-stats').textContent = d.video_count + ' videos \u00B7 ' + fmtSize(d.total_size);
     document.getElementById('video-count-label').textContent = d.video_count + ' videos';
 
-    // Playlists — quick preview tags + link to full playlists page
+    // Playlists — clean link only, no tag bubbles
     var plHtml = '';
     if (d.playlists && d.playlists.length > 0) {
-        var SHOW_LIMIT = 6;
-        var sorted = d.playlists.slice().sort(function(a, b) { return b.video_count - a.video_count; });
-        var makeTag = function(pl) {
-            return '<a class="pl-tag" href="/library/' + encodeURIComponent(d.name) + '/playlist/' + encodeURIComponent(pl.id) + '?sort=playlist_index">'
-                + escHtml(pl.title) + ' <span class="pl-count">(' + pl.video_count + ')</span></a>';
-        };
         plHtml = '<div class="pl-cloud">';
         plHtml += '<a href="/library/' + encodeURIComponent(d.name) + '/playlists" class="pl-label-link">' + d.playlists.length + ' playlists \u2192</a>';
-        sorted.slice(0, SHOW_LIMIT).forEach(function(pl) { plHtml += makeTag(pl); });
-        if (sorted.length > SHOW_LIMIT) {
-            plHtml += '<a href="/library/' + encodeURIComponent(d.name) + '/playlists" class="pl-more">+ ' + (sorted.length - SHOW_LIMIT) + ' more</a>';
-        }
         plHtml += '</div>';
     }
     document.getElementById('detail-playlists').innerHTML = plHtml;
@@ -461,81 +451,80 @@ function sortVideos() {
 }
 
 /* ═══ Channel actions ═══ */
-function channelAction(action, channelName, channelUrl) {
-    var encoded = encodeURIComponent(channelName);
 
+/* Map action → { url, body, successMsg } for AJAX channel actions */
+function _channelActionConfig(action, channelName, channelUrl) {
+    var encoded = encodeURIComponent(channelName);
+    switch (action) {
+        case 'quick-check':
+            return { url: '/run/fast-single', body: { url: channelUrl, folder: channelName }, msg: 'Checking ' + channelName + ' for new videos...' };
+        case 'download':
+            return { url: '/run/single', body: { url: channelUrl, folder: channelName }, msg: 'Downloading ' + channelName + '...' };
+        case 'reindex':
+            return { url: '/api/reindex/' + encoded, body: {}, msg: 'Reindexing ' + channelName + '...' };
+        case 'reindex-playlists':
+            return { url: '/api/reindex-playlists/' + encoded, body: {}, msg: 'Reindexing playlists for ' + channelName + '...' };
+        case 'fetch-art':
+            return { url: '/api/fetch-art/' + encoded, body: {}, msg: 'Fetching artwork for ' + channelName + '...' };
+        case 'unsubscribe':
+            return { url: '/remove', body: { url: channelUrl || '', name: channelName }, msg: 'Unsubscribed from ' + channelName };
+        case 'delete':
+            return { url: '/api/delete-folder/' + encoded, body: {}, msg: 'Deleted folder for ' + channelName };
+        default:
+            return null;
+    }
+}
+
+function _submitChannelAction(action, channelName, channelUrl) {
+    var cfg = _channelActionConfig(action, channelName, channelUrl);
+    if (!cfg) return;
+
+    var formData = new FormData();
+    Object.keys(cfg.body).forEach(function(k) { formData.append(k, cfg.body[k]); });
+
+    fetch(cfg.url, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    }).then(function(r) {
+        if (!r.ok) return r.text().then(function(t) { showToast('Error: ' + t); });
+        return r.json().then(function(data) {
+            showToast(data.message || cfg.msg);
+            // If channel was removed or deleted, refresh the channel list
+            if (action === 'unsubscribe' || action === 'delete') {
+                setTimeout(function() { loadChannels(); }, 500);
+            }
+        }).catch(function() {
+            // Server returned non-JSON (old redirect) — show toast anyway
+            showToast(cfg.msg);
+        });
+    }).catch(function(err) {
+        showToast('Request failed: ' + err);
+    });
+}
+
+function channelAction(action, channelName, channelUrl) {
     // Actions that need confirmation via modal
     if (action === 'unsubscribe') {
         if (typeof confirmAction === 'function') {
-            var _form = _buildChannelForm(action, channelName, channelUrl);
-            document.body.appendChild(_form);
-            confirmAction('Unsubscribe', 'Unsubscribe from ' + channelName + '? You will stop tracking this channel for new videos.', _form);
+            confirmAction('Unsubscribe', 'Unsubscribe from ' + channelName + '? You will stop tracking this channel for new videos.', function() {
+                _submitChannelAction(action, channelName, channelUrl);
+            });
             return;
         }
         if (!confirm('Unsubscribe from ' + channelName + '?')) return;
     }
     if (action === 'delete') {
         if (typeof confirmAction === 'function') {
-            var _form2 = _buildChannelForm(action, channelName, channelUrl);
-            document.body.appendChild(_form2);
-            confirmAction('Delete Folder', 'Delete folder for ' + channelName + '? This removes all downloaded video files for this channel. This cannot be undone.', _form2);
+            confirmAction('Delete Folder', 'Delete folder for ' + channelName + '? This removes all downloaded video files for this channel. This cannot be undone.', function() {
+                _submitChannelAction(action, channelName, channelUrl);
+            });
             return;
         }
         if (!confirm('Delete folder for ' + channelName + '? This removes all files.')) return;
     }
 
-    var form = _buildChannelForm(action, channelName, channelUrl);
-    document.body.appendChild(form);
-    form.submit();
-}
-
-function _buildChannelForm(action, channelName, channelUrl) {
-    var encoded = encodeURIComponent(channelName);
-    var form = document.createElement('form');
-    form.method = 'POST';
-    form.style.display = 'none';
-
-    switch (action) {
-        case 'quick-check':
-            form.action = '/run/fast-single';
-            addField(form, 'url', channelUrl);
-            addField(form, 'folder', channelName);
-            break;
-        case 'download':
-            form.action = '/run/single';
-            addField(form, 'url', channelUrl);
-            addField(form, 'folder', channelName);
-            break;
-        case 'reindex':
-            form.action = '/api/reindex/' + encoded;
-            break;
-        case 'reindex-playlists':
-            form.action = '/api/reindex-playlists/' + encoded;
-            break;
-        case 'fetch-art':
-            form.action = '/api/fetch-art/' + encoded;
-            break;
-        case 'unsubscribe':
-            form.action = '/remove';
-            addField(form, 'url', channelUrl || '');
-            addField(form, 'name', channelName);
-            break;
-        case 'delete':
-            form.action = '/api/delete-folder/' + encoded;
-            break;
-        default:
-            return form;
-    }
-
-    return form;
-}
-
-function addField(form, name, value) {
-    var input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = name;
-    input.value = value || '';
-    form.appendChild(input);
+    _submitChannelAction(action, channelName, channelUrl);
 }
 
 /* ═══ Util ═══ */
