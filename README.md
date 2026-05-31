@@ -1,8 +1,33 @@
 # SlugTube
 
-**A self-hosted YouTube channel archiver with a dark-themed web UI.**
+### Your YouTube library, your rules. No cloud. No subscriptions. No compromises.
 
-SlugTube automatically downloads, organizes, and indexes YouTube channels into a Jellyfin/Kodi-compatible library. Think PinchFlat or TubeArchivist, but simpler — one `docker compose up` and you're archiving.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-green.svg)](https://python.org)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://docker.com)
+[![yt-dlp](https://img.shields.io/badge/Powered%20by-yt--dlp-red.svg)](https://github.com/yt-dlp/yt-dlp)
+
+SlugTube is a self-hosted YouTube channel archiver with a fully-featured dark-themed web UI. One `docker compose up` gives you automated downloads, a searchable video library, a built-in player with resume, playlist management, and Jellyfin/Kodi-ready output — all running on your own hardware.
+
+**12,000+ lines of code. 57 API endpoints. 13 pages. Zero dependencies on anyone else's servers.**
+
+> Built as a modern alternative to PinchFlat and TubeArchivist — simpler to deploy, easier to use, and designed to get out of your way.
+
+---
+
+## Why SlugTube?
+
+| | SlugTube | TubeArchivist | PinchFlat |
+|---|---------|---------------|-----------|
+| **Setup** | `docker compose up` | Requires Elasticsearch + Redis | Requires Elixir runtime |
+| **Dependencies** | Flask + SQLite | 3 containers minimum | PostgreSQL |
+| **Search** | SQLite FTS5 (instant) | Elasticsearch (heavy) | Basic |
+| **Live indexing** | Videos appear instantly | Requires re-scan | Requires re-scan |
+| **Cookie management** | Built-in web UI | Manual file edit | Manual file edit |
+| **Import from others** | TubeArchivist + PinchFlat import | N/A | N/A |
+| **Resource usage** | ~50MB RAM | ~2GB+ RAM | ~500MB RAM |
+| **Bulk operations** | Select, delete, exclude | Limited | Limited |
+| **Self-update** | One click from Settings | Manual | Manual |
 
 ---
 
@@ -343,12 +368,32 @@ On any channel page, click **Select** to enter bulk mode:
 
 ## Tech Stack
 
-- **Backend:** Python / Flask
-- **Database:** SQLite with FTS5 full-text search
-- **Downloads:** yt-dlp with ffmpeg
-- **Frontend:** Vanilla HTML/CSS/JS (no frameworks)
-- **Deployment:** Docker
-- **Media server:** Jellyfin/Kodi compatible output
+| Layer | Technology | Why |
+|-------|-----------|-----|
+| **Backend** | Python / Flask | Simple, readable, no framework magic |
+| **Database** | SQLite + FTS5 | Zero config, full-text search built in |
+| **Downloads** | yt-dlp + ffmpeg | Industry standard, constantly updated |
+| **Frontend** | Vanilla HTML/CSS/JS | No React, no build step, no node_modules |
+| **Deployment** | Docker | One command, runs anywhere |
+| **Media output** | Jellyfin/Kodi compatible | Season folders, NFO files, embedded metadata |
+
+### Architecture
+
+```
+Docker Container
+├── Flask Web Server (port 5000)
+│   ├── 57 API endpoints
+│   ├── 13 page templates
+│   └── SQLite database + FTS5 search index
+├── yt-dlp download engine
+│   ├── --exec after_move hook → live indexing API
+│   └── Archive tracking (no re-downloads)
+├── Cron scheduler
+│   ├── Fast check (6h) — latest 50 videos/channel
+│   ├── Full index (weekly) — complete channel history
+│   └── yt-dlp auto-update (daily)
+└── Channel art fetcher (poster + banner scraping)
+```
 
 ## Pages
 
@@ -392,4 +437,10 @@ export CONFIG_DIR=/path/to/your/config
 
 ---
 
-*Built with yt-dlp, Flask, SQLite, and stubbornness.*
+## Star History
+
+If SlugTube saves you from another TubeArchivist migration headache, consider starring the repo. It helps others find it.
+
+---
+
+*12,058 lines of code. 57 endpoints. 13 pages. 10 automation scripts. Zero JavaScript frameworks. Built with yt-dlp, Flask, SQLite, and stubbornness.*
