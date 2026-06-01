@@ -1489,6 +1489,70 @@ def api_refresh_stats():
     return jsonify({"status": "already scanning"})
 
 
+@app.route("/api/sync-archive", methods=["POST"])
+def api_sync_archive():
+    """Backfill archive with YouTube IDs from all video files on disk.
+    Scans the shows directory for [VIDEO_ID] in filenames and adds any
+    missing IDs to the archive file. Non-destructive — only appends."""
+    import re
+    shows_dir = "/shows"
+    archive_path = ARCHIVE_FILE
+
+    # Load existing archive IDs
+    existing_ids = set()
+    try:
+        with open(archive_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    # Archive format is "youtube VIDEO_ID"
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        existing_ids.add(parts[1])
+                    else:
+                        existing_ids.add(parts[0])
+    except FileNotFoundError:
+        pass
+
+    # Scan all video files for YouTube IDs in filenames
+    # Pattern: [VIDEO_ID] where VIDEO_ID is typically 11 chars
+    yt_id_pattern = re.compile(r'\[([a-zA-Z0-9_-]{8,15})\]\.[a-zA-Z0-9]+$')
+    found_ids = set()
+    scanned = 0
+
+    for root, dirs, files in os.walk(shows_dir):
+        for fname in files:
+            # Only check video files
+            if fname.endswith(('.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v')):
+                scanned += 1
+                match = yt_id_pattern.search(fname)
+                if match:
+                    found_ids.add(match.group(1))
+
+    # Find IDs on disk but not in archive
+    missing_ids = found_ids - existing_ids
+    added = 0
+
+    if missing_ids:
+        os.makedirs(os.path.dirname(archive_path), exist_ok=True)
+        with open(archive_path, "a") as f:
+            for vid_id in sorted(missing_ids):
+                f.write(f"youtube {vid_id}\n")
+                added += 1
+
+    new_total = count_lines(archive_path)
+
+    return jsonify({
+        "status": "ok",
+        "scanned_files": scanned,
+        "ids_on_disk": len(found_ids),
+        "ids_in_archive_before": len(existing_ids),
+        "ids_missing": len(missing_ids),
+        "ids_added": added,
+        "archive_total": new_total,
+    })
+
+
 # ── Library / Player Routes ──────────────────────────────────
 
 @app.route("/library")

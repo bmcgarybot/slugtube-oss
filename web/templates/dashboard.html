@@ -68,6 +68,13 @@
             <div class="stat-value">{{ "{:,}".format(archive_count) }}</div>
             <div class="stat-label">Archive Entries</div>
             <div class="stat-sub">Videos tracked (never re-downloaded)</div>
+            {% if archive_count < total_videos %}
+            <button class="btn btn-sm btn-outline" style="margin-top:6px; font-size:0.75rem;"
+                    title="Add missing video IDs from disk to the archive file so yt-dlp knows about them"
+                    onclick="confirmAction('Sync Archive', 'Add {{ total_videos - archive_count }} missing video IDs from disk to the archive? This prevents yt-dlp from re-downloading videos it already has.', syncArchive)">
+                Sync Archive
+            </button>
+            {% endif %}
         </div>
     </div>
     <div class="stat-card">
@@ -214,6 +221,20 @@ function refreshStats(btn) {
         .then(r => r.json())
         .then(() => { setTimeout(() => location.reload(), 3000); })
         .catch(() => { btn.disabled = false; btn.textContent = 'Refresh Stats'; });
+}
+
+function syncArchive() {
+    fetch('/api/sync-archive', {method:'POST'})
+        .then(r => r.json())
+        .then(d => {
+            if (d.ids_added > 0) {
+                showToastGlobal(d.ids_added + ' missing IDs added to archive (total: ' + d.archive_total.toLocaleString() + ')');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showToastGlobal('Archive already in sync (' + d.archive_total.toLocaleString() + ' entries)');
+            }
+        })
+        .catch(() => showToastGlobal('Archive sync failed'));
 }
 
 /* Parse raw activity lines into styled feed items */
