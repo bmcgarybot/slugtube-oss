@@ -382,6 +382,32 @@ while IFS= read -r line || [ -n "$line" ]; do
 
 done < "$CHANNELS_FILE"
 
+# ── Auto-merge any # folders (safety net) ──
+HASH_COUNT=0
+for hdir in "$OUTPUT_DIR"/*\#; do
+    [ -d "$hdir" ] || continue
+    # Skip #playlists folders
+    [[ "$hdir" == *"#playlists" ]] && continue
+    BASE_DIR="${hdir%#}"
+    if [ -d "$BASE_DIR" ]; then
+        echo "🔧 Auto-merging: $(basename "$hdir") → $(basename "$BASE_DIR")"
+        # Move all files from # folder to base folder
+        find "$hdir" -type f | while IFS= read -r src; do
+            rel="${src#$hdir/}"
+            dest="$BASE_DIR/$rel"
+            dest_dir="$(dirname "$dest")"
+            mkdir -p "$dest_dir"
+            if [ ! -f "$dest" ]; then
+                mv "$src" "$dest" 2>/dev/null && echo "   ✅ Moved: $rel"
+            fi
+        done
+        # Remove the empty # folder
+        rm -rf "$hdir" 2>/dev/null && echo "   🗑️ Removed: $(basename "$hdir")/"
+        ((HASH_COUNT++)) || true
+    fi
+done
+[ "$HASH_COUNT" -gt 0 ] && echo "🔧 Auto-merged $HASH_COUNT channel# folders"
+
 # ── Generate channel artwork ──
 /app/scripts/channel-art.sh 2>/dev/null || true
 
