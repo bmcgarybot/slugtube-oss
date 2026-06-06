@@ -162,6 +162,7 @@ if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_
     # Build yt-dlp options for single channel (same as full, no playlist-end)
     YT_OPTS=(
         -o "$OUTPUT_TEMPLATE"
+        --replace-in-metadata "channel" "#" ""
         --download-archive "$ARCHIVE_FILE"
         --cookies "$COOKIES_FILE"
         -f "bestvideo[height<=${HEIGHT_LIMIT}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=${HEIGHT_LIMIT}]+bestaudio/best[height<=${HEIGHT_LIMIT}]/best"

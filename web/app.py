@@ -253,6 +253,20 @@ def _scan_channel_stats():
                                 shutil.move(str(src), str(dest))
                     shutil.rmtree(str(channel_dir), ignore_errors=True)
                     app.logger.info(f"Auto-merged and removed: {channel_dir.name} → {base_name}")
+                    # Also purge the # channel from the indexer DB so it doesn't appear as a ghost
+                    try:
+                        from indexer import get_db as idx_get_db
+                        conn = idx_get_db()
+                        hash_name = channel_dir.name
+                        # Reassign videos to the base channel name
+                        conn.execute("UPDATE videos SET channel_name = ? WHERE channel_name = ?", (base_name, hash_name))
+                        conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?", (base_name, hash_name))
+                        conn.execute("DELETE FROM channels WHERE name = ?", (hash_name,))
+                        conn.commit()
+                        conn.close()
+                        app.logger.info(f"DB cleanup: merged {hash_name} records into {base_name}")
+                    except Exception as e:
+                        app.logger.warning(f"DB cleanup failed for {channel_dir.name}: {e}")
                     continue
             video_count = 0
             total_size = 0
@@ -957,6 +971,9 @@ def channels():
     # Add library-only channels (on disk but not subscribed)
     for ch in idx_channels:
         key = ch['name'].lower().replace(' ', '')
+        # Skip # channel entries — these are yt-dlp artifacts that should be merged
+        if ch['name'].endswith('#'):
+            continue
         if key not in seen:
             # Check URL match too
             matched = False
