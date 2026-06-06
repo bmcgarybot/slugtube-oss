@@ -238,10 +238,12 @@ def _scan_channel_stats():
                 continue
             # Auto-merge Channel# folders into base Channel folder
             if channel_dir.name.endswith('#'):
+                import shutil
                 base_name = channel_dir.name.rstrip('#')
+                hash_name = channel_dir.name
                 base_path = channel_dir.parent / base_name
                 if base_path.is_dir():
-                    import shutil
+                    # Both exist: merge files from # into base, then delete #
                     for root, dirs, files in os.walk(str(channel_dir)):
                         rel_root = os.path.relpath(root, str(channel_dir))
                         dest_root = base_path / rel_root
@@ -252,22 +254,33 @@ def _scan_channel_stats():
                                 dest_root.mkdir(parents=True, exist_ok=True)
                                 shutil.move(str(src), str(dest))
                     shutil.rmtree(str(channel_dir), ignore_errors=True)
-                    app.logger.info(f"Auto-merged and removed: {channel_dir.name} → {base_name}")
-                    # Also purge the # channel from the indexer DB so it doesn't appear as a ghost
+                    app.logger.info(f"Auto-merged and removed: {hash_name} → {base_name}")
+                else:
+                    # Only # exists: just rename it
                     try:
-                        from indexer import get_db as idx_get_db
-                        conn = idx_get_db()
-                        hash_name = channel_dir.name
-                        # Reassign videos to the base channel name
-                        conn.execute("UPDATE videos SET channel_name = ? WHERE channel_name = ?", (base_name, hash_name))
-                        conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?", (base_name, hash_name))
-                        conn.execute("DELETE FROM channels WHERE name = ?", (hash_name,))
-                        conn.commit()
-                        conn.close()
-                        app.logger.info(f"DB cleanup: merged {hash_name} records into {base_name}")
+                        channel_dir.rename(base_path)
+                        app.logger.info(f"Auto-renamed: {hash_name} → {base_name}")
                     except Exception as e:
-                        app.logger.warning(f"DB cleanup failed for {channel_dir.name}: {e}")
-                    continue
+                        app.logger.warning(f"Failed to rename {hash_name}: {e}")
+                        continue
+                # DB cleanup: reassign videos and remove ghost channel entry
+                try:
+                    from indexer import get_db as idx_get_db
+                    conn = idx_get_db()
+                    conn.execute("UPDATE videos SET channel_name = ? WHERE channel_name = ?", (base_name, hash_name))
+                    conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?", (base_name, hash_name))
+                    conn.execute("UPDATE channels SET name = ?, path = ? WHERE name = ?",
+                                 (base_name, str(base_path), hash_name))
+                    # If base channel already existed in DB, remove the duplicate
+                    rows = conn.execute("SELECT COUNT(*) FROM channels WHERE name = ?", (base_name,)).fetchone()[0]
+                    if rows > 1:
+                        conn.execute("DELETE FROM channels WHERE name = ? AND rowid NOT IN (SELECT MIN(rowid) FROM channels WHERE name = ?)", (base_name, base_name))
+                    conn.commit()
+                    conn.close()
+                    app.logger.info(f"DB cleanup: {hash_name} → {base_name}")
+                except Exception as e:
+                    app.logger.warning(f"DB cleanup failed for {hash_name}: {e}")
+                continue
             video_count = 0
             total_size = 0
             seasons = []

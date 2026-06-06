@@ -405,6 +405,11 @@ for hdir in "$OUTPUT_DIR"/*\#; do
         # Remove the empty # folder
         rm -rf "$hdir" 2>/dev/null && echo "   🗑️ Removed: $(basename "$hdir")/"
         ((HASH_COUNT++)) || true
+    else
+        # Only # folder exists — just rename it
+        echo "🔧 Renaming: $(basename "$hdir") → $(basename "$BASE_DIR")"
+        mv "$hdir" "$BASE_DIR" 2>/dev/null && echo "   ✅ Renamed"
+        ((HASH_COUNT++)) || true
     fi
 done
 [ "$HASH_COUNT" -gt 0 ] && echo "🔧 Auto-merged $HASH_COUNT channel# folders"

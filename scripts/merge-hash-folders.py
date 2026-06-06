@@ -36,7 +36,17 @@ def main():
         base_path = shows / base_name
 
         if not base_path.is_dir():
-            print(f"SKIP: {d.name} — no base folder '{base_name}' to merge into")
+            # Only # exists — just rename it
+            if DRY_RUN:
+                print(f"RENAME: {d.name} → {base_name} (no base folder)")
+            else:
+                try:
+                    d.rename(base_path)
+                    print(f"RENAMED: {d.name} → {base_name}")
+                    merged += 1
+                except Exception as e:
+                    print(f"ERROR renaming {d.name}: {e}")
+                    errors += 1
             continue
 
         print(f"\nMERGE: {d.name} → {base_name}")
