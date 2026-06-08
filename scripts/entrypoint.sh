@@ -37,6 +37,7 @@ echo "⏰ Setting up schedules..."
 FAST_CRON="${FAST_CRON:-0 */6 * * *}"
 FULL_CRON="${FULL_CRON:-0 3 * * 0}"
 UPDATE_CRON="${UPDATE_CRON:-0 1 * * *}"
+HASH_CRON="${HASH_CRON:-*/15 * * * *}"
 
 # Use /etc/cron.d/ format (includes user field) — do NOT load with crontab
 cat > /etc/cron.d/slugtube << EOF
@@ -46,6 +47,7 @@ PATH=/usr/local/bin:/usr/bin:/bin
 ${FAST_CRON} root /app/scripts/download.sh --fast >> /config/logs/slugtube.log 2>&1
 ${FULL_CRON} root /app/scripts/download.sh --full >> /config/logs/slugtube.log 2>&1
 ${UPDATE_CRON} root /app/scripts/update-ytdlp.sh >> /config/logs/slugtube.log 2>&1
+${HASH_CRON} root /app/scripts/cleanup-hash.sh >> /config/logs/slugtube.log 2>&1
 
 EOF
 
@@ -65,6 +67,7 @@ echo " 🌐 Dashboard: http://localhost:5000"
 echo " Fast check:  ${FAST_CRON}"
 echo " Full index:  ${FULL_CRON}"
 echo " yt-dlp update: ${UPDATE_CRON}"
+echo " # cleanup:   ${HASH_CRON}"
 echo " Channels:    $(grep -cv '^\s*#\|^\s*$' /config/channels.txt 2>/dev/null || echo 0) active"
 echo " Archive:     $(wc -l < /config/archive/downloaded.txt) videos tracked"
 echo "=========================================="

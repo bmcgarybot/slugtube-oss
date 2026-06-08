@@ -247,6 +247,9 @@ fi
 
 echo "📺 Processing $CHANNEL_COUNT channels..."
 
+# ── Pre-flight: kill any lingering # folders before we start ──
+/app/scripts/cleanup-hash.sh 2>/dev/null || true
+
 # ── Build yt-dlp options ──
 # Use %(channel)s but strip trailing # via --replace-in-metadata
 YT_OPTS=(
