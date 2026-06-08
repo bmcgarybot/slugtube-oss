@@ -27,10 +27,6 @@ fi
 
 mkdir -p /config/logs /config/temp /config/Cookie
 
-# ----- Set up # folder symlink traps -----
-echo "🛡️ Setting up # folder traps..."
-/app/scripts/trap-hash-folders.sh
-
 # ----- Update yt-dlp on startup -----
 echo "🔄 Updating yt-dlp..."
 /app/scripts/update-ytdlp.sh

@@ -24,6 +24,7 @@
             <button type="submit" class="btn btn-danger" {% if job.status != 'running' %}disabled{% endif %}>Cancel All</button>
         </form>
         <button type="button" class="btn btn-ghost btn-sm" onclick="refreshStats(this)" title="Refresh library stats">Refresh Stats</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="mergeHashFolders(this)" title="Merge any ChannelName# folders into ChannelName">🔧 Merge # Folders</button>
     </div>
 </div>
 
@@ -221,6 +222,23 @@ function refreshStats(btn) {
         .then(r => r.json())
         .then(() => { setTimeout(() => location.reload(), 3000); })
         .catch(() => { btn.disabled = false; btn.textContent = 'Refresh Stats'; });
+}
+
+function mergeHashFolders(btn) {
+    btn.disabled = true;
+    btn.textContent = 'Merging...';
+    fetch('/api/merge-hash-folders', {method:'POST'})
+        .then(r => r.json())
+        .then(d => {
+            if (d.merged > 0) {
+                btn.textContent = '✅ Merged ' + d.merged;
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                btn.textContent = '✅ None found';
+                setTimeout(() => { btn.disabled = false; btn.textContent = '🔧 Merge # Folders'; }, 3000);
+            }
+        })
+        .catch(() => { btn.disabled = false; btn.textContent = '🔧 Merge # Folders'; });
 }
 
 function syncArchive() {

@@ -178,6 +178,7 @@ if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_
         --no-overwrites
         --windows-filenames
         --trim-filenames 200
+        --no-write-playlist-metafiles
         --exec "after_move:curl -sf -X POST http://localhost:5000/api/index-video -d file={} || true"
     )
 
@@ -247,9 +248,6 @@ fi
 
 echo "📺 Processing $CHANNEL_COUNT channels..."
 
-# ── Pre-flight: set up symlink traps so # folders can't exist ──
-/app/scripts/trap-hash-folders.sh 2>/dev/null || true
-
 # ── Build yt-dlp options ──
 # Use %(channel)s but strip trailing # via --replace-in-metadata
 YT_OPTS=(
@@ -278,6 +276,7 @@ YT_OPTS=(
     --no-overwrites
     --windows-filenames
     --trim-filenames 200
+    --no-write-playlist-metafiles
 
     # Live-index: notify Flask to index each video as soon as it's downloaded
     --exec "after_move:curl -sf -X POST http://localhost:5000/api/index-video -d file={} || true"
@@ -386,8 +385,8 @@ while IFS= read -r line || [ -n "$line" ]; do
 
 done < "$CHANNELS_FILE"
 
-# ── Refresh symlink traps (catches any new channels added mid-run) ──
-/app/scripts/trap-hash-folders.sh 2>/dev/null || true
+# ── Post-download: merge any # folders ──
+/app/scripts/cleanup-hash.sh 2>/dev/null || true
 
 # ── Generate channel artwork ──
 /app/scripts/channel-art.sh 2>/dev/null || true

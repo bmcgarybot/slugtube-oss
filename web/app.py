@@ -2177,6 +2177,55 @@ def api_reindex():
     return jsonify({"status": "started"})
 
 
+@app.route("/api/merge-hash-folders", methods=["POST"])
+def api_merge_hash_folders():
+    """One-click: merge all ChannelName# folders into ChannelName."""
+    import shutil
+    shows = Path(SHOWS_DIR)
+    merged = 0
+    errors = []
+    for hdir in sorted(shows.iterdir()):
+        if not hdir.is_dir() or not hdir.name.endswith('#'):
+            continue
+        if hdir.name.endswith('#playlists'):
+            continue
+        base_name = hdir.name.rstrip('#')
+        base_path = hdir.parent / base_name
+        try:
+            if base_path.is_dir():
+                for root, dirs, files in os.walk(str(hdir)):
+                    rel_root = os.path.relpath(root, str(hdir))
+                    dest_root = base_path / rel_root
+                    for f in files:
+                        src = Path(root) / f
+                        dest = dest_root / f
+                        if not dest.exists():
+                            dest_root.mkdir(parents=True, exist_ok=True)
+                            shutil.move(str(src), str(dest))
+                shutil.rmtree(str(hdir), ignore_errors=True)
+            else:
+                hdir.rename(base_path)
+            # DB cleanup
+            try:
+                from indexer import get_db as idx_get_db
+                conn = idx_get_db()
+                conn.execute("UPDATE videos SET channel_name = ? WHERE channel_name = ?", (base_name, hdir.name))
+                conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?", (base_name, hdir.name))
+                conn.execute("UPDATE channels SET name = ?, path = ? WHERE name = ?",
+                             (base_name, str(base_path), hdir.name))
+                rows = conn.execute("SELECT COUNT(*) FROM channels WHERE name = ?", (base_name,)).fetchone()[0]
+                if rows > 1:
+                    conn.execute("DELETE FROM channels WHERE name = ? AND rowid NOT IN (SELECT MIN(rowid) FROM channels WHERE name = ?)", (base_name, base_name))
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
+            merged += 1
+        except Exception as e:
+            errors.append(f"{hdir.name}: {e}")
+    return jsonify({"merged": merged, "errors": errors})
+
+
 @app.route("/api/cleanup-ghosts", methods=["POST"])
 def api_cleanup_ghosts():
     """Remove database channel entries that don't match any entry in channels.txt.
