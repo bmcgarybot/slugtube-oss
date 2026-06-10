@@ -16,8 +16,7 @@ if %ERRORLEVEL% neq 0 (
 echo.
 
 echo Copying files...
-copy /Y "C:\SlugTube-new\web\app.py" "C:\SlugTube\app\web\app.py"
-copy /Y "C:\SlugTube-new\web\indexer.py" "C:\SlugTube\app\web\indexer.py"
+copy /Y "C:\SlugTube-new\web\*.py" "C:\SlugTube\app\web\"
 xcopy "C:\SlugTube-new\web\templates\*" "C:\SlugTube\app\web\templates\" /E /Y
 xcopy "C:\SlugTube-new\web\static\*" "C:\SlugTube\app\web\static\" /E /Y
 xcopy "C:\SlugTube-new\scripts\*" "C:\SlugTube\app\scripts\" /E /Y
