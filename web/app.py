@@ -1519,6 +1519,14 @@ def api_refresh_stats():
     return jsonify({"status": "already scanning"})
 
 
+# ── Archive Audit endpoints ──
+try:
+    from archive_audit import register_audit_routes
+    register_audit_routes(app, ARCHIVE_FILE, "/shows")
+except ImportError:
+    pass  # archive_audit.py not present, skip
+
+
 @app.route("/api/sync-archive", methods=["POST"])
 def api_sync_archive():
     """Backfill archive with YouTube IDs from all video files on disk.
