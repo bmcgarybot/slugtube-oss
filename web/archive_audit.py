@@ -57,6 +57,7 @@ def scan_disk(shows_dir):
     found = {}
     scanned = 0
     no_id = 0
+    last_report = 0
 
     for root, dirs, files in os.walk(shows_dir):
         for fname in files:
@@ -64,6 +65,11 @@ def scan_disk(shows_dir):
                 continue
 
             scanned += 1
+            # Progress output every 1000 files
+            if scanned - last_report >= 1000:
+                print(f"  ... scanned {scanned:,} files, found {len(found):,} IDs so far ({no_id:,} with no ID)", flush=True)
+                last_report = scanned
+
             full_path = os.path.join(root, fname)
 
             # Strategy 1: [VIDEO_ID] in filename
