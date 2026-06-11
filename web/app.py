@@ -3164,6 +3164,156 @@ def import_confirm():
     })
 
 
+# ── Health Check ──
+
+HEALTHCHECK_DIR = "/config/healthcheck"
+HEALTHCHECK_RESULTS = os.path.join(HEALTHCHECK_DIR, "results.json")
+HEALTHCHECK_PROGRESS = os.path.join(HEALTHCHECK_DIR, "progress.json")
+_healthcheck_proc = None
+
+
+@app.route("/healthcheck")
+def healthcheck_page():
+    """Health check dashboard page."""
+    # Get list of channel folders for the dropdown
+    shows_dir = "/shows"
+    channels = []
+    if os.path.isdir(shows_dir):
+        channels = sorted([
+            d for d in os.listdir(shows_dir)
+            if os.path.isdir(os.path.join(shows_dir, d)) and not d.startswith(".")
+        ])
+
+    job = {"status": "idle"}
+    paused = os.path.isfile("/config/.paused")
+    return render_template("healthcheck.html", page="healthcheck", job=job, paused=paused, channels=channels)
+
+
+@app.route("/api/healthcheck/start", methods=["POST"])
+def api_healthcheck_start():
+    """Start a health check scan in the background."""
+    global _healthcheck_proc
+
+    # Check if already running
+    if _healthcheck_proc and _healthcheck_proc.poll() is None:
+        return jsonify({"error": "Health check already running"}), 409
+
+    data = request.get_json() or {}
+    mode = data.get("mode", "full")
+    channel = data.get("channel", "")
+    recent = data.get("recent", 0)
+    resume = data.get("resume", False)
+
+    os.makedirs(HEALTHCHECK_DIR, exist_ok=True)
+
+    cmd = ["/app/scripts/healthcheck.sh"]
+    if mode == "quick":
+        cmd.append("--quick")
+    if channel:
+        cmd.extend(["--channel", channel])
+    if recent and int(recent) > 0:
+        cmd.extend(["--recent", str(int(recent))])
+    if resume:
+        cmd.append("--resume")
+
+    _healthcheck_proc = subprocess.Popen(
+        cmd,
+        stdout=open(os.path.join(HEALTHCHECK_DIR, "healthcheck.log"), "w"),
+        stderr=subprocess.STDOUT
+    )
+
+    return jsonify({"status": "started", "pid": _healthcheck_proc.pid})
+
+
+@app.route("/api/healthcheck/cancel", methods=["POST"])
+def api_healthcheck_cancel():
+    """Cancel a running health check."""
+    global _healthcheck_proc
+
+    lock_file = "/tmp/healthcheck.lock"
+    if os.path.isfile(lock_file):
+        os.remove(lock_file)
+
+    if _healthcheck_proc and _healthcheck_proc.poll() is None:
+        _healthcheck_proc.terminate()
+        _healthcheck_proc = None
+
+    return jsonify({"status": "cancelled"})
+
+
+@app.route("/api/healthcheck/progress")
+def api_healthcheck_progress():
+    """Get current scan progress."""
+    if not os.path.isfile(HEALTHCHECK_PROGRESS):
+        return jsonify({"status": "none"})
+    try:
+        with open(HEALTHCHECK_PROGRESS) as f:
+            return jsonify(json.load(f))
+    except Exception:
+        return jsonify({"status": "none"})
+
+
+@app.route("/api/healthcheck/results")
+def api_healthcheck_results():
+    """Get scan results."""
+    if not os.path.isfile(HEALTHCHECK_RESULTS):
+        return jsonify({})
+    try:
+        with open(HEALTHCHECK_RESULTS) as f:
+            return jsonify(json.load(f))
+    except Exception:
+        return jsonify({})
+
+
+@app.route("/api/healthcheck/fix", methods=["POST"])
+def api_healthcheck_fix():
+    """Remove broken videos from archive so they get re-downloaded."""
+    data = request.get_json() or {}
+    single_id = data.get("video_id")
+
+    if not os.path.isfile(HEALTHCHECK_RESULTS):
+        return jsonify({"error": "No scan results found"}), 404
+
+    with open(HEALTHCHECK_RESULTS) as f:
+        results = json.load(f)
+
+    archive_file = "/config/archive/downloaded.txt"
+    queued = 0
+
+    for entry in results.get("files", []):
+        if entry.get("status") != "broken":
+            continue
+        vid = entry.get("video_id")
+        if not vid:
+            continue
+        if single_id and vid != single_id:
+            continue
+
+        # Remove from archive so yt-dlp will re-download
+        if os.path.isfile(archive_file):
+            try:
+                with open(archive_file, "r") as af:
+                    lines = af.readlines()
+                with open(archive_file, "w") as af:
+                    for line in lines:
+                        if vid not in line:
+                            af.write(line)
+            except Exception:
+                pass
+
+        # Delete the broken file so the re-download doesn't conflict
+        filepath = entry.get("path", "")
+        if filepath and os.path.isfile(filepath):
+            try:
+                os.remove(filepath)
+            except Exception:
+                pass
+
+        queued += 1
+
+    return jsonify({"status": "queued", "queued": queued})
+
+
 # ── Startup ──
 
 if __name__ == "__main__":
