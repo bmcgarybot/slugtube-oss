@@ -169,6 +169,20 @@
     </div>
 </div>
 
+<!-- Live Log Viewer -->
+<div id="hc-log-section" class="card" style="display:none; margin-top:16px;">
+    <div class="card-header">
+        <span>📋 Scan Log</span>
+        <div class="btn-group">
+            <button class="btn btn-sm btn-ghost" onclick="refreshLog()">🔄 Refresh</button>
+            <button class="btn btn-sm btn-ghost" onclick="document.getElementById('hc-log-section').style.display='none'">✕ Hide</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding:0;">
+        <pre id="hc-log-output" style="margin:0; padding:16px; font-size:12px; line-height:1.5; max-height:400px; overflow-y:auto; background:var(--bg); color:var(--text-dim); white-space:pre-wrap; word-break:break-all;"></pre>
+    </div>
+</div>
+
 <script>
 var pollTimer = null;
 var currentChannel = '';
@@ -184,6 +198,7 @@ function startScan(channel, mode) {
         if (data.error) { alert(data.error); return; }
         currentChannel = channel;
         showProgress(channel);
+        showLog();
         startPolling();
     });
 }
@@ -222,10 +237,38 @@ function pollProgress() {
     .then(function(data) {
         if (!data || data.status === 'none') return;
 
+        // Handle "starting" state
+        if (data.status === 'starting') {
+            document.getElementById('hc-progress-text').textContent = 'Starting scan for ' + (data.channel || '') + '...';
+            document.getElementById('hc-progress-pct').textContent = '';
+            refreshLog();
+            return;
+        }
+
+        // Handle error state
+        if (data.status === 'error') {
+            stopPolling();
+            var bar = document.getElementById('hc-progress');
+            bar.className = 'job-banner job-error';
+            document.getElementById('hc-spinner').style.display = 'none';
+            document.getElementById('hc-progress-text').textContent = '❌ ' + (data.message || 'Scan failed. Check the log below.');
+            document.getElementById('hc-progress-pct').textContent = '';
+            refreshLog();
+            return;
+        }
+
         var pct = data.pct || 0;
         var text = 'Scanning ' + (data.channel || '') + ': ' + (data.current || 0) + '/' + (data.total || 0);
+        if (data.current_file) {
+            var shortFile = data.current_file.split('/').slice(-1)[0];
+            if (shortFile.length > 50) shortFile = shortFile.substring(0, 47) + '...';
+            text += ' — ' + shortFile;
+        }
         document.getElementById('hc-progress-text').textContent = text;
         document.getElementById('hc-progress-pct').textContent = pct + '%';
+
+        // Auto-refresh log during scan
+        refreshLog();
 
         if (data.status === 'complete' || data.status === 'cancelled') {
             stopPolling();
@@ -241,9 +284,26 @@ function pollProgress() {
             document.getElementById('hc-progress-pct').textContent = '';
 
             // Refresh the page to update channel stats
-            setTimeout(function() { location.reload(); }, 1500);
+            setTimeout(function() { location.reload(); }, 3000);
         }
     });
+}
+
+function showLog() {
+    document.getElementById('hc-log-section').style.display = '';
+    refreshLog();
+}
+
+function refreshLog() {
+    fetch('/api/healthcheck/log?lines=80')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var el = document.getElementById('hc-log-output');
+        el.textContent = data.log || 'No output yet...';
+        // Auto-scroll to bottom
+        el.scrollTop = el.scrollHeight;
+    })
+    .catch(function() {});
 }
 
 function showChannel(channel) {
@@ -341,9 +401,10 @@ function fixOne(videoId, channel) {
 fetch('/api/healthcheck/progress')
 .then(function(r) { return r.json(); })
 .then(function(data) {
-    if (data && data.status === 'scanning') {
+    if (data && (data.status === 'scanning' || data.status === 'starting')) {
         currentChannel = data.channel || '';
         showProgress(currentChannel);
+        showLog();
         startPolling();
     }
 });

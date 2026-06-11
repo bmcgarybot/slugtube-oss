@@ -3352,9 +3352,30 @@ def api_healthcheck_start():
     if throttle:
         cmd.extend(["--throttle", str(int(throttle))])
 
+    log_path = os.path.join(HEALTHCHECK_DIR, "healthcheck.log")
+
+    # Check if the script exists
+    script_path = "/app/scripts/healthcheck.sh"
+    if not os.path.isfile(script_path):
+        return jsonify({"error": f"Script not found: {script_path}. Run update.bat to sync files."}), 500
+
+    # Write initial progress so the UI has something to show immediately
+    with open(HEALTHCHECK_PROGRESS, "w") as f:
+        json.dump({
+            "status": "starting",
+            "channel": channel,
+            "current": 0,
+            "total": 0,
+            "healthy": 0,
+            "broken": 0,
+            "pct": 0,
+            "current_file": "Initializing...",
+            "mode": mode
+        }, f)
+
     _healthcheck_proc = subprocess.Popen(
-        cmd,
-        stdout=open(os.path.join(HEALTHCHECK_DIR, "healthcheck.log"), "w"),
+        ["bash"] + cmd,
+        stdout=open(log_path, "w"),
         stderr=subprocess.STDOUT
     )
 
@@ -3380,13 +3401,44 @@ def api_healthcheck_cancel():
 @app.route("/api/healthcheck/progress")
 def api_healthcheck_progress():
     """Get current scan progress."""
+    global _healthcheck_proc
+
     if not os.path.isfile(HEALTHCHECK_PROGRESS):
         return jsonify({"status": "none"})
     try:
         with open(HEALTHCHECK_PROGRESS) as f:
-            return jsonify(json.load(f))
+            data = json.load(f)
+
+        # Check if the process died unexpectedly
+        if data.get("status") in ("scanning", "starting") and _healthcheck_proc:
+            exit_code = _healthcheck_proc.poll()
+            if exit_code is not None and exit_code != 0:
+                data["status"] = "error"
+                data["message"] = f"Script exited with code {exit_code}. Check the log for details."
+                with open(HEALTHCHECK_PROGRESS, "w") as f:
+                    json.dump(data, f)
+
+        return jsonify(data)
     except Exception:
         return jsonify({"status": "none"})
+
+
+@app.route("/api/healthcheck/log")
+def api_healthcheck_log():
+    """Get the healthcheck log output (last N lines)."""
+    log_path = os.path.join(HEALTHCHECK_DIR, "healthcheck.log")
+    lines = int(request.args.get("lines", 100))
+
+    if not os.path.isfile(log_path):
+        return jsonify({"log": "No log file found. Has a scan been started?"})
+
+    try:
+        with open(log_path, "r") as f:
+            all_lines = f.readlines()
+        tail = all_lines[-lines:] if len(all_lines) > lines else all_lines
+        return jsonify({"log": "".join(tail), "total_lines": len(all_lines)})
+    except Exception as e:
+        return jsonify({"log": f"Error reading log: {e}"})
 
 
 @app.route("/api/healthcheck/channel/<path:channel_name>")
