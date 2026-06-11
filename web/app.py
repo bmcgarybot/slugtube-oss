@@ -3289,8 +3289,206 @@ def import_confirm():
 
 HEALTHCHECK_DIR = "/config/healthcheck"
 HEALTHCHECK_DB = os.path.join(HEALTHCHECK_DIR, "checked.json")
-HEALTHCHECK_STATUS = os.path.join(HEALTHCHECK_DIR, "status.txt")
-_healthcheck_proc = None
+_healthcheck_state = {
+    "status": "idle",  # idle, scanning, done, cancelled, error
+    "channel": "",
+    "current": 0,
+    "total": 0,
+    "healthy": 0,
+    "broken": 0,
+    "already_checked": 0,
+    "total_in_channel": 0,
+    "current_file": "",
+    "mode": "full",
+    "log": [],
+}
+_healthcheck_thread = None
+_healthcheck_cancel = False
+
+
+def _load_hc_db():
+    """Load the persistent per-file health check database."""
+    if not os.path.isfile(HEALTHCHECK_DB):
+        return {}
+    try:
+        with open(HEALTHCHECK_DB) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_hc_db(db):
+    """Save the persistent per-file health check database."""
+    os.makedirs(HEALTHCHECK_DIR, exist_ok=True)
+    with open(HEALTHCHECK_DB, "w") as f:
+        json.dump(db, f)
+
+
+def _run_healthcheck(channel, mode, throttle):
+    """Background thread: scan a channel's video files with ffmpeg."""
+    global _healthcheck_state, _healthcheck_cancel
+    import time as _time
+
+    shows_dir = "/shows"
+    scan_dir = os.path.join(shows_dir, channel)
+
+    state = _healthcheck_state
+    state["log"] = []
+    state["status"] = "scanning"
+    state["channel"] = channel
+    state["mode"] = mode
+    state["current"] = 0
+    state["healthy"] = 0
+    state["broken"] = 0
+    state["current_file"] = "Collecting files..."
+
+    def log(msg):
+        state["log"].append(msg)
+        # Keep only last 200 lines
+        if len(state["log"]) > 200:
+            state["log"] = state["log"][-200:]
+
+    if not os.path.isdir(scan_dir):
+        state["status"] = "error"
+        state["current_file"] = f"Channel folder not found: {scan_dir}"
+        log(f"❌ {state['current_file']}")
+        return
+
+    # Find video files
+    import glob
+    extensions = ("*.mp4", "*.mkv", "*.webm", "*.avi")
+    all_files = []
+    for ext in extensions:
+        all_files.extend(glob.glob(os.path.join(scan_dir, "**", ext), recursive=True))
+    all_files.sort()
+    state["total_in_channel"] = len(all_files)
+
+    log(f"📊 Found {len(all_files)} video files in '{channel}'")
+
+    # Filter already-checked files
+    db = _load_hc_db()
+    files_to_scan = []
+    already_checked = 0
+
+    for filepath in all_files:
+        try:
+            file_mtime = os.path.getmtime(filepath)
+        except Exception:
+            file_mtime = 0
+
+        entry = db.get(filepath)
+        if entry and entry.get("checked_mtime", 0) >= file_mtime:
+            already_checked += 1
+        else:
+            files_to_scan.append(filepath)
+
+    state["already_checked"] = already_checked
+    state["total"] = len(files_to_scan)
+
+    if len(files_to_scan) == 0:
+        state["status"] = "done"
+        state["current_file"] = "All files already checked!"
+        log(f"✅ All {len(all_files)} videos already checked. Nothing to scan.")
+        return
+
+    log(f"🔍 {len(files_to_scan)} new files to scan ({already_checked} already checked)")
+    log(f"   Mode: {'Quick (container only)' if mode == 'quick' else 'Full (decode every frame)'}")
+    log("")
+
+    import re
+    id_pattern = re.compile(r'\[([a-zA-Z0-9_-]{11})\]\.[^.]+$')
+
+    for idx, filepath in enumerate(files_to_scan, 1):
+        if _healthcheck_cancel:
+            state["status"] = "cancelled"
+            state["current_file"] = "Cancelled — progress saved."
+            log(f"\n🛑 Cancelled at {idx}/{len(files_to_scan)}")
+            _healthcheck_cancel = False
+            return
+
+        filename = os.path.basename(filepath)
+        rel_path = os.path.relpath(filepath, shows_dir)
+        display = filename[:57] + "..." if len(filename) > 60 else filename
+
+        state["current"] = idx
+        state["current_file"] = display
+
+        # Get file info
+        try:
+            file_size = os.path.getsize(filepath)
+            file_mtime = os.path.getmtime(filepath)
+        except Exception:
+            file_size = 0
+            file_mtime = 0
+
+        size_mb = round(file_size / 1048576, 1)
+
+        # Extract video ID
+        video_id = ""
+        m = id_pattern.search(filename)
+        if m:
+            video_id = m.group(1)
+
+        # Run ffmpeg/ffprobe at low priority
+        try:
+            if mode == "quick":
+                cmd = ["nice", "-n", "19", "ffprobe", "-v", "error", "-i", filepath]
+            else:
+                cmd = ["nice", "-n", "19", "ffmpeg", "-v", "error", "-i", filepath, "-f", "null", "-"]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+            error_output = result.stderr.strip()
+        except subprocess.TimeoutExpired:
+            error_output = "Timeout: file took too long to scan"
+        except Exception as e:
+            error_output = str(e)
+
+        if not error_output:
+            state["healthy"] += 1
+            status = "healthy"
+        else:
+            state["broken"] += 1
+            status = "broken"
+            error_short = error_output[:200]
+            log(f"❌ [{idx}/{len(files_to_scan)}] {rel_path} ({size_mb} MB)")
+            log(f"   Error: {error_short}")
+
+        # Save to persistent DB
+        db[filepath] = {
+            "status": status,
+            "checked": _time.strftime("%Y-%m-%d %H:%M:%S"),
+            "checked_mtime": file_mtime,
+            "size_mb": size_mb,
+            "video_id": video_id,
+            "channel": channel,
+            "rel_path": rel_path,
+            "error": error_output[:300] if status == "broken" else "",
+        }
+
+        # Save DB every 10 files (not every file — reduces disk writes)
+        if idx % 10 == 0 or idx == len(files_to_scan):
+            _save_hc_db(db)
+
+        # Progress log every 25 files
+        if idx % 25 == 0:
+            log(f"📊 Progress: {idx}/{len(files_to_scan)} — {state['healthy']} healthy, {state['broken']} broken")
+
+        # Throttle
+        if throttle > 0 and idx < len(files_to_scan):
+            _time.sleep(throttle)
+
+    # Final save
+    _save_hc_db(db)
+
+    state["status"] = "done"
+    state["current_file"] = f"Complete! {state['healthy']} healthy, {state['broken']} broken"
+    log("")
+    log("==========================================")
+    log(f" 🩺 Health Check Complete: {channel}")
+    log(f" ✅ Healthy:     {state['healthy']}")
+    log(f" ❌ Broken:      {state['broken']}")
+    log(f" ⏭️  Skipped:     {already_checked}")
+    log("==========================================")
 
 
 @app.route("/healthcheck")
@@ -3306,21 +3504,16 @@ def healthcheck_page():
 
     # Load persistent DB to build per-channel stats
     channel_stats = {}
-    if os.path.isfile(HEALTHCHECK_DB):
-        try:
-            with open(HEALTHCHECK_DB) as f:
-                db = json.load(f)
-            for path, entry in db.items():
-                ch = entry.get("channel", "")
-                if ch not in channel_stats:
-                    channel_stats[ch] = {"healthy": 0, "broken": 0, "total": 0}
-                channel_stats[ch]["total"] += 1
-                if entry.get("status") == "healthy":
-                    channel_stats[ch]["healthy"] += 1
-                else:
-                    channel_stats[ch]["broken"] += 1
-        except Exception:
-            pass
+    db = _load_hc_db()
+    for path, entry in db.items():
+        ch = entry.get("channel", "")
+        if ch not in channel_stats:
+            channel_stats[ch] = {"healthy": 0, "broken": 0, "total": 0}
+        channel_stats[ch]["total"] += 1
+        if entry.get("status") == "healthy":
+            channel_stats[ch]["healthy"] += 1
+        else:
+            channel_stats[ch]["broken"] += 1
 
     job = {"status": "idle"}
     paused = os.path.isfile("/config/.paused")
@@ -3330,141 +3523,74 @@ def healthcheck_page():
 
 @app.route("/api/healthcheck/start", methods=["POST"])
 def api_healthcheck_start():
-    """Start a per-channel health check in the background."""
-    global _healthcheck_proc
+    """Start a per-channel health check in a background thread."""
+    global _healthcheck_thread, _healthcheck_cancel
 
-    if _healthcheck_proc and _healthcheck_proc.poll() is None:
+    if _healthcheck_thread and _healthcheck_thread.is_alive():
         return jsonify({"error": "Health check already running"}), 409
 
     data = request.get_json() or {}
     channel = data.get("channel", "")
     mode = data.get("mode", "full")
-    throttle = data.get("throttle", 1)
+    throttle = int(data.get("throttle", 1))
 
     if not channel:
         return jsonify({"error": "Channel name is required"}), 400
 
-    os.makedirs(HEALTHCHECK_DIR, exist_ok=True)
-
-    cmd = ["/app/scripts/healthcheck.sh", "--channel", channel]
-    if mode == "quick":
-        cmd.append("--quick")
-    if throttle:
-        cmd.extend(["--throttle", str(int(throttle))])
-
-    # Write initial status so UI shows something immediately
-    with open(HEALTHCHECK_STATUS, "w") as f:
-        f.write(f"SCANNING|{channel}|0|0|0|0|0|0|Starting...")
-
-    log_path = os.path.join(HEALTHCHECK_DIR, "healthcheck.log")
-
-    _healthcheck_proc = subprocess.Popen(
-        ["bash"] + cmd,
-        stdout=open(log_path, "w"),
-        stderr=subprocess.STDOUT
+    _healthcheck_cancel = False
+    _healthcheck_thread = threading.Thread(
+        target=_run_healthcheck,
+        args=(channel, mode, throttle),
+        daemon=True
     )
+    _healthcheck_thread.start()
 
-    return jsonify({"status": "started", "pid": _healthcheck_proc.pid, "channel": channel})
+    return jsonify({"status": "started", "channel": channel})
 
 
 @app.route("/api/healthcheck/cancel", methods=["POST"])
 def api_healthcheck_cancel():
     """Cancel a running health check."""
-    global _healthcheck_proc
-
-    lock_file = "/tmp/healthcheck.lock"
-    if os.path.isfile(lock_file):
-        os.remove(lock_file)
-
-    if _healthcheck_proc and _healthcheck_proc.poll() is None:
-        _healthcheck_proc.terminate()
-        _healthcheck_proc = None
-
-    return jsonify({"status": "cancelled"})
+    global _healthcheck_cancel
+    _healthcheck_cancel = True
+    return jsonify({"status": "cancelling"})
 
 
 @app.route("/api/healthcheck/progress")
 def api_healthcheck_progress():
-    """Get current scan progress from simple status file.
-    Format: STATUS|channel|current|total|healthy|broken|total_in_channel|already_checked|message
-    """
-    global _healthcheck_proc
+    """Get current scan progress from in-memory state."""
+    s = _healthcheck_state
+    total = s["total"] or 1
+    pct = round(s["current"] / total * 100, 1) if s["total"] > 0 else 0
 
-    if not os.path.isfile(HEALTHCHECK_STATUS):
-        return jsonify({"status": "none"})
-
-    try:
-        with open(HEALTHCHECK_STATUS) as f:
-            line = f.read().strip()
-
-        if not line or "|" not in line:
-            return jsonify({"status": "none"})
-
-        parts = line.split("|", 8)
-        status_code = parts[0].lower()  # scanning, done, cancelled, error
-        channel = parts[1] if len(parts) > 1 else ""
-        current = int(parts[2]) if len(parts) > 2 else 0
-        total = int(parts[3]) if len(parts) > 3 else 0
-        healthy = int(parts[4]) if len(parts) > 4 else 0
-        broken = int(parts[5]) if len(parts) > 5 else 0
-        total_in_channel = int(parts[6]) if len(parts) > 6 else 0
-        already_checked = int(parts[7]) if len(parts) > 7 else 0
-        message = parts[8] if len(parts) > 8 else ""
-
-        pct = round(current / total * 100, 1) if total > 0 else 0
-
-        # Check if process died
-        if status_code == "scanning" and _healthcheck_proc:
-            exit_code = _healthcheck_proc.poll()
-            if exit_code is not None and exit_code != 0:
-                status_code = "error"
-                message = f"Script crashed (exit code {exit_code})"
-
-        return jsonify({
-            "status": status_code,
-            "channel": channel,
-            "current": current,
-            "total": total,
-            "healthy": healthy,
-            "broken": broken,
-            "total_in_channel": total_in_channel,
-            "already_checked": already_checked,
-            "pct": pct,
-            "current_file": message,
-        })
-    except Exception as e:
-        return jsonify({"status": "error", "current_file": str(e)})
+    return jsonify({
+        "status": s["status"],
+        "channel": s["channel"],
+        "current": s["current"],
+        "total": s["total"],
+        "healthy": s["healthy"],
+        "broken": s["broken"],
+        "already_checked": s["already_checked"],
+        "total_in_channel": s["total_in_channel"],
+        "pct": pct,
+        "current_file": s["current_file"],
+        "mode": s["mode"],
+    })
 
 
 @app.route("/api/healthcheck/log")
 def api_healthcheck_log():
-    """Get the healthcheck log output (last N lines)."""
-    log_path = os.path.join(HEALTHCHECK_DIR, "healthcheck.log")
+    """Get health check log lines."""
     lines = int(request.args.get("lines", 100))
-
-    if not os.path.isfile(log_path):
-        return jsonify({"log": "No log file yet."})
-
-    try:
-        with open(log_path, "r") as f:
-            all_lines = f.readlines()
-        tail = all_lines[-lines:] if len(all_lines) > lines else all_lines
-        return jsonify({"log": "".join(tail), "total_lines": len(all_lines)})
-    except Exception as e:
-        return jsonify({"log": f"Error reading log: {e}"})
+    log_lines = _healthcheck_state.get("log", [])
+    tail = log_lines[-lines:] if len(log_lines) > lines else log_lines
+    return jsonify({"log": "\n".join(tail), "total_lines": len(log_lines)})
 
 
 @app.route("/api/healthcheck/channel/<path:channel_name>")
 def api_healthcheck_channel(channel_name):
     """Get health check results for a specific channel."""
-    if not os.path.isfile(HEALTHCHECK_DB):
-        return jsonify({"channel": channel_name, "checked": 0, "healthy": 0, "broken": 0, "files": []})
-
-    try:
-        with open(HEALTHCHECK_DB) as f:
-            db = json.load(f)
-    except Exception:
-        return jsonify({"channel": channel_name, "checked": 0, "healthy": 0, "broken": 0, "files": []})
+    db = _load_hc_db()
 
     files = []
     healthy = 0
@@ -3477,7 +3603,6 @@ def api_healthcheck_channel(channel_name):
             else:
                 broken += 1
 
-    # Sort broken first
     files.sort(key=lambda x: (0 if x.get("status") == "broken" else 1, x.get("rel_path", "")))
 
     return jsonify({
@@ -3496,11 +3621,7 @@ def api_healthcheck_fix():
     single_id = data.get("video_id")
     channel = data.get("channel")
 
-    if not os.path.isfile(HEALTHCHECK_DB):
-        return jsonify({"error": "No scan results found"}), 404
-
-    with open(HEALTHCHECK_DB) as f:
-        db = json.load(f)
+    db = _load_hc_db()
 
     archive_file = "/config/archive/downloaded.txt"
     queued = 0
@@ -3517,7 +3638,6 @@ def api_healthcheck_fix():
         if single_id and vid != single_id:
             continue
 
-        # Remove from archive so yt-dlp will re-download
         if os.path.isfile(archive_file):
             try:
                 with open(archive_file, "r") as af:
@@ -3529,22 +3649,18 @@ def api_healthcheck_fix():
             except Exception:
                 pass
 
-        # Delete the broken file
         if os.path.isfile(path):
             try:
                 os.remove(path)
             except Exception:
                 pass
 
-        # Remove from DB so it gets rechecked after re-download
         paths_to_remove.append(path)
         queued += 1
 
-    # Clean DB
     for p in paths_to_remove:
         db.pop(p, None)
-    with open(HEALTHCHECK_DB, "w") as f:
-        json.dump(db, f, indent=2)
+    _save_hc_db(db)
 
     return jsonify({"status": "queued", "queued": queued})
 
