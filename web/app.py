@@ -76,6 +76,31 @@ DEFAULT_CONFIG = {
     "skip_shorts": True,
     "shorts_max_duration": 60,
     "sleep_interval": 3,
+    # Schedule config (overrides env vars when set)
+    "fast_cron": None,    # None = use env var default
+    "full_cron": None,
+    "update_cron": None,
+    "fast_enabled": True,
+    "full_enabled": True,
+    "update_enabled": True,
+}
+
+# ── Human-friendly schedule presets ──
+SCHEDULE_PRESETS = {
+    "every_2h":    {"cron": "0 */2 * * *",   "label": "Every 2 hours"},
+    "every_4h":    {"cron": "0 */4 * * *",   "label": "Every 4 hours"},
+    "every_6h":    {"cron": "0 */6 * * *",   "label": "Every 6 hours"},
+    "every_8h":    {"cron": "0 */8 * * *",   "label": "Every 8 hours"},
+    "every_12h":   {"cron": "0 */12 * * *",  "label": "Every 12 hours"},
+    "daily_1am":   {"cron": "0 1 * * *",     "label": "Daily at 1:00 AM"},
+    "daily_3am":   {"cron": "0 3 * * *",     "label": "Daily at 3:00 AM"},
+    "daily_6am":   {"cron": "0 6 * * *",     "label": "Daily at 6:00 AM"},
+    "daily_noon":  {"cron": "0 12 * * *",    "label": "Daily at 12:00 PM"},
+    "weekly_sun":  {"cron": "0 3 * * 0",     "label": "Weekly — Sunday 3:00 AM"},
+    "weekly_mon":  {"cron": "0 3 * * 1",     "label": "Weekly — Monday 3:00 AM"},
+    "weekly_sat":  {"cron": "0 3 * * 6",     "label": "Weekly — Saturday 3:00 AM"},
+    "biweekly":    {"cron": "0 3 1,15 * *",  "label": "Twice a month (1st & 15th)"},
+    "monthly":     {"cron": "0 3 1 * *",     "label": "Monthly — 1st at 3:00 AM"},
 }
 
 # ── Helpers ──
@@ -126,6 +151,61 @@ def load_config():
 def save_config(cfg):
     with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f, indent=2)
+
+
+def get_schedule(config, key, env_default):
+    """Get cron expression: config override > env var > hardcoded default."""
+    val = config.get(key)
+    if val:
+        return val
+    return os.environ.get(key.upper().replace("_cron", "_CRON").replace("fast_cron", "FAST_CRON").replace("full_cron", "FULL_CRON").replace("update_cron", "UPDATE_CRON"), env_default)
+
+
+def rebuild_cron(config=None):
+    """Regenerate /etc/cron.d/slugtube from config. Called after schedule changes."""
+    if config is None:
+        config = load_config()
+
+    fast = get_schedule(config, "fast_cron", "0 */6 * * *")
+    full = get_schedule(config, "full_cron", "0 3 * * 0")
+    update = get_schedule(config, "update_cron", "0 1 * * *")
+
+    fast_enabled = config.get("fast_enabled", True)
+    full_enabled = config.get("full_enabled", True)
+    update_enabled = config.get("update_enabled", True)
+
+    lines = [
+        "SHELL=/bin/bash",
+        "PATH=/usr/local/bin:/usr/bin:/bin",
+        "",
+    ]
+
+    if fast_enabled:
+        lines.append(f"{fast} root /app/scripts/download.sh --fast >> /config/logs/slugtube.log 2>&1")
+    else:
+        lines.append(f"# DISABLED: {fast} root /app/scripts/download.sh --fast >> /config/logs/slugtube.log 2>&1")
+
+    if full_enabled:
+        lines.append(f"{full} root /app/scripts/download.sh --full >> /config/logs/slugtube.log 2>&1")
+    else:
+        lines.append(f"# DISABLED: {full} root /app/scripts/download.sh --full >> /config/logs/slugtube.log 2>&1")
+
+    if update_enabled:
+        lines.append(f"{update} root /app/scripts/update-ytdlp.sh >> /config/logs/slugtube.log 2>&1")
+    else:
+        lines.append(f"# DISABLED: {update} root /app/scripts/update-ytdlp.sh >> /config/logs/slugtube.log 2>&1")
+
+    lines.append("")  # trailing newline required by cron
+
+    cron_path = "/etc/cron.d/slugtube"
+    try:
+        with open(cron_path, "w") as f:
+            f.write("\n".join(lines))
+        os.chmod(cron_path, 0o644)
+        return True
+    except Exception as e:
+        print(f"⚠️ Failed to write cron: {e}")
+        return False
 
 
 def load_state():
@@ -1107,17 +1187,21 @@ def save_cookies():
 
 @app.route("/settings")
 def settings():
-    fast_cron = os.environ.get("FAST_CRON", "0 */6 * * *")
-    full_cron = os.environ.get("FULL_CRON", "0 3 * * 0")
-    update_cron = os.environ.get("UPDATE_CRON", "0 1 * * *")
-    state = load_state()
     config = load_config()
+    fast_cron = get_schedule(config, "fast_cron", "0 */6 * * *")
+    full_cron = get_schedule(config, "full_cron", "0 3 * * 0")
+    update_cron = get_schedule(config, "update_cron", "0 1 * * *")
+    state = load_state()
     save_status = request.args.get("saved", None)
     return render_template("settings.html",
         page="settings",
         fast_cron=fast_cron,
         full_cron=full_cron,
         update_cron=update_cron,
+        fast_enabled=config.get("fast_enabled", True),
+        full_enabled=config.get("full_enabled", True),
+        update_enabled=config.get("update_enabled", True),
+        schedule_presets=SCHEDULE_PRESETS,
         ytdlp_version=get_ytdlp_version(),
         archive_count=count_lines(ARCHIVE_FILE),
         state=state,
@@ -1142,6 +1226,43 @@ def save_settings():
     config["skip_shorts"] = request.form.get("skip_shorts") == "on"
     save_config(config)
     return redirect("/settings?saved=success")
+
+
+@app.route("/api/schedule/save", methods=["POST"])
+def save_schedule():
+    """Save schedule settings and rebuild cron."""
+    data = request.get_json() or {}
+    config = load_config()
+
+    # Update cron expressions
+    if "fast_cron" in data:
+        config["fast_cron"] = data["fast_cron"]
+    if "full_cron" in data:
+        config["full_cron"] = data["full_cron"]
+    if "update_cron" in data:
+        config["update_cron"] = data["update_cron"]
+
+    # Update enabled/disabled
+    if "fast_enabled" in data:
+        config["fast_enabled"] = bool(data["fast_enabled"])
+    if "full_enabled" in data:
+        config["full_enabled"] = bool(data["full_enabled"])
+    if "update_enabled" in data:
+        config["update_enabled"] = bool(data["update_enabled"])
+
+    save_config(config)
+    success = rebuild_cron(config)
+
+    return jsonify({
+        "status": "ok" if success else "error",
+        "message": "Schedules updated!" if success else "Failed to write cron file",
+        "fast_cron": get_schedule(config, "fast_cron", "0 */6 * * *"),
+        "full_cron": get_schedule(config, "full_cron", "0 3 * * 0"),
+        "update_cron": get_schedule(config, "update_cron", "0 1 * * *"),
+        "fast_enabled": config.get("fast_enabled", True),
+        "full_enabled": config.get("full_enabled", True),
+        "update_enabled": config.get("update_enabled", True),
+    })
 
 
 @app.route("/add", methods=["POST"])
