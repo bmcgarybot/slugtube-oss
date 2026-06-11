@@ -3164,18 +3164,17 @@ def import_confirm():
     })
 
 
-# ── Health Check ──
+# ── Health Check (per-channel, on-demand only) ──
 
 HEALTHCHECK_DIR = "/config/healthcheck"
-HEALTHCHECK_RESULTS = os.path.join(HEALTHCHECK_DIR, "results.json")
+HEALTHCHECK_DB = os.path.join(HEALTHCHECK_DIR, "checked.json")
 HEALTHCHECK_PROGRESS = os.path.join(HEALTHCHECK_DIR, "progress.json")
 _healthcheck_proc = None
 
 
 @app.route("/healthcheck")
 def healthcheck_page():
-    """Health check dashboard page."""
-    # Get list of channel folders for the dropdown
+    """Health check overview — shows per-channel status from persistent DB."""
     shows_dir = "/shows"
     channels = []
     if os.path.isdir(shows_dir):
@@ -3184,37 +3183,53 @@ def healthcheck_page():
             if os.path.isdir(os.path.join(shows_dir, d)) and not d.startswith(".")
         ])
 
+    # Load persistent DB to build per-channel stats
+    channel_stats = {}
+    if os.path.isfile(HEALTHCHECK_DB):
+        try:
+            with open(HEALTHCHECK_DB) as f:
+                db = json.load(f)
+            for path, entry in db.items():
+                ch = entry.get("channel", "")
+                if ch not in channel_stats:
+                    channel_stats[ch] = {"healthy": 0, "broken": 0, "total": 0}
+                channel_stats[ch]["total"] += 1
+                if entry.get("status") == "healthy":
+                    channel_stats[ch]["healthy"] += 1
+                else:
+                    channel_stats[ch]["broken"] += 1
+        except Exception:
+            pass
+
     job = {"status": "idle"}
     paused = os.path.isfile("/config/.paused")
-    return render_template("healthcheck.html", page="healthcheck", job=job, paused=paused, channels=channels)
+    return render_template("healthcheck.html", page="healthcheck", job=job, paused=paused,
+                           channels=channels, channel_stats=channel_stats)
 
 
 @app.route("/api/healthcheck/start", methods=["POST"])
 def api_healthcheck_start():
-    """Start a health check scan in the background."""
+    """Start a per-channel health check in the background."""
     global _healthcheck_proc
 
-    # Check if already running
     if _healthcheck_proc and _healthcheck_proc.poll() is None:
         return jsonify({"error": "Health check already running"}), 409
 
     data = request.get_json() or {}
-    mode = data.get("mode", "full")
     channel = data.get("channel", "")
-    recent = data.get("recent", 0)
-    resume = data.get("resume", False)
+    mode = data.get("mode", "full")
+    throttle = data.get("throttle", 1)
+
+    if not channel:
+        return jsonify({"error": "Channel name is required"}), 400
 
     os.makedirs(HEALTHCHECK_DIR, exist_ok=True)
 
-    cmd = ["/app/scripts/healthcheck.sh"]
+    cmd = ["/app/scripts/healthcheck.sh", "--channel", channel]
     if mode == "quick":
         cmd.append("--quick")
-    if channel:
-        cmd.extend(["--channel", channel])
-    if recent and int(recent) > 0:
-        cmd.extend(["--recent", str(int(recent))])
-    if resume:
-        cmd.append("--resume")
+    if throttle:
+        cmd.extend(["--throttle", str(int(throttle))])
 
     _healthcheck_proc = subprocess.Popen(
         cmd,
@@ -3222,7 +3237,7 @@ def api_healthcheck_start():
         stderr=subprocess.STDOUT
     )
 
-    return jsonify({"status": "started", "pid": _healthcheck_proc.pid})
+    return jsonify({"status": "started", "pid": _healthcheck_proc.pid, "channel": channel})
 
 
 @app.route("/api/healthcheck/cancel", methods=["POST"])
@@ -3253,16 +3268,39 @@ def api_healthcheck_progress():
         return jsonify({"status": "none"})
 
 
-@app.route("/api/healthcheck/results")
-def api_healthcheck_results():
-    """Get scan results."""
-    if not os.path.isfile(HEALTHCHECK_RESULTS):
-        return jsonify({})
+@app.route("/api/healthcheck/channel/<path:channel_name>")
+def api_healthcheck_channel(channel_name):
+    """Get health check results for a specific channel."""
+    if not os.path.isfile(HEALTHCHECK_DB):
+        return jsonify({"channel": channel_name, "checked": 0, "healthy": 0, "broken": 0, "files": []})
+
     try:
-        with open(HEALTHCHECK_RESULTS) as f:
-            return jsonify(json.load(f))
+        with open(HEALTHCHECK_DB) as f:
+            db = json.load(f)
     except Exception:
-        return jsonify({})
+        return jsonify({"channel": channel_name, "checked": 0, "healthy": 0, "broken": 0, "files": []})
+
+    files = []
+    healthy = 0
+    broken = 0
+    for path, entry in db.items():
+        if entry.get("channel") == channel_name:
+            files.append(entry)
+            if entry.get("status") == "healthy":
+                healthy += 1
+            else:
+                broken += 1
+
+    # Sort broken first
+    files.sort(key=lambda x: (0 if x.get("status") == "broken" else 1, x.get("rel_path", "")))
+
+    return jsonify({
+        "channel": channel_name,
+        "checked": len(files),
+        "healthy": healthy,
+        "broken": broken,
+        "files": files
+    })
 
 
 @app.route("/api/healthcheck/fix", methods=["POST"])
@@ -3270,18 +3308,22 @@ def api_healthcheck_fix():
     """Remove broken videos from archive so they get re-downloaded."""
     data = request.get_json() or {}
     single_id = data.get("video_id")
+    channel = data.get("channel")
 
-    if not os.path.isfile(HEALTHCHECK_RESULTS):
+    if not os.path.isfile(HEALTHCHECK_DB):
         return jsonify({"error": "No scan results found"}), 404
 
-    with open(HEALTHCHECK_RESULTS) as f:
-        results = json.load(f)
+    with open(HEALTHCHECK_DB) as f:
+        db = json.load(f)
 
     archive_file = "/config/archive/downloaded.txt"
     queued = 0
+    paths_to_remove = []
 
-    for entry in results.get("files", []):
+    for path, entry in db.items():
         if entry.get("status") != "broken":
+            continue
+        if channel and entry.get("channel") != channel:
             continue
         vid = entry.get("video_id")
         if not vid:
@@ -3301,15 +3343,22 @@ def api_healthcheck_fix():
             except Exception:
                 pass
 
-        # Delete the broken file so the re-download doesn't conflict
-        filepath = entry.get("path", "")
-        if filepath and os.path.isfile(filepath):
+        # Delete the broken file
+        if os.path.isfile(path):
             try:
-                os.remove(filepath)
+                os.remove(path)
             except Exception:
                 pass
 
+        # Remove from DB so it gets rechecked after re-download
+        paths_to_remove.append(path)
         queued += 1
+
+    # Clean DB
+    for p in paths_to_remove:
+        db.pop(p, None)
+    with open(HEALTHCHECK_DB, "w") as f:
+        json.dump(db, f, indent=2)
 
     return jsonify({"status": "queued", "queued": queued})
 
