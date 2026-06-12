@@ -185,24 +185,42 @@ def get_timezone_list():
     """Get sorted list of valid timezone names from the system."""
     tz_list = []
     base = "/usr/share/zoneinfo"
-    # Only include region/city style timezones
     valid_prefixes = ('Africa', 'America', 'Antarctica', 'Arctic', 'Asia',
                       'Atlantic', 'Australia', 'Europe', 'Indian', 'Pacific', 'US')
-    for root, dirs, files in os.walk(base):
-        rel = os.path.relpath(root, base)
-        if rel == '.':
-            continue
-        top = rel.split('/')[0]
-        if top not in valid_prefixes:
-            continue
-        for fname in files:
-            # Skip internal files
-            if fname.startswith('.') or '+' in fname:
+    if os.path.isdir(base):
+        for root, dirs, files in os.walk(base):
+            rel = os.path.relpath(root, base)
+            if rel == '.':
                 continue
-            tz_path = os.path.join(rel, fname)
-            tz_list.append(tz_path)
+            top = rel.split('/')[0]
+            if top not in valid_prefixes:
+                continue
+            for fname in files:
+                if fname.startswith('.') or '+' in fname:
+                    continue
+                tz_path = os.path.join(rel, fname)
+                tz_list.append(tz_path)
+    # Fallback: use Python's zoneinfo module if filesystem walk found nothing
+    if not tz_list:
+        try:
+            from zoneinfo import available_timezones
+            for tz in available_timezones():
+                parts = tz.split('/')
+                if len(parts) >= 2 and parts[0] in valid_prefixes:
+                    tz_list.append(tz)
+        except ImportError:
+            # Absolute last resort — hardcoded common US timezones
+            tz_list = [
+                "America/New_York", "America/Chicago", "America/Denver",
+                "America/Los_Angeles", "America/Phoenix", "America/Anchorage",
+                "Pacific/Honolulu", "US/Eastern", "US/Central", "US/Mountain",
+                "US/Pacific", "US/Arizona", "US/Hawaii", "UTC",
+            ]
     tz_list.sort()
     return tz_list
+
+
+def get_schedule(config, key, env_default):
     """Get cron expression: config override > env var > hardcoded default."""
     val = config.get(key)
     if val:
