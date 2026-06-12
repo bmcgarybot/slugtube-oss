@@ -195,6 +195,31 @@
     </div>
 </div>
 
+<!-- Incomplete Downloads -->
+<div class="card" style="margin-top:16px;">
+    <div class="card-header">
+        <span>⚠️ Incomplete Downloads</span>
+        <button class="btn btn-sm" onclick="scanTemp()" id="temp-scan-btn">Scan for .temp files</button>
+    </div>
+    <div class="card-body">
+        <p class="text-dim" style="font-size:13px; margin-bottom:12px;">
+            Finds interrupted downloads (.temp, .part files). These won't re-download until fixed because yt-dlp thinks they're done.
+        </p>
+        <div id="temp-results" style="display:none;">
+            <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
+                <span id="temp-count" style="font-weight:600;"></span>
+                <button class="btn btn-sm" style="border-color:var(--orange);color:var(--orange);" onclick="fixAllTemp()" id="temp-fix-btn" style="display:none;">
+                    Fix All — delete &amp; re-queue
+                </button>
+            </div>
+            <div id="temp-list" style="max-height:300px; overflow-y:auto;"></div>
+        </div>
+        <div id="temp-none" style="display:none; color:var(--green); font-size:13px;">
+            ✅ No incomplete downloads found.
+        </div>
+    </div>
+</div>
+
 <script>
 var pollTimer = null;
 var logTimer = null;
@@ -416,6 +441,83 @@ fetch('/api/healthcheck/progress')
         startPolling();
     }
 });
+
+/* ── Incomplete Downloads (temp file scanner) ── */
+
+function scanTemp() {
+    var btn = document.getElementById('temp-scan-btn');
+    btn.disabled = true;
+    btn.textContent = 'Scanning...';
+
+    fetch('/api/healthcheck/temp-scan')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.textContent = 'Scan for .temp files';
+
+        if (data.count === 0) {
+            document.getElementById('temp-results').style.display = 'none';
+            document.getElementById('temp-none').style.display = 'block';
+            return;
+        }
+
+        document.getElementById('temp-none').style.display = 'none';
+        document.getElementById('temp-results').style.display = 'block';
+        document.getElementById('temp-count').textContent = data.count + ' incomplete file' + (data.count === 1 ? '' : 's') + ' found';
+
+        var html = '<table class="data-table" style="font-size:13px;"><thead><tr>' +
+            '<th>File</th><th>Channel</th><th>Size</th><th></th></tr></thead><tbody>';
+        data.files.forEach(function(f) {
+            var size = f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' MB' :
+                       f.size > 1024 ? (f.size / 1024).toFixed(0) + ' KB' : f.size + ' B';
+            html += '<tr><td style="word-break:break-all;">' + f.filename + '</td>' +
+                '<td>' + f.channel + '</td>' +
+                '<td>' + size + '</td>' +
+                '<td><button class="btn btn-sm" style="border-color:var(--orange);color:var(--orange);font-size:11px;" ' +
+                'onclick="fixOneTemp(\'' + f.path.replace(/'/g, "\\'") + '\')">Fix</button></td></tr>';
+        });
+        html += '</tbody></table>';
+        document.getElementById('temp-list').innerHTML = html;
+    })
+    .catch(function(e) {
+        btn.disabled = false;
+        btn.textContent = 'Scan for .temp files';
+        alert('Scan failed: ' + e.message);
+    });
+}
+
+function fixAllTemp() {
+    if (!confirm('Delete all incomplete files and remove from archive so they re-download on next run?')) return;
+    var btn = document.getElementById('temp-fix-btn');
+    btn.disabled = true;
+    btn.textContent = 'Fixing...';
+
+    fetch('/api/healthcheck/temp-fix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all: true })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.textContent = 'Fix All — delete & re-queue';
+        if (typeof showToastGlobal === 'function') showToastGlobal(data.fixed + ' files fixed — will re-download on next run');
+        scanTemp(); // refresh
+    });
+}
+
+function fixOneTemp(path) {
+    fetch('/api/healthcheck/temp-fix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: path })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (typeof showToastGlobal === 'function') showToastGlobal('Fixed — will re-download on next run');
+        scanTemp(); // refresh
+    });
+}
 </script>
 
 {% endblock %}

@@ -3759,6 +3759,87 @@ def api_healthcheck_fix():
     return jsonify({"status": "queued", "queued": queued})
 
 
+@app.route("/api/healthcheck/temp-scan")
+def api_temp_scan():
+    """Scan library for .temp / .part files (incomplete downloads)."""
+    shows_dir = os.environ.get("SHOWS_DIR", "/shows")
+    temp_files = []
+    temp_extensions = {'.temp', '.part', '.ytdl'}
+
+    for root, dirs, files in os.walk(shows_dir):
+        for f in files:
+            ext = os.path.splitext(f)[1].lower()
+            if ext in temp_extensions:
+                path = os.path.join(root, f)
+                # Extract video ID from filename like "Title [VIDEO_ID].temp"
+                vid_match = re.search(r'\[([a-zA-Z0-9_-]{11})\]', f)
+                video_id = vid_match.group(1) if vid_match else None
+                channel = os.path.basename(root)
+                try:
+                    size = os.path.getsize(path)
+                except OSError:
+                    size = 0
+                temp_files.append({
+                    "path": path,
+                    "filename": f,
+                    "channel": channel,
+                    "video_id": video_id,
+                    "size": size,
+                    "ext": ext,
+                })
+
+    return jsonify({"count": len(temp_files), "files": temp_files})
+
+
+@app.route("/api/healthcheck/temp-fix", methods=["POST"])
+def api_temp_fix():
+    """Delete .temp/.part files and remove their IDs from archive so yt-dlp re-downloads."""
+    data = request.get_json() or {}
+    fix_all = data.get("all", False)
+    single_path = data.get("path")
+
+    archive_file = "/config/archive/downloaded.txt"
+    shows_dir = os.environ.get("SHOWS_DIR", "/shows")
+    temp_extensions = {'.temp', '.part', '.ytdl'}
+    fixed = 0
+
+    # Collect files to fix
+    targets = []
+    if single_path and os.path.isfile(single_path):
+        targets.append(single_path)
+    elif fix_all:
+        for root, dirs, files in os.walk(shows_dir):
+            for f in files:
+                if os.path.splitext(f)[1].lower() in temp_extensions:
+                    targets.append(os.path.join(root, f))
+
+    for path in targets:
+        fname = os.path.basename(path)
+        vid_match = re.search(r'\[([a-zA-Z0-9_-]{11})\]', fname)
+        video_id = vid_match.group(1) if vid_match else None
+
+        # Remove from archive so yt-dlp will re-download
+        if video_id and os.path.isfile(archive_file):
+            try:
+                with open(archive_file, "r") as af:
+                    lines = af.readlines()
+                with open(archive_file, "w") as af:
+                    for line in lines:
+                        if video_id not in line:
+                            af.write(line)
+            except Exception:
+                pass
+
+        # Delete the incomplete file
+        try:
+            os.remove(path)
+            fixed += 1
+        except Exception:
+            pass
+
+    return jsonify({"status": "ok", "fixed": fixed})
+
+
 # ── Startup ──
 
 if __name__ == "__main__":
