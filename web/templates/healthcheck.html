@@ -444,45 +444,80 @@ fetch('/api/healthcheck/progress')
 
 /* ── Incomplete Downloads (temp file scanner) ── */
 
+var tempPollTimer = null;
+
 function scanTemp() {
     var btn = document.getElementById('temp-scan-btn');
     btn.disabled = true;
     btn.textContent = 'Scanning...';
+    document.getElementById('temp-none').style.display = 'none';
+    document.getElementById('temp-results').style.display = 'block';
+    document.getElementById('temp-count').innerHTML = '<span style="color:var(--text-dim);">Scanning... 0 folders checked</span>';
+    document.getElementById('temp-list').innerHTML = '';
 
-    fetch('/api/healthcheck/temp-scan')
+    fetch('/api/healthcheck/temp-scan', { method: 'POST' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-        btn.disabled = false;
-        btn.textContent = 'Scan for .temp files';
-
-        if (data.count === 0) {
-            document.getElementById('temp-results').style.display = 'none';
-            document.getElementById('temp-none').style.display = 'block';
-            return;
+        if (data.status === 'already_running' || data.status === 'started') {
+            startTempPolling();
         }
-
-        document.getElementById('temp-none').style.display = 'none';
-        document.getElementById('temp-results').style.display = 'block';
-        document.getElementById('temp-count').textContent = data.count + ' incomplete file' + (data.count === 1 ? '' : 's') + ' found';
-
-        var html = '<table class="data-table" style="font-size:13px;"><thead><tr>' +
-            '<th>File</th><th>Channel</th><th>Size</th><th></th></tr></thead><tbody>';
-        data.files.forEach(function(f) {
-            var size = f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' MB' :
-                       f.size > 1024 ? (f.size / 1024).toFixed(0) + ' KB' : f.size + ' B';
-            html += '<tr><td style="word-break:break-all;">' + f.filename + '</td>' +
-                '<td>' + f.channel + '</td>' +
-                '<td>' + size + '</td>' +
-                '<td><button class="btn btn-sm" style="border-color:var(--orange);color:var(--orange);font-size:11px;" ' +
-                'onclick="fixOneTemp(\'' + f.path.replace(/'/g, "\\'") + '\')">Fix</button></td></tr>';
-        });
-        html += '</tbody></table>';
-        document.getElementById('temp-list').innerHTML = html;
     })
     .catch(function(e) {
         btn.disabled = false;
         btn.textContent = 'Scan for .temp files';
         alert('Scan failed: ' + e.message);
+    });
+}
+
+function startTempPolling() {
+    if (tempPollTimer) clearInterval(tempPollTimer);
+    tempPollTimer = setInterval(pollTempProgress, 500);
+}
+
+function pollTempProgress() {
+    fetch('/api/healthcheck/temp-progress')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var btn = document.getElementById('temp-scan-btn');
+        var countEl = document.getElementById('temp-count');
+
+        if (data.status === 'scanning') {
+            var msg = 'Scanning... ' + data.dirs_scanned + ' folders checked';
+            if (data.files_found > 0) {
+                msg += ' · <span style="color:var(--orange);">' + data.files_found + ' incomplete found</span>';
+            }
+            if (data.current_dir) {
+                msg += '<br><span style="font-size:11px;color:var(--text-dimmer);">📂 ' + data.current_dir + '</span>';
+            }
+            countEl.innerHTML = msg;
+        } else if (data.status === 'done') {
+            clearInterval(tempPollTimer);
+            tempPollTimer = null;
+            btn.disabled = false;
+            btn.textContent = 'Scan for .temp files';
+
+            if (data.count === 0) {
+                document.getElementById('temp-results').style.display = 'none';
+                document.getElementById('temp-none').style.display = 'block';
+                return;
+            }
+
+            countEl.textContent = data.count + ' incomplete file' + (data.count === 1 ? '' : 's') + ' found';
+
+            var html = '<table class="data-table" style="font-size:13px;"><thead><tr>' +
+                '<th>File</th><th>Channel</th><th>Size</th><th></th></tr></thead><tbody>';
+            data.results.forEach(function(f) {
+                var size = f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' MB' :
+                           f.size > 1024 ? (f.size / 1024).toFixed(0) + ' KB' : f.size + ' B';
+                html += '<tr><td style="word-break:break-all;">' + f.filename + '</td>' +
+                    '<td>' + f.channel + '</td>' +
+                    '<td>' + size + '</td>' +
+                    '<td><button class="btn btn-sm" style="border-color:var(--orange);color:var(--orange);font-size:11px;" ' +
+                    'onclick="fixOneTemp(\'' + f.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')">Fix</button></td></tr>';
+            });
+            html += '</tbody></table>';
+            document.getElementById('temp-list').innerHTML = html;
+        }
     });
 }
 
