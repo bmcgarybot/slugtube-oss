@@ -92,6 +92,7 @@ SCHEDULE_PRESETS = {
     "every_6h":    {"cron": "0 */6 * * *",   "label": "Every 6 hours"},
     "every_8h":    {"cron": "0 */8 * * *",   "label": "Every 8 hours"},
     "every_12h":   {"cron": "0 */12 * * *",  "label": "Every 12 hours"},
+    "daily_midnight": {"cron": "0 0 * * *",     "label": "Daily at 12:00 AM"},
     "daily_1am":   {"cron": "0 1 * * *",     "label": "Daily at 1:00 AM"},
     "daily_3am":   {"cron": "0 3 * * *",     "label": "Daily at 3:00 AM"},
     "daily_6am":   {"cron": "0 6 * * *",     "label": "Daily at 6:00 AM"},
@@ -174,9 +175,12 @@ def rebuild_cron(config=None):
     full_enabled = config.get("full_enabled", True)
     update_enabled = config.get("update_enabled", True)
 
+    tz = os.environ.get("TZ", "UTC")
+
     lines = [
         "SHELL=/bin/bash",
         "PATH=/usr/local/bin:/usr/bin:/bin",
+        f"CRON_TZ={tz}",
         "",
     ]
 
@@ -1202,6 +1206,7 @@ def settings():
         full_enabled=config.get("full_enabled", True),
         update_enabled=config.get("update_enabled", True),
         schedule_presets=SCHEDULE_PRESETS,
+        timezone=os.environ.get("TZ", "UTC"),
         ytdlp_version=get_ytdlp_version(),
         archive_count=count_lines(ARCHIVE_FILE),
         state=state,
