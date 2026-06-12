@@ -154,7 +154,55 @@ def save_config(cfg):
         json.dump(cfg, f, indent=2)
 
 
-def get_schedule(config, key, env_default):
+def get_timezone():
+    """Get current timezone from config > env var > UTC."""
+    config = load_config()
+    tz = config.get("timezone")
+    if tz:
+        return tz
+    return os.environ.get("TZ", "UTC")
+
+
+def apply_timezone(tz_name):
+    """Apply timezone to the running system: /etc/localtime, env var, Python."""
+    import time as _time
+    zoneinfo_path = f"/usr/share/zoneinfo/{tz_name}"
+    if os.path.isfile(zoneinfo_path):
+        try:
+            os.remove("/etc/localtime")
+        except OSError:
+            pass
+        os.symlink(zoneinfo_path, "/etc/localtime")
+        with open("/etc/timezone", "w") as f:
+            f.write(tz_name + "\n")
+        os.environ["TZ"] = tz_name
+        _time.tzset()
+        return True
+    return False
+
+
+def get_timezone_list():
+    """Get sorted list of valid timezone names from the system."""
+    tz_list = []
+    base = "/usr/share/zoneinfo"
+    # Only include region/city style timezones
+    valid_prefixes = ('Africa', 'America', 'Antarctica', 'Arctic', 'Asia',
+                      'Atlantic', 'Australia', 'Europe', 'Indian', 'Pacific', 'US')
+    for root, dirs, files in os.walk(base):
+        rel = os.path.relpath(root, base)
+        if rel == '.':
+            continue
+        top = rel.split('/')[0]
+        if top not in valid_prefixes:
+            continue
+        for fname in files:
+            # Skip internal files
+            if fname.startswith('.') or '+' in fname:
+                continue
+            tz_path = os.path.join(rel, fname)
+            tz_list.append(tz_path)
+    tz_list.sort()
+    return tz_list
     """Get cron expression: config override > env var > hardcoded default."""
     val = config.get(key)
     if val:
@@ -175,7 +223,7 @@ def rebuild_cron(config=None):
     full_enabled = config.get("full_enabled", True)
     update_enabled = config.get("update_enabled", True)
 
-    tz = os.environ.get("TZ", "UTC")
+    tz = get_timezone()
 
     lines = [
         "SHELL=/bin/bash",
@@ -1197,6 +1245,8 @@ def settings():
     update_cron = get_schedule(config, "update_cron", "0 1 * * *")
     state = load_state()
     save_status = request.args.get("saved", None)
+    tz = get_timezone()
+    current_time = datetime.now().strftime("%I:%M %p, %b %d")
     return render_template("settings.html",
         page="settings",
         fast_cron=fast_cron,
@@ -1206,7 +1256,9 @@ def settings():
         full_enabled=config.get("full_enabled", True),
         update_enabled=config.get("update_enabled", True),
         schedule_presets=SCHEDULE_PRESETS,
-        timezone=os.environ.get("TZ", "UTC"),
+        timezone=tz,
+        timezones=get_timezone_list(),
+        current_time=current_time,
         ytdlp_version=get_ytdlp_version(),
         archive_count=count_lines(ARCHIVE_FILE),
         state=state,
@@ -1239,6 +1291,21 @@ def save_schedule():
     data = request.get_json() or {}
     config = load_config()
 
+    # Update timezone if provided
+    tz_changed = False
+    if "timezone" in data and data["timezone"]:
+        new_tz = data["timezone"]
+        old_tz = get_timezone()
+        if new_tz != old_tz:
+            # Validate timezone exists
+            if os.path.isfile(f"/usr/share/zoneinfo/{new_tz}"):
+                config["timezone"] = new_tz
+                apply_timezone(new_tz)
+                tz_changed = True
+                print(f"🕐 Timezone changed: {old_tz} → {new_tz}")
+            else:
+                return jsonify({"status": "error", "message": f"Invalid timezone: {new_tz}"}), 400
+
     # Update cron expressions
     if "fast_cron" in data:
         config["fast_cron"] = data["fast_cron"]
@@ -1258,6 +1325,8 @@ def save_schedule():
     save_config(config)
     success = rebuild_cron(config)
 
+    current_time = datetime.now().strftime("%I:%M %p, %b %d")
+
     return jsonify({
         "status": "ok" if success else "error",
         "message": "Schedules updated!" if success else "Failed to write cron file",
@@ -1267,6 +1336,8 @@ def save_schedule():
         "fast_enabled": config.get("fast_enabled", True),
         "full_enabled": config.get("full_enabled", True),
         "update_enabled": config.get("update_enabled", True),
+        "timezone": get_timezone(),
+        "current_time": current_time,
     })
 
 

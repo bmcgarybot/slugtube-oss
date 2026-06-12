@@ -264,6 +264,24 @@
                 </div>
             </div>
 
+            <!-- Timezone -->
+            <div class="setting-row" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+                <div style="flex:1;">
+                    <div class="setting-label">🕐 Timezone</div>
+                    <div class="setting-desc">All schedule times use this timezone</div>
+                </div>
+                <div style="position:relative; min-width: 260px;" id="tz-picker-wrap">
+                    <input type="text" id="tz-search" class="form-select" value="{{ timezone }}"
+                        style="width:100%; font-size:13px; cursor:pointer;"
+                        onfocus="openTzDropdown()" oninput="filterTimezones()"
+                        autocomplete="off" spellcheck="false">
+                    <div id="tz-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:999;
+                        max-height:280px; overflow-y:auto; background:var(--surface); border:1px solid var(--border);
+                        border-radius:0 0 6px 6px; box-shadow:0 8px 24px rgba(0,0,0,0.4);">
+                    </div>
+                </div>
+            </div>
+
             <!-- Save button -->
             <div style="margin-top: 16px; display:flex; gap:8px; align-items:center;">
                 <button type="button" class="btn btn-primary" onclick="saveSchedules()" id="schedule-save-btn">
@@ -271,9 +289,9 @@
                 </button>
                 <span class="text-dim text-sm">Changes take effect immediately — no restart needed.</span>
             </div>
-            <div style="margin-top: 8px; font-size: 12px; color: var(--text-dimmer);">
-                🕐 All times are in <strong style="color:var(--text-dim);">{{ timezone }}</strong>.
-                Change <code>TZ</code> in docker-compose.yml to use a different timezone.
+            <div style="margin-top: 6px; font-size: 12px; color: var(--text-dimmer);" id="tz-current-display">
+                🕐 Current time: <strong style="color:var(--text-dim);" id="tz-current-time">{{ current_time }}</strong>
+                (<span id="tz-current-name">{{ timezone }}</span>)
             </div>
 
         </div>
@@ -489,6 +507,7 @@ function customCron(which) {
 }
 
 function saveSchedules() {
+    var tz = document.getElementById('tz-search').value.trim();
     var data = {
         fast_cron: document.getElementById('fast-cron').value.trim(),
         full_cron: document.getElementById('full-cron').value.trim(),
@@ -496,6 +515,7 @@ function saveSchedules() {
         fast_enabled: document.getElementById('fast-enabled').checked,
         full_enabled: document.getElementById('full-enabled').checked,
         update_enabled: document.getElementById('update-enabled').checked,
+        timezone: tz,
     };
 
     var btn = document.getElementById('schedule-save-btn');
@@ -516,6 +536,14 @@ function saveSchedules() {
             statusEl.textContent = '✅ Saved!';
             statusEl.style.color = 'var(--green)';
             if (typeof showToastGlobal === 'function') showToastGlobal('Schedules updated!');
+            // Update timezone display if returned
+            if (result.timezone) {
+                document.getElementById('tz-current-name').textContent = result.timezone;
+                document.getElementById('tz-search').value = result.timezone;
+            }
+            if (result.current_time) {
+                document.getElementById('tz-current-time').textContent = result.current_time;
+            }
         } else {
             statusEl.textContent = '❌ ' + (result.message || 'Error');
             statusEl.style.color = 'var(--red)';
@@ -531,6 +559,80 @@ function saveSchedules() {
 
 // Sync preset dropdowns on page load
 ['fast', 'full', 'update'].forEach(function(which) { customCron(which); });
+
+/* ── Timezone Picker ── */
+var _tzList = {{ timezones | tojson }};
+var _tzDropdown = document.getElementById('tz-dropdown');
+var _tzSearch = document.getElementById('tz-search');
+var _tzOpen = false;
+
+function buildTzOptions(filter) {
+    var html = '';
+    var f = (filter || '').toLowerCase();
+    var grouped = {};
+    _tzList.forEach(function(tz) {
+        if (f && tz.toLowerCase().indexOf(f) === -1) return;
+        var parts = tz.split('/');
+        var region = parts[0];
+        if (!grouped[region]) grouped[region] = [];
+        grouped[region].push(tz);
+    });
+    // Put common US ones first
+    var order = ['US', 'America', 'Europe', 'Asia', 'Australia', 'Pacific', 'Africa', 'Atlantic', 'Indian'];
+    var regions = Object.keys(grouped).sort(function(a, b) {
+        var ai = order.indexOf(a), bi = order.indexOf(b);
+        if (ai === -1) ai = 999;
+        if (bi === -1) bi = 999;
+        return ai - bi;
+    });
+    regions.forEach(function(region) {
+        html += '<div style="padding:4px 10px;font-size:11px;color:var(--text-dimmer);font-weight:600;' +
+                'background:var(--bg);position:sticky;top:0;">' + region + '</div>';
+        grouped[region].forEach(function(tz) {
+            var display = tz.replace(/_/g, ' ');
+            var selected = tz === _tzSearch.dataset.current ? ' style="background:var(--accent);color:#fff;"' : '';
+            html += '<div class="tz-option" onclick="selectTz(\'' + tz + '\')"' + selected +
+                    ' style="padding:6px 12px;cursor:pointer;font-size:13px;" ' +
+                    'onmouseenter="this.style.background=\'var(--hover)\'" ' +
+                    'onmouseleave="this.style.background=\'\'">' + display + '</div>';
+        });
+    });
+    if (!html) html = '<div style="padding:12px;color:var(--text-dimmer);font-size:13px;">No matching timezones</div>';
+    _tzDropdown.innerHTML = html;
+}
+
+function openTzDropdown() {
+    _tzSearch.dataset.current = _tzSearch.value;
+    _tzSearch.select();
+    buildTzOptions('');
+    _tzDropdown.style.display = 'block';
+    _tzOpen = true;
+}
+
+function filterTimezones() {
+    buildTzOptions(_tzSearch.value);
+    _tzDropdown.style.display = 'block';
+    _tzOpen = true;
+}
+
+function selectTz(tz) {
+    _tzSearch.value = tz;
+    _tzSearch.dataset.current = tz;
+    _tzDropdown.style.display = 'none';
+    _tzOpen = false;
+}
+
+// Close dropdown on outside click
+document.addEventListener('click', function(e) {
+    if (_tzOpen && !document.getElementById('tz-picker-wrap').contains(e.target)) {
+        _tzDropdown.style.display = 'none';
+        _tzOpen = false;
+        // Restore previous value if user didn't pick anything valid
+        if (_tzList.indexOf(_tzSearch.value) === -1) {
+            _tzSearch.value = _tzSearch.dataset.current || '{{ timezone }}';
+        }
+    }
+});
 
 function showStatus(prefix, msg, isError) {
     var el = document.getElementById(prefix + '-status');

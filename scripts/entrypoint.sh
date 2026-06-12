@@ -38,6 +38,16 @@ FAST_CRON="${FAST_CRON:-0 */6 * * *}"
 FULL_CRON="${FULL_CRON:-0 3 * * 0}"
 UPDATE_CRON="${UPDATE_CRON:-0 1 * * *}"
 
+# Read timezone from config (UI setting) → env var → UTC
+CONFIG_TZ=""
+if [ -f /config/slugtube-config.json ]; then
+    CONFIG_TZ=$(python3 -c "import json; d=json.load(open('/config/slugtube-config.json')); print(d.get('timezone',''))" 2>/dev/null || true)
+fi
+if [ -n "$CONFIG_TZ" ] && [ -f "/usr/share/zoneinfo/$CONFIG_TZ" ]; then
+    TZ="$CONFIG_TZ"
+    export TZ
+fi
+
 # Set system timezone from TZ env var (so cron, date, and logs all agree)
 if [ -n "$TZ" ] && [ -f "/usr/share/zoneinfo/$TZ" ]; then
     ln -sf "/usr/share/zoneinfo/$TZ" /etc/localtime
