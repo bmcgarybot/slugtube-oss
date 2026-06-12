@@ -162,6 +162,7 @@ if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_
     # Build yt-dlp options for single channel (same as full, no playlist-end)
     YT_OPTS=(
         -o "$OUTPUT_TEMPLATE"
+        --replace-in-metadata "channel" "#" ""
         --download-archive "$ARCHIVE_FILE"
         --cookies "$COOKIES_FILE"
         -f "bestvideo[height<=${HEIGHT_LIMIT}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=${HEIGHT_LIMIT}]+bestaudio/best[height<=${HEIGHT_LIMIT}]/best"
@@ -176,6 +177,8 @@ if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_
         --retry-sleep 30
         --no-overwrites
         --windows-filenames
+        --trim-filenames 200
+        --no-write-playlist-metafiles
         --exec "after_move:curl -sf -X POST http://localhost:5000/api/index-video -d file={} || true"
     )
 
@@ -246,8 +249,10 @@ fi
 echo "📺 Processing $CHANNEL_COUNT channels..."
 
 # ── Build yt-dlp options ──
+# Use %(channel)s but strip trailing # via --replace-in-metadata
 YT_OPTS=(
     -o "${OUTPUT_DIR}/%(channel)s/Season %(upload_date>%Y,release_date>%Y,modified_date>%Y)s/s%(upload_date>%Y,release_date>%Y,modified_date>%Y)se%(upload_date,release_date,modified_date)s - %(title).150s [%(id)s].%(ext)s"
+    --replace-in-metadata "channel" "#" ""
     --download-archive "$ARCHIVE_FILE"
     --cookies "$COOKIES_FILE"
 
@@ -270,6 +275,8 @@ YT_OPTS=(
     --retry-sleep 30
     --no-overwrites
     --windows-filenames
+    --trim-filenames 200
+    --no-write-playlist-metafiles
 
     # Live-index: notify Flask to index each video as soon as it's downloaded
     --exec "after_move:curl -sf -X POST http://localhost:5000/api/index-video -d file={} || true"
@@ -377,6 +384,9 @@ while IFS= read -r line || [ -n "$line" ]; do
     fi
 
 done < "$CHANNELS_FILE"
+
+# ── Post-download: merge any # folders ──
+/app/scripts/cleanup-hash.sh 2>/dev/null || true
 
 # ── Generate channel artwork ──
 /app/scripts/channel-art.sh 2>/dev/null || true

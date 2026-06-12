@@ -1,0 +1,421 @@
+{% extends "base.html" %}
+{% block title_extra %} — Health Check{% endblock %}
+{% block content %}
+
+<div class="page-header">
+    <h1>🩺 Health Check</h1>
+    <div class="btn-group">
+        <button class="btn btn-danger" id="hc-cancel-btn" onclick="cancelScan()" style="display:none;">
+            Cancel Scan
+        </button>
+    </div>
+</div>
+
+<!-- Live Progress Panel -->
+<div id="hc-live" style="display:none; margin-bottom:20px;">
+    <div class="card" style="border-color:var(--accent);">
+        <div class="card-header" style="border-color:var(--accent);">
+            <span id="hc-live-title">🔍 Scanning...</span>
+            <span id="hc-live-pct" style="font-weight:700; font-size:16px;"></span>
+        </div>
+        <div class="card-body">
+            <!-- Progress bar -->
+            <div style="background:var(--bg-secondary); border-radius:8px; height:24px; overflow:hidden; margin-bottom:12px; position:relative;">
+                <div id="hc-bar" style="height:100%; background:var(--accent); border-radius:8px; transition:width 0.5s ease; width:0%;"></div>
+                <div style="position:absolute; top:0; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center;">
+                    <span id="hc-bar-text" style="font-size:12px; font-weight:600; color:var(--text); text-shadow:0 0 4px var(--bg);"></span>
+                </div>
+            </div>
+
+            <!-- Stats row -->
+            <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:12px;">
+                <div>
+                    <span class="text-dim" style="font-size:12px;">Checking</span><br>
+                    <span style="font-size:20px; font-weight:700;"><span id="hc-cur">0</span> <span class="text-dim" style="font-size:14px;">of</span> <span id="hc-tot">0</span></span>
+                </div>
+                <div>
+                    <span class="text-dim" style="font-size:12px;">✅ Healthy</span><br>
+                    <span id="hc-h" style="font-size:20px; font-weight:700; color:var(--green);">0</span>
+                </div>
+                <div>
+                    <span class="text-dim" style="font-size:12px;">❌ Broken</span><br>
+                    <span id="hc-b" style="font-size:20px; font-weight:700; color:var(--red);">0</span>
+                </div>
+                <div>
+                    <span class="text-dim" style="font-size:12px;">⏭️ Already Checked</span><br>
+                    <span id="hc-skip" style="font-size:20px; font-weight:700; color:var(--text-dim);">0</span>
+                </div>
+            </div>
+
+            <!-- Current file -->
+            <div style="font-size:13px; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="hc-current-file">
+                Waiting...
+            </div>
+        </div>
+    </div>
+
+    <!-- Log viewer (collapsible) -->
+    <details style="margin-top:8px;">
+        <summary style="cursor:pointer; font-size:13px; color:var(--text-dim); padding:8px 0;">📋 Show scan log</summary>
+        <div class="card" style="margin-top:4px;">
+            <div class="card-body" style="padding:0;">
+                <pre id="hc-log-output" style="margin:0; padding:12px; font-size:11px; line-height:1.5; max-height:300px; overflow-y:auto; background:var(--bg); color:var(--text-dim); white-space:pre-wrap; word-break:break-all;"></pre>
+            </div>
+        </div>
+    </details>
+</div>
+
+<!-- Channel List -->
+<div class="card">
+    <div class="card-header">
+        <span>Channels</span>
+        <span class="text-dim text-sm">Scan per-channel · Results saved per-file</span>
+    </div>
+    <div class="card-body" style="padding:0;">
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Channel</th>
+                        <th>Checked</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ch in channels %}
+                    {% set stats = channel_stats.get(ch, {}) %}
+                    {% set checked = stats.get('total', 0) %}
+                    {% set healthy = stats.get('healthy', 0) %}
+                    {% set broken_count = stats.get('broken', 0) %}
+                    <tr>
+                        <td>
+                            <a href="#" onclick="showChannel('{{ ch }}'); return false;" class="channel-name" style="text-decoration:none;">
+                                {{ ch }}
+                            </a>
+                        </td>
+                        <td>
+                            {% if checked > 0 %}
+                                <span class="badge badge-blue">{{ checked }} files</span>
+                            {% else %}
+                                <span class="text-dimmer">Not scanned</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if broken_count > 0 %}
+                                <span class="badge badge-orange">{{ broken_count }} broken</span>
+                            {% elif checked > 0 %}
+                                <span class="badge badge-green">✅ Healthy</span>
+                            {% else %}
+                                <span class="text-dimmer">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-primary" onclick="startScan('{{ ch }}', 'full')" title="Full decode — reads every frame">
+                                    🩺 Full Scan
+                                </button>
+                                <button class="btn btn-sm btn-blue" onclick="startScan('{{ ch }}', 'quick')" title="Quick container check">
+                                    ⚡ Quick
+                                </button>
+                                {% if broken_count > 0 %}
+                                <button class="btn btn-sm btn-orange" onclick="fixChannel('{{ ch }}')" title="Re-download broken files">
+                                    🔧 Fix {{ broken_count }}
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Channel Detail Panel -->
+<div id="hc-detail" class="card" style="display:none;">
+    <div class="card-header">
+        <span id="hc-detail-title">Channel Details</span>
+        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('hc-detail').style.display='none'">✕ Close</button>
+    </div>
+    <div style="padding:16px 20px;">
+        <div class="stat-grid">
+            <div class="stat-card" style="padding:14px;">
+                <div class="stat-content">
+                    <div class="stat-value" id="hc-d-checked" style="font-size:22px;">0</div>
+                    <div class="stat-label">Checked</div>
+                </div>
+            </div>
+            <div class="stat-card" style="padding:14px;">
+                <div class="stat-content">
+                    <div class="stat-value" id="hc-d-healthy" style="font-size:22px; color:var(--green);">0</div>
+                    <div class="stat-label">Healthy</div>
+                </div>
+            </div>
+            <div class="stat-card" style="padding:14px;">
+                <div class="stat-content">
+                    <div class="stat-value" id="hc-d-broken" style="font-size:22px; color:var(--red);">0</div>
+                    <div class="stat-label">Broken</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="hc-broken-section" style="display:none;">
+        <div style="padding:0 20px 8px; font-weight:600; font-size:14px; color:var(--red);">❌ Broken Files</div>
+        <div class="table-wrap" style="padding:0 20px 16px;">
+            <table>
+                <thead><tr><th>File</th><th>Size</th><th>Error</th><th>Action</th></tr></thead>
+                <tbody id="hc-broken-table"></tbody>
+            </table>
+        </div>
+    </div>
+    <div id="hc-healthy-section" style="padding:0 20px 16px; display:none;">
+        <details>
+            <summary style="cursor:pointer; font-size:13px; color:var(--text-dim);">Show healthy files</summary>
+            <div class="table-wrap" style="margin-top:8px;">
+                <table>
+                    <thead><tr><th>File</th><th>Size</th><th>Checked</th></tr></thead>
+                    <tbody id="hc-healthy-table"></tbody>
+                </table>
+            </div>
+        </details>
+    </div>
+</div>
+
+<!-- Info card -->
+<div id="hc-info" class="card" style="margin-top:16px;">
+    <div class="card-body" style="text-align:center; padding:32px;">
+        <div style="font-size:36px; margin-bottom:12px;">🩺</div>
+        <p class="text-dim" style="max-width:500px; margin:0 auto; line-height:1.6; font-size:13px;">
+            Scans video files using ffmpeg to detect corruption or truncation.<br>
+            <strong>Results are saved per-file</strong> — stop anytime, pick up where you left off.<br>
+            Runs at lowest CPU priority so streaming isn't affected.
+        </p>
+    </div>
+</div>
+
+<script>
+var pollTimer = null;
+var logTimer = null;
+var currentChannel = '';
+
+function startScan(channel, mode) {
+    fetch('/api/healthcheck/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: channel, mode: mode, throttle: 1 })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) { alert(data.error); return; }
+        currentChannel = channel;
+        showLivePanel(channel);
+        startPolling();
+    });
+}
+
+function cancelScan() {
+    fetch('/api/healthcheck/cancel', { method: 'POST' })
+    .then(function() { stopPolling(); });
+}
+
+function showLivePanel(channel) {
+    document.getElementById('hc-live').style.display = '';
+    document.getElementById('hc-live-title').textContent = '🔍 Scanning: ' + channel;
+    document.getElementById('hc-cancel-btn').style.display = '';
+    document.getElementById('hc-info').style.display = 'none';
+    // Reset
+    document.getElementById('hc-cur').textContent = '0';
+    document.getElementById('hc-tot').textContent = '...';
+    document.getElementById('hc-h').textContent = '0';
+    document.getElementById('hc-b').textContent = '0';
+    document.getElementById('hc-skip').textContent = '0';
+    document.getElementById('hc-bar').style.width = '0%';
+    document.getElementById('hc-bar-text').textContent = '';
+    document.getElementById('hc-live-pct').textContent = '';
+    document.getElementById('hc-current-file').textContent = 'Starting...';
+}
+
+function startPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(pollProgress, 1500);
+    if (logTimer) clearInterval(logTimer);
+    logTimer = setInterval(refreshLog, 3000);
+    pollProgress();
+    refreshLog();
+}
+
+function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (logTimer) { clearInterval(logTimer); logTimer = null; }
+    document.getElementById('hc-cancel-btn').style.display = 'none';
+}
+
+function pollProgress() {
+    fetch('/api/healthcheck/progress')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (!data || data.status === 'none') return;
+
+        var cur = data.current || 0;
+        var tot = data.total || 0;
+        var pct = data.pct || 0;
+
+        document.getElementById('hc-cur').textContent = cur;
+        document.getElementById('hc-tot').textContent = tot;
+        document.getElementById('hc-h').textContent = data.healthy || 0;
+        document.getElementById('hc-b').textContent = data.broken || 0;
+        document.getElementById('hc-skip').textContent = data.already_checked || 0;
+        document.getElementById('hc-bar').style.width = pct + '%';
+        document.getElementById('hc-bar-text').textContent = cur + ' / ' + tot;
+        document.getElementById('hc-live-pct').textContent = pct + '%';
+        document.getElementById('hc-current-file').textContent = data.current_file || '';
+
+        // Update title with channel name
+        if (data.channel) {
+            document.getElementById('hc-live-title').textContent = '🔍 Scanning: ' + data.channel;
+        }
+
+        // Color the broken count red if > 0
+        if ((data.broken || 0) > 0) {
+            document.getElementById('hc-b').style.color = 'var(--red)';
+        }
+
+        if (data.status === 'done' || data.status === 'complete') {
+            stopPolling();
+            document.getElementById('hc-live-title').textContent = '✅ Scan Complete: ' + (data.channel || currentChannel);
+            document.getElementById('hc-current-file').textContent = (data.broken || 0) > 0
+                ? (data.broken) + ' broken file(s) found — click the channel to see details'
+                : 'All files healthy!';
+            document.getElementById('hc-bar').style.background = 'var(--green)';
+            refreshLog();
+            setTimeout(function() { location.reload(); }, 5000);
+        } else if (data.status === 'cancelled') {
+            stopPolling();
+            document.getElementById('hc-live-title').textContent = '🛑 Scan Cancelled';
+            document.getElementById('hc-current-file').textContent = 'Progress saved — resume anytime.';
+            document.getElementById('hc-bar').style.background = 'var(--orange)';
+        } else if (data.status === 'error') {
+            stopPolling();
+            document.getElementById('hc-live-title').textContent = '❌ Scan Error';
+            document.getElementById('hc-current-file').textContent = data.current_file || 'Check the log below for details.';
+            document.getElementById('hc-bar').style.background = 'var(--red)';
+            refreshLog();
+        }
+    });
+}
+
+function refreshLog() {
+    fetch('/api/healthcheck/log?lines=50')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var el = document.getElementById('hc-log-output');
+        if (el) {
+            el.textContent = data.log || 'No output yet...';
+            el.scrollTop = el.scrollHeight;
+        }
+    })
+    .catch(function() {});
+}
+
+function showChannel(channel) {
+    currentChannel = channel;
+    document.getElementById('hc-detail').style.display = '';
+    document.getElementById('hc-detail-title').textContent = '🩺 ' + channel;
+
+    fetch('/api/healthcheck/channel/' + encodeURIComponent(channel))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        document.getElementById('hc-d-checked').textContent = data.checked || 0;
+        document.getElementById('hc-d-healthy').textContent = data.healthy || 0;
+        document.getElementById('hc-d-broken').textContent = data.broken || 0;
+
+        var broken = (data.files || []).filter(function(f) { return f.status === 'broken'; });
+        var healthy = (data.files || []).filter(function(f) { return f.status === 'healthy'; });
+
+        var brokenSection = document.getElementById('hc-broken-section');
+        var brokenTable = document.getElementById('hc-broken-table');
+        brokenTable.innerHTML = '';
+        if (broken.length > 0) {
+            brokenSection.style.display = '';
+            broken.forEach(function(f) {
+                var fname = (f.rel_path || '').split('/').slice(1).join('/');
+                if (fname.length > 70) fname = fname.substring(0, 67) + '...';
+                var tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td title="' + (f.rel_path || '').replace(/"/g, '&quot;') + '">' + fname + '</td>' +
+                    '<td class="nowrap">' + (f.size_mb || 0) + ' MB</td>' +
+                    '<td class="text-dim text-sm" style="max-width:300px;">' + ((f.error || 'Unknown').substring(0, 150)) + '</td>' +
+                    '<td>' + (f.video_id ? '<button class="btn btn-sm btn-orange" onclick="fixOne(\'' + f.video_id + '\',\'' + channel + '\')">🔧 Fix</button>' : '<span class="text-dimmer">No ID</span>') + '</td>';
+                brokenTable.appendChild(tr);
+            });
+        } else {
+            brokenSection.style.display = 'none';
+        }
+
+        var healthySection = document.getElementById('hc-healthy-section');
+        var healthyTable = document.getElementById('hc-healthy-table');
+        healthyTable.innerHTML = '';
+        if (healthy.length > 0) {
+            healthySection.style.display = '';
+            healthy.forEach(function(f) {
+                var fname = (f.rel_path || '').split('/').slice(1).join('/');
+                if (fname.length > 80) fname = fname.substring(0, 77) + '...';
+                var tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td>' + fname + '</td>' +
+                    '<td class="nowrap">' + (f.size_mb || 0) + ' MB</td>' +
+                    '<td class="text-dim text-sm">' + (f.checked || '') + '</td>';
+                healthyTable.appendChild(tr);
+            });
+        } else {
+            healthySection.style.display = 'none';
+        }
+
+        document.getElementById('hc-detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+}
+
+function fixChannel(channel) {
+    if (!confirm('Re-download all broken files in ' + channel + '?')) return;
+    fetch('/api/healthcheck/fix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: channel })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var msg = 'Queued ' + (data.queued || 0) + ' files for re-download.';
+        if (typeof showToastGlobal === 'function') showToastGlobal(msg);
+        else alert(msg);
+        setTimeout(function() { location.reload(); }, 1000);
+    });
+}
+
+function fixOne(videoId, channel) {
+    fetch('/api/healthcheck/fix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_id: videoId, channel: channel })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (typeof showToastGlobal === 'function') showToastGlobal('Queued: ' + videoId);
+        if (channel) showChannel(channel);
+    });
+}
+
+// On page load: check if a scan is running
+fetch('/api/healthcheck/progress')
+.then(function(r) { return r.json(); })
+.then(function(data) {
+    if (data && data.status === 'scanning') {
+        currentChannel = data.channel || '';
+        showLivePanel(currentChannel);
+        startPolling();
+    }
+});
+</script>
+
+{% endblock %}

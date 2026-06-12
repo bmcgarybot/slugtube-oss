@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     curl \
     unzip \
+    tzdata \
     && pip install --no-cache-dir --pre "yt-dlp[default]" flask mutagen curl_cffi \
     && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
     && apt-get clean && rm -rf /var/lib/apt/lists/*

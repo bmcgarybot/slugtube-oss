@@ -38,10 +38,30 @@ FAST_CRON="${FAST_CRON:-0 */6 * * *}"
 FULL_CRON="${FULL_CRON:-0 3 * * 0}"
 UPDATE_CRON="${UPDATE_CRON:-0 1 * * *}"
 
+# Read timezone from config (UI setting) → env var → UTC
+CONFIG_TZ=""
+if [ -f /config/slugtube-config.json ]; then
+    CONFIG_TZ=$(python3 -c "import json; d=json.load(open('/config/slugtube-config.json')); print(d.get('timezone',''))" 2>/dev/null || true)
+fi
+if [ -n "$CONFIG_TZ" ] && [ -f "/usr/share/zoneinfo/$CONFIG_TZ" ]; then
+    TZ="$CONFIG_TZ"
+    export TZ
+fi
+
+# Set system timezone from TZ env var (so cron, date, and logs all agree)
+if [ -n "$TZ" ] && [ -f "/usr/share/zoneinfo/$TZ" ]; then
+    ln -sf "/usr/share/zoneinfo/$TZ" /etc/localtime
+    echo "$TZ" > /etc/timezone
+    echo "🕐 Timezone set to $TZ ($(date +%Z))"
+else
+    echo "⚠️  TZ not set or invalid — using UTC. Set TZ in docker-compose.yml (e.g. TZ=America/Phoenix)"
+fi
+
 # Use /etc/cron.d/ format (includes user field) — do NOT load with crontab
 cat > /etc/cron.d/slugtube << EOF
 SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
+CRON_TZ=${TZ:-UTC}
 
 ${FAST_CRON} root /app/scripts/download.sh --fast >> /config/logs/slugtube.log 2>&1
 ${FULL_CRON} root /app/scripts/download.sh --full >> /config/logs/slugtube.log 2>&1

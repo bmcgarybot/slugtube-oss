@@ -76,6 +76,32 @@ DEFAULT_CONFIG = {
     "skip_shorts": True,
     "shorts_max_duration": 60,
     "sleep_interval": 3,
+    # Schedule config (overrides env vars when set)
+    "fast_cron": None,    # None = use env var default
+    "full_cron": None,
+    "update_cron": None,
+    "fast_enabled": True,
+    "full_enabled": True,
+    "update_enabled": True,
+}
+
+# ── Human-friendly schedule presets ──
+SCHEDULE_PRESETS = {
+    "every_2h":    {"cron": "0 */2 * * *",   "label": "Every 2 hours"},
+    "every_4h":    {"cron": "0 */4 * * *",   "label": "Every 4 hours"},
+    "every_6h":    {"cron": "0 */6 * * *",   "label": "Every 6 hours"},
+    "every_8h":    {"cron": "0 */8 * * *",   "label": "Every 8 hours"},
+    "every_12h":   {"cron": "0 */12 * * *",  "label": "Every 12 hours"},
+    "daily_midnight": {"cron": "0 0 * * *",     "label": "Daily at 12:00 AM"},
+    "daily_1am":   {"cron": "0 1 * * *",     "label": "Daily at 1:00 AM"},
+    "daily_3am":   {"cron": "0 3 * * *",     "label": "Daily at 3:00 AM"},
+    "daily_6am":   {"cron": "0 6 * * *",     "label": "Daily at 6:00 AM"},
+    "daily_noon":  {"cron": "0 12 * * *",    "label": "Daily at 12:00 PM"},
+    "weekly_sun":  {"cron": "0 3 * * 0",     "label": "Weekly — Sunday 3:00 AM"},
+    "weekly_mon":  {"cron": "0 3 * * 1",     "label": "Weekly — Monday 3:00 AM"},
+    "weekly_sat":  {"cron": "0 3 * * 6",     "label": "Weekly — Saturday 3:00 AM"},
+    "biweekly":    {"cron": "0 3 1,15 * *",  "label": "Twice a month (1st & 15th)"},
+    "monthly":     {"cron": "0 3 1 * *",     "label": "Monthly — 1st at 3:00 AM"},
 }
 
 # ── Helpers ──
@@ -126,6 +152,130 @@ def load_config():
 def save_config(cfg):
     with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f, indent=2)
+
+
+def get_timezone():
+    """Get current timezone from config > env var > UTC."""
+    config = load_config()
+    tz = config.get("timezone")
+    if tz:
+        return tz
+    return os.environ.get("TZ", "UTC")
+
+
+def apply_timezone(tz_name):
+    """Apply timezone to the running system: /etc/localtime, env var, Python."""
+    import time as _time
+    zoneinfo_path = f"/usr/share/zoneinfo/{tz_name}"
+    if os.path.isfile(zoneinfo_path):
+        try:
+            os.remove("/etc/localtime")
+        except OSError:
+            pass
+        os.symlink(zoneinfo_path, "/etc/localtime")
+        with open("/etc/timezone", "w") as f:
+            f.write(tz_name + "\n")
+        os.environ["TZ"] = tz_name
+        _time.tzset()
+        return True
+    return False
+
+
+def get_timezone_list():
+    """Get sorted list of valid timezone names from the system."""
+    tz_list = []
+    base = "/usr/share/zoneinfo"
+    valid_prefixes = ('Africa', 'America', 'Antarctica', 'Arctic', 'Asia',
+                      'Atlantic', 'Australia', 'Europe', 'Indian', 'Pacific', 'US')
+    if os.path.isdir(base):
+        for root, dirs, files in os.walk(base):
+            rel = os.path.relpath(root, base)
+            if rel == '.':
+                continue
+            top = rel.split('/')[0]
+            if top not in valid_prefixes:
+                continue
+            for fname in files:
+                if fname.startswith('.') or '+' in fname:
+                    continue
+                tz_path = os.path.join(rel, fname)
+                tz_list.append(tz_path)
+    # Fallback: use Python's zoneinfo module if filesystem walk found nothing
+    if not tz_list:
+        try:
+            from zoneinfo import available_timezones
+            for tz in available_timezones():
+                parts = tz.split('/')
+                if len(parts) >= 2 and parts[0] in valid_prefixes:
+                    tz_list.append(tz)
+        except ImportError:
+            # Absolute last resort — hardcoded common US timezones
+            tz_list = [
+                "America/New_York", "America/Chicago", "America/Denver",
+                "America/Los_Angeles", "America/Phoenix", "America/Anchorage",
+                "Pacific/Honolulu", "US/Eastern", "US/Central", "US/Mountain",
+                "US/Pacific", "US/Arizona", "US/Hawaii", "UTC",
+            ]
+    tz_list.sort()
+    return tz_list
+
+
+def get_schedule(config, key, env_default):
+    """Get cron expression: config override > env var > hardcoded default."""
+    val = config.get(key)
+    if val:
+        return val
+    return os.environ.get(key.upper().replace("_cron", "_CRON").replace("fast_cron", "FAST_CRON").replace("full_cron", "FULL_CRON").replace("update_cron", "UPDATE_CRON"), env_default)
+
+
+def rebuild_cron(config=None):
+    """Regenerate /etc/cron.d/slugtube from config. Called after schedule changes."""
+    if config is None:
+        config = load_config()
+
+    fast = get_schedule(config, "fast_cron", "0 */6 * * *")
+    full = get_schedule(config, "full_cron", "0 3 * * 0")
+    update = get_schedule(config, "update_cron", "0 1 * * *")
+
+    fast_enabled = config.get("fast_enabled", True)
+    full_enabled = config.get("full_enabled", True)
+    update_enabled = config.get("update_enabled", True)
+
+    tz = get_timezone()
+
+    lines = [
+        "SHELL=/bin/bash",
+        "PATH=/usr/local/bin:/usr/bin:/bin",
+        f"CRON_TZ={tz}",
+        "",
+    ]
+
+    if fast_enabled:
+        lines.append(f"{fast} root /app/scripts/download.sh --fast >> /config/logs/slugtube.log 2>&1")
+    else:
+        lines.append(f"# DISABLED: {fast} root /app/scripts/download.sh --fast >> /config/logs/slugtube.log 2>&1")
+
+    if full_enabled:
+        lines.append(f"{full} root /app/scripts/download.sh --full >> /config/logs/slugtube.log 2>&1")
+    else:
+        lines.append(f"# DISABLED: {full} root /app/scripts/download.sh --full >> /config/logs/slugtube.log 2>&1")
+
+    if update_enabled:
+        lines.append(f"{update} root /app/scripts/update-ytdlp.sh >> /config/logs/slugtube.log 2>&1")
+    else:
+        lines.append(f"# DISABLED: {update} root /app/scripts/update-ytdlp.sh >> /config/logs/slugtube.log 2>&1")
+
+    lines.append("")  # trailing newline required by cron
+
+    cron_path = "/etc/cron.d/slugtube"
+    try:
+        with open(cron_path, "w") as f:
+            f.write("\n".join(lines))
+        os.chmod(cron_path, 0o644)
+        return True
+    except Exception as e:
+        print(f"⚠️ Failed to write cron: {e}")
+        return False
 
 
 def load_state():
@@ -233,9 +383,53 @@ def _scan_channel_stats():
         for channel_dir in sorted(shows.iterdir()):
             if not channel_dir.is_dir():
                 continue
-            # Skip TubeArchivist metadata dirs (e.g. "Channel#playlists") but NOT
-            # regular channel folders that happen to contain '#' (yt-dlp creates these)
+            # Skip TubeArchivist metadata dirs (e.g. "Channel#playlists")
             if channel_dir.name.endswith('#playlists'):
+                continue
+            # Auto-merge Channel# folders into base Channel folder
+            if channel_dir.name.endswith('#'):
+                import shutil
+                base_name = channel_dir.name.rstrip('#')
+                hash_name = channel_dir.name
+                base_path = channel_dir.parent / base_name
+                if base_path.is_dir():
+                    # Both exist: merge files from # into base, then delete #
+                    for root, dirs, files in os.walk(str(channel_dir)):
+                        rel_root = os.path.relpath(root, str(channel_dir))
+                        dest_root = base_path / rel_root
+                        for f in files:
+                            src = Path(root) / f
+                            dest = dest_root / f
+                            if not dest.exists():
+                                dest_root.mkdir(parents=True, exist_ok=True)
+                                shutil.move(str(src), str(dest))
+                    shutil.rmtree(str(channel_dir), ignore_errors=True)
+                    app.logger.info(f"Auto-merged and removed: {hash_name} → {base_name}")
+                else:
+                    # Only # exists: just rename it
+                    try:
+                        channel_dir.rename(base_path)
+                        app.logger.info(f"Auto-renamed: {hash_name} → {base_name}")
+                    except Exception as e:
+                        app.logger.warning(f"Failed to rename {hash_name}: {e}")
+                        continue
+                # DB cleanup: reassign videos and remove ghost channel entry
+                try:
+                    from indexer import get_db as idx_get_db
+                    conn = idx_get_db()
+                    conn.execute("UPDATE videos SET channel_name = ? WHERE channel_name = ?", (base_name, hash_name))
+                    conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?", (base_name, hash_name))
+                    conn.execute("UPDATE channels SET name = ?, path = ? WHERE name = ?",
+                                 (base_name, str(base_path), hash_name))
+                    # If base channel already existed in DB, remove the duplicate
+                    rows = conn.execute("SELECT COUNT(*) FROM channels WHERE name = ?", (base_name,)).fetchone()[0]
+                    if rows > 1:
+                        conn.execute("DELETE FROM channels WHERE name = ? AND rowid NOT IN (SELECT MIN(rowid) FROM channels WHERE name = ?)", (base_name, base_name))
+                    conn.commit()
+                    conn.close()
+                    app.logger.info(f"DB cleanup: {hash_name} → {base_name}")
+                except Exception as e:
+                    app.logger.warning(f"DB cleanup failed for {hash_name}: {e}")
                 continue
             video_count = 0
             total_size = 0
@@ -711,7 +905,7 @@ def api_self_update():
     import io
     import shutil
 
-    REPO = "bmcgarybot/slugtube-oss"
+    REPO = "bmcgarybot/slugtube"
     BRANCH = "main"
     TARBALL_URL = f"https://api.github.com/repos/{REPO}/tarball/{BRANCH}"
     LOCAL_CHANNELS = "/config/channels.txt"
@@ -940,6 +1134,9 @@ def channels():
     # Add library-only channels (on disk but not subscribed)
     for ch in idx_channels:
         key = ch['name'].lower().replace(' ', '')
+        # Skip # channel entries — these are yt-dlp artifacts that should be merged
+        if ch['name'].endswith('#'):
+            continue
         if key not in seen:
             # Check URL match too
             matched = False
@@ -1060,17 +1257,26 @@ def save_cookies():
 
 @app.route("/settings")
 def settings():
-    fast_cron = os.environ.get("FAST_CRON", "0 */6 * * *")
-    full_cron = os.environ.get("FULL_CRON", "0 3 * * 0")
-    update_cron = os.environ.get("UPDATE_CRON", "0 1 * * *")
-    state = load_state()
     config = load_config()
+    fast_cron = get_schedule(config, "fast_cron", "0 */6 * * *")
+    full_cron = get_schedule(config, "full_cron", "0 3 * * 0")
+    update_cron = get_schedule(config, "update_cron", "0 1 * * *")
+    state = load_state()
     save_status = request.args.get("saved", None)
+    tz = get_timezone()
+    current_time = datetime.now().strftime("%I:%M %p, %b %d")
     return render_template("settings.html",
         page="settings",
         fast_cron=fast_cron,
         full_cron=full_cron,
         update_cron=update_cron,
+        fast_enabled=config.get("fast_enabled", True),
+        full_enabled=config.get("full_enabled", True),
+        update_enabled=config.get("update_enabled", True),
+        schedule_presets=SCHEDULE_PRESETS,
+        timezone=tz,
+        timezones=get_timezone_list(),
+        current_time=current_time,
         ytdlp_version=get_ytdlp_version(),
         archive_count=count_lines(ARCHIVE_FILE),
         state=state,
@@ -1095,6 +1301,62 @@ def save_settings():
     config["skip_shorts"] = request.form.get("skip_shorts") == "on"
     save_config(config)
     return redirect("/settings?saved=success")
+
+
+@app.route("/api/schedule/save", methods=["POST"])
+def save_schedule():
+    """Save schedule settings and rebuild cron."""
+    data = request.get_json() or {}
+    config = load_config()
+
+    # Update timezone if provided
+    tz_changed = False
+    if "timezone" in data and data["timezone"]:
+        new_tz = data["timezone"]
+        old_tz = get_timezone()
+        if new_tz != old_tz:
+            # Validate timezone exists
+            if os.path.isfile(f"/usr/share/zoneinfo/{new_tz}"):
+                config["timezone"] = new_tz
+                apply_timezone(new_tz)
+                tz_changed = True
+                print(f"🕐 Timezone changed: {old_tz} → {new_tz}")
+            else:
+                return jsonify({"status": "error", "message": f"Invalid timezone: {new_tz}"}), 400
+
+    # Update cron expressions
+    if "fast_cron" in data:
+        config["fast_cron"] = data["fast_cron"]
+    if "full_cron" in data:
+        config["full_cron"] = data["full_cron"]
+    if "update_cron" in data:
+        config["update_cron"] = data["update_cron"]
+
+    # Update enabled/disabled
+    if "fast_enabled" in data:
+        config["fast_enabled"] = bool(data["fast_enabled"])
+    if "full_enabled" in data:
+        config["full_enabled"] = bool(data["full_enabled"])
+    if "update_enabled" in data:
+        config["update_enabled"] = bool(data["update_enabled"])
+
+    save_config(config)
+    success = rebuild_cron(config)
+
+    current_time = datetime.now().strftime("%I:%M %p, %b %d")
+
+    return jsonify({
+        "status": "ok" if success else "error",
+        "message": "Schedules updated!" if success else "Failed to write cron file",
+        "fast_cron": get_schedule(config, "fast_cron", "0 */6 * * *"),
+        "full_cron": get_schedule(config, "full_cron", "0 3 * * 0"),
+        "update_cron": get_schedule(config, "update_cron", "0 1 * * *"),
+        "fast_enabled": config.get("fast_enabled", True),
+        "full_enabled": config.get("full_enabled", True),
+        "update_enabled": config.get("update_enabled", True),
+        "timezone": get_timezone(),
+        "current_time": current_time,
+    })
 
 
 @app.route("/add", methods=["POST"])
@@ -1470,6 +1732,78 @@ def api_refresh_stats():
         thread.start()
         return jsonify({"status": "started"})
     return jsonify({"status": "already scanning"})
+
+
+# ── Archive Audit endpoints ──
+try:
+    from archive_audit import register_audit_routes
+    register_audit_routes(app, ARCHIVE_FILE, "/shows")
+except ImportError:
+    pass  # archive_audit.py not present, skip
+
+
+@app.route("/api/sync-archive", methods=["POST"])
+def api_sync_archive():
+    """Backfill archive with YouTube IDs from all video files on disk.
+    Scans the shows directory for [VIDEO_ID] in filenames and adds any
+    missing IDs to the archive file. Non-destructive — only appends."""
+    import re
+    shows_dir = "/shows"
+    archive_path = ARCHIVE_FILE
+
+    # Load existing archive IDs
+    existing_ids = set()
+    try:
+        with open(archive_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    # Archive format is "youtube VIDEO_ID"
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        existing_ids.add(parts[1])
+                    else:
+                        existing_ids.add(parts[0])
+    except FileNotFoundError:
+        pass
+
+    # Scan all video files for YouTube IDs in filenames
+    # Pattern: [VIDEO_ID] where VIDEO_ID is typically 11 chars
+    yt_id_pattern = re.compile(r'\[([a-zA-Z0-9_-]{8,15})\]\.[a-zA-Z0-9]+$')
+    found_ids = set()
+    scanned = 0
+
+    for root, dirs, files in os.walk(shows_dir):
+        for fname in files:
+            # Only check video files
+            if fname.endswith(('.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v')):
+                scanned += 1
+                match = yt_id_pattern.search(fname)
+                if match:
+                    found_ids.add(match.group(1))
+
+    # Find IDs on disk but not in archive
+    missing_ids = found_ids - existing_ids
+    added = 0
+
+    if missing_ids:
+        os.makedirs(os.path.dirname(archive_path), exist_ok=True)
+        with open(archive_path, "a") as f:
+            for vid_id in sorted(missing_ids):
+                f.write(f"youtube {vid_id}\n")
+                added += 1
+
+    new_total = count_lines(archive_path)
+
+    return jsonify({
+        "status": "ok",
+        "scanned_files": scanned,
+        "ids_on_disk": len(found_ids),
+        "ids_in_archive_before": len(existing_ids),
+        "ids_missing": len(missing_ids),
+        "ids_added": added,
+        "archive_total": new_total,
+    })
 
 
 # ── Library / Player Routes ──────────────────────────────────
@@ -2064,6 +2398,55 @@ def api_reindex():
     if request.referrer:
         return redirect(request.referrer)
     return jsonify({"status": "started"})
+
+
+@app.route("/api/merge-hash-folders", methods=["POST"])
+def api_merge_hash_folders():
+    """One-click: merge all ChannelName# folders into ChannelName."""
+    import shutil
+    shows = Path(SHOWS_DIR)
+    merged = 0
+    errors = []
+    for hdir in sorted(shows.iterdir()):
+        if not hdir.is_dir() or not hdir.name.endswith('#'):
+            continue
+        if hdir.name.endswith('#playlists'):
+            continue
+        base_name = hdir.name.rstrip('#')
+        base_path = hdir.parent / base_name
+        try:
+            if base_path.is_dir():
+                for root, dirs, files in os.walk(str(hdir)):
+                    rel_root = os.path.relpath(root, str(hdir))
+                    dest_root = base_path / rel_root
+                    for f in files:
+                        src = Path(root) / f
+                        dest = dest_root / f
+                        if not dest.exists():
+                            dest_root.mkdir(parents=True, exist_ok=True)
+                            shutil.move(str(src), str(dest))
+                shutil.rmtree(str(hdir), ignore_errors=True)
+            else:
+                hdir.rename(base_path)
+            # DB cleanup
+            try:
+                from indexer import get_db as idx_get_db
+                conn = idx_get_db()
+                conn.execute("UPDATE videos SET channel_name = ? WHERE channel_name = ?", (base_name, hdir.name))
+                conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?", (base_name, hdir.name))
+                conn.execute("UPDATE channels SET name = ?, path = ? WHERE name = ?",
+                             (base_name, str(base_path), hdir.name))
+                rows = conn.execute("SELECT COUNT(*) FROM channels WHERE name = ?", (base_name,)).fetchone()[0]
+                if rows > 1:
+                    conn.execute("DELETE FROM channels WHERE name = ? AND rowid NOT IN (SELECT MIN(rowid) FROM channels WHERE name = ?)", (base_name, base_name))
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
+            merged += 1
+        except Exception as e:
+            errors.append(f"{hdir.name}: {e}")
+    return jsonify({"merged": merged, "errors": errors})
 
 
 @app.route("/api/cleanup-ghosts", methods=["POST"])
@@ -2994,6 +3377,386 @@ def import_confirm():
         "added": added,
         "skipped": skipped,
     })
+
+
+# ── Health Check (per-channel, on-demand only) ──
+
+HEALTHCHECK_DIR = "/config/healthcheck"
+HEALTHCHECK_DB = os.path.join(HEALTHCHECK_DIR, "checked.json")
+_healthcheck_state = {
+    "status": "idle",  # idle, scanning, done, cancelled, error
+    "channel": "",
+    "current": 0,
+    "total": 0,
+    "healthy": 0,
+    "broken": 0,
+    "already_checked": 0,
+    "total_in_channel": 0,
+    "current_file": "",
+    "mode": "full",
+    "log": [],
+}
+_healthcheck_thread = None
+_healthcheck_cancel = False
+
+
+def _load_hc_db():
+    """Load the persistent per-file health check database."""
+    if not os.path.isfile(HEALTHCHECK_DB):
+        return {}
+    try:
+        with open(HEALTHCHECK_DB) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_hc_db(db):
+    """Save the persistent per-file health check database."""
+    os.makedirs(HEALTHCHECK_DIR, exist_ok=True)
+    with open(HEALTHCHECK_DB, "w") as f:
+        json.dump(db, f)
+
+
+def _run_healthcheck(channel, mode, throttle):
+    """Background thread: scan a channel's video files with ffmpeg."""
+    global _healthcheck_state, _healthcheck_cancel
+    import time as _time
+
+    shows_dir = "/shows"
+    scan_dir = os.path.join(shows_dir, channel)
+
+    state = _healthcheck_state
+    state["log"] = []
+    state["status"] = "scanning"
+    state["channel"] = channel
+    state["mode"] = mode
+    state["current"] = 0
+    state["healthy"] = 0
+    state["broken"] = 0
+    state["current_file"] = "Collecting files..."
+
+    def log(msg):
+        state["log"].append(msg)
+        # Keep only last 200 lines
+        if len(state["log"]) > 200:
+            state["log"] = state["log"][-200:]
+
+    if not os.path.isdir(scan_dir):
+        state["status"] = "error"
+        state["current_file"] = f"Channel folder not found: {scan_dir}"
+        log(f"❌ {state['current_file']}")
+        return
+
+    # Find video files
+    import glob
+    extensions = ("*.mp4", "*.mkv", "*.webm", "*.avi")
+    all_files = []
+    for ext in extensions:
+        all_files.extend(glob.glob(os.path.join(scan_dir, "**", ext), recursive=True))
+    all_files.sort()
+    state["total_in_channel"] = len(all_files)
+
+    log(f"📊 Found {len(all_files)} video files in '{channel}'")
+
+    # Filter already-checked files
+    db = _load_hc_db()
+    files_to_scan = []
+    already_checked = 0
+
+    for filepath in all_files:
+        try:
+            file_mtime = os.path.getmtime(filepath)
+        except Exception:
+            file_mtime = 0
+
+        entry = db.get(filepath)
+        if entry and entry.get("checked_mtime", 0) >= file_mtime:
+            already_checked += 1
+        else:
+            files_to_scan.append(filepath)
+
+    state["already_checked"] = already_checked
+    state["total"] = len(files_to_scan)
+
+    if len(files_to_scan) == 0:
+        state["status"] = "done"
+        state["current_file"] = "All files already checked!"
+        log(f"✅ All {len(all_files)} videos already checked. Nothing to scan.")
+        return
+
+    log(f"🔍 {len(files_to_scan)} new files to scan ({already_checked} already checked)")
+    log(f"   Mode: {'Quick (container only)' if mode == 'quick' else 'Full (decode every frame)'}")
+    log("")
+
+    import re
+    id_pattern = re.compile(r'\[([a-zA-Z0-9_-]{11})\]\.[^.]+$')
+
+    for idx, filepath in enumerate(files_to_scan, 1):
+        if _healthcheck_cancel:
+            state["status"] = "cancelled"
+            state["current_file"] = "Cancelled — progress saved."
+            log(f"\n🛑 Cancelled at {idx}/{len(files_to_scan)}")
+            _healthcheck_cancel = False
+            return
+
+        filename = os.path.basename(filepath)
+        rel_path = os.path.relpath(filepath, shows_dir)
+        display = filename[:57] + "..." if len(filename) > 60 else filename
+
+        state["current"] = idx
+        state["current_file"] = display
+
+        # Get file info
+        try:
+            file_size = os.path.getsize(filepath)
+            file_mtime = os.path.getmtime(filepath)
+        except Exception:
+            file_size = 0
+            file_mtime = 0
+
+        size_mb = round(file_size / 1048576, 1)
+
+        # Extract video ID
+        video_id = ""
+        m = id_pattern.search(filename)
+        if m:
+            video_id = m.group(1)
+
+        # Run ffmpeg/ffprobe at low priority
+        try:
+            if mode == "quick":
+                cmd = ["nice", "-n", "19", "ffprobe", "-v", "error", "-i", filepath]
+            else:
+                cmd = ["nice", "-n", "19", "ffmpeg", "-v", "error", "-i", filepath, "-f", "null", "-"]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+            error_output = result.stderr.strip()
+        except subprocess.TimeoutExpired:
+            error_output = "Timeout: file took too long to scan"
+        except Exception as e:
+            error_output = str(e)
+
+        if not error_output:
+            state["healthy"] += 1
+            status = "healthy"
+        else:
+            state["broken"] += 1
+            status = "broken"
+            error_short = error_output[:200]
+            log(f"❌ [{idx}/{len(files_to_scan)}] {rel_path} ({size_mb} MB)")
+            log(f"   Error: {error_short}")
+
+        # Save to persistent DB
+        db[filepath] = {
+            "status": status,
+            "checked": _time.strftime("%Y-%m-%d %H:%M:%S"),
+            "checked_mtime": file_mtime,
+            "size_mb": size_mb,
+            "video_id": video_id,
+            "channel": channel,
+            "rel_path": rel_path,
+            "error": error_output[:300] if status == "broken" else "",
+        }
+
+        # Save DB every 10 files (not every file — reduces disk writes)
+        if idx % 10 == 0 or idx == len(files_to_scan):
+            _save_hc_db(db)
+
+        # Progress log every 25 files
+        if idx % 25 == 0:
+            log(f"📊 Progress: {idx}/{len(files_to_scan)} — {state['healthy']} healthy, {state['broken']} broken")
+
+        # Throttle
+        if throttle > 0 and idx < len(files_to_scan):
+            _time.sleep(throttle)
+
+    # Final save
+    _save_hc_db(db)
+
+    state["status"] = "done"
+    state["current_file"] = f"Complete! {state['healthy']} healthy, {state['broken']} broken"
+    log("")
+    log("==========================================")
+    log(f" 🩺 Health Check Complete: {channel}")
+    log(f" ✅ Healthy:     {state['healthy']}")
+    log(f" ❌ Broken:      {state['broken']}")
+    log(f" ⏭️  Skipped:     {already_checked}")
+    log("==========================================")
+
+
+@app.route("/healthcheck")
+def healthcheck_page():
+    """Health check overview — shows per-channel status from persistent DB."""
+    shows_dir = "/shows"
+    channels = []
+    if os.path.isdir(shows_dir):
+        channels = sorted([
+            d for d in os.listdir(shows_dir)
+            if os.path.isdir(os.path.join(shows_dir, d)) and not d.startswith(".")
+        ])
+
+    # Load persistent DB to build per-channel stats
+    channel_stats = {}
+    db = _load_hc_db()
+    for path, entry in db.items():
+        ch = entry.get("channel", "")
+        if ch not in channel_stats:
+            channel_stats[ch] = {"healthy": 0, "broken": 0, "total": 0}
+        channel_stats[ch]["total"] += 1
+        if entry.get("status") == "healthy":
+            channel_stats[ch]["healthy"] += 1
+        else:
+            channel_stats[ch]["broken"] += 1
+
+    job = {"status": "idle"}
+    paused = os.path.isfile("/config/.paused")
+    return render_template("healthcheck.html", page="healthcheck", job=job, paused=paused,
+                           channels=channels, channel_stats=channel_stats)
+
+
+@app.route("/api/healthcheck/start", methods=["POST"])
+def api_healthcheck_start():
+    """Start a per-channel health check in a background thread."""
+    global _healthcheck_thread, _healthcheck_cancel
+
+    if _healthcheck_thread and _healthcheck_thread.is_alive():
+        return jsonify({"error": "Health check already running"}), 409
+
+    data = request.get_json() or {}
+    channel = data.get("channel", "")
+    mode = data.get("mode", "full")
+    throttle = int(data.get("throttle", 1))
+
+    if not channel:
+        return jsonify({"error": "Channel name is required"}), 400
+
+    _healthcheck_cancel = False
+    _healthcheck_thread = threading.Thread(
+        target=_run_healthcheck,
+        args=(channel, mode, throttle),
+        daemon=True
+    )
+    _healthcheck_thread.start()
+
+    return jsonify({"status": "started", "channel": channel})
+
+
+@app.route("/api/healthcheck/cancel", methods=["POST"])
+def api_healthcheck_cancel():
+    """Cancel a running health check."""
+    global _healthcheck_cancel
+    _healthcheck_cancel = True
+    return jsonify({"status": "cancelling"})
+
+
+@app.route("/api/healthcheck/progress")
+def api_healthcheck_progress():
+    """Get current scan progress from in-memory state."""
+    s = _healthcheck_state
+    total = s["total"] or 1
+    pct = round(s["current"] / total * 100, 1) if s["total"] > 0 else 0
+
+    return jsonify({
+        "status": s["status"],
+        "channel": s["channel"],
+        "current": s["current"],
+        "total": s["total"],
+        "healthy": s["healthy"],
+        "broken": s["broken"],
+        "already_checked": s["already_checked"],
+        "total_in_channel": s["total_in_channel"],
+        "pct": pct,
+        "current_file": s["current_file"],
+        "mode": s["mode"],
+    })
+
+
+@app.route("/api/healthcheck/log")
+def api_healthcheck_log():
+    """Get health check log lines."""
+    lines = int(request.args.get("lines", 100))
+    log_lines = _healthcheck_state.get("log", [])
+    tail = log_lines[-lines:] if len(log_lines) > lines else log_lines
+    return jsonify({"log": "\n".join(tail), "total_lines": len(log_lines)})
+
+
+@app.route("/api/healthcheck/channel/<path:channel_name>")
+def api_healthcheck_channel(channel_name):
+    """Get health check results for a specific channel."""
+    db = _load_hc_db()
+
+    files = []
+    healthy = 0
+    broken = 0
+    for path, entry in db.items():
+        if entry.get("channel") == channel_name:
+            files.append(entry)
+            if entry.get("status") == "healthy":
+                healthy += 1
+            else:
+                broken += 1
+
+    files.sort(key=lambda x: (0 if x.get("status") == "broken" else 1, x.get("rel_path", "")))
+
+    return jsonify({
+        "channel": channel_name,
+        "checked": len(files),
+        "healthy": healthy,
+        "broken": broken,
+        "files": files
+    })
+
+
+@app.route("/api/healthcheck/fix", methods=["POST"])
+def api_healthcheck_fix():
+    """Remove broken videos from archive so they get re-downloaded."""
+    data = request.get_json() or {}
+    single_id = data.get("video_id")
+    channel = data.get("channel")
+
+    db = _load_hc_db()
+
+    archive_file = "/config/archive/downloaded.txt"
+    queued = 0
+    paths_to_remove = []
+
+    for path, entry in db.items():
+        if entry.get("status") != "broken":
+            continue
+        if channel and entry.get("channel") != channel:
+            continue
+        vid = entry.get("video_id")
+        if not vid:
+            continue
+        if single_id and vid != single_id:
+            continue
+
+        if os.path.isfile(archive_file):
+            try:
+                with open(archive_file, "r") as af:
+                    lines = af.readlines()
+                with open(archive_file, "w") as af:
+                    for line in lines:
+                        if vid not in line:
+                            af.write(line)
+            except Exception:
+                pass
+
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
+        paths_to_remove.append(path)
+        queued += 1
+
+    for p in paths_to_remove:
+        db.pop(p, None)
+    _save_hc_db(db)
+
+    return jsonify({"status": "queued", "queued": queued})
 
 
 # ── Startup ──

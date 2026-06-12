@@ -1,11 +1,11 @@
 # ============================================================
-# SlugTube - Homemade PinchFlat (With Dashboard)
+# SlugTube - YouTube Archive Manager
 # ============================================================
 # Start:   docker compose up -d
 # Stop:    docker compose down
 # Logs:    docker compose logs -f
 # Web UI:  http://localhost:5000
-# Manual:  docker compose exec slugtube /app/scripts/download.sh --full
+# Update:  Run update.bat (git pull + restart)
 # ============================================================
 
 services:
@@ -16,21 +16,20 @@ services:
     ports:
       - "5000:5000"
     environment:
-      # Schedule: fast check every 6 hours, full index weekly (Sunday 3AM)
       - FAST_CRON=0 */6 * * *
       - FULL_CRON=0 3 * * 0
       - UPDATE_CRON=0 1 * * *
-      - TZ=America/Phoenix
+      - TZ=America/New_York          # Change to your timezone (e.g. America/Phoenix, Europe/London)
       - PUID=1000
       - PGID=1000
     volumes:
-      # Your media library (existing PinchFlat downloads)
-      - G:/Youtube/shows:/shows
+      # Your media library — change to your media path
+      - /path/to/your/media:/shows
       # SlugTube config, cookies, archive, logs, database
-      - C:/SlugTube:/config
-      # Live code mount — run update.bat to sync from C:\SlugTube-new
-      - C:/SlugTube/app/scripts:/app/scripts
-      - C:/SlugTube/app/web:/app/web
+      - ./data:/config
+      # Live code mount — code runs directly from repo
+      - ./scripts:/app/scripts
+      - ./web:/app/web
     logging:
       driver: json-file
       options:

@@ -180,32 +180,120 @@
 
     <!-- Schedule -->
     <div class="card">
-        <div class="card-header">Schedule</div>
+        <div class="card-header">
+            <span>Schedule</span>
+            <span class="text-dim text-sm" id="schedule-status"></span>
+        </div>
         <div class="card-body">
+
+            <!-- Fast Check -->
             <div class="setting-row">
-                <div>
-                    <div class="setting-label">Fast Check</div>
-                    <div class="setting-desc">Recent 50 videos per channel</div>
+                <div style="flex:1;">
+                    <div class="setting-label" style="display:flex; align-items:center; gap:8px;">
+                        <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" id="fast-enabled" class="form-checkbox"
+                                {% if fast_enabled %}checked{% endif %}
+                                onchange="saveSchedules()">
+                            Fast Check
+                        </label>
+                    </div>
+                    <div class="setting-desc">Scans last ~50 videos per channel for new uploads</div>
                 </div>
-                <div class="setting-value">{{ fast_cron }}</div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <select id="fast-preset" class="form-select" onchange="applyPreset('fast')" style="min-width:180px;">
+                        <option value="">Custom...</option>
+                        {% for key, preset in schedule_presets.items() %}
+                        <option value="{{ preset.cron }}" {% if fast_cron == preset.cron %}selected{% endif %}>{{ preset.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="text" id="fast-cron" value="{{ fast_cron }}" class="form-select"
+                        style="width:130px; font-family:monospace; font-size:12px;"
+                        onchange="customCron('fast')" placeholder="0 */6 * * *">
+                </div>
             </div>
+
+            <!-- Full Index -->
             <div class="setting-row">
-                <div>
-                    <div class="setting-label">Full Index</div>
-                    <div class="setting-desc">Entire channel playlists</div>
+                <div style="flex:1;">
+                    <div class="setting-label" style="display:flex; align-items:center; gap:8px;">
+                        <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" id="full-enabled" class="form-checkbox"
+                                {% if full_enabled %}checked{% endif %}
+                                onchange="saveSchedules()">
+                            Full Index
+                        </label>
+                    </div>
+                    <div class="setting-desc">Deep scan of entire channel history — slow, catches everything</div>
                 </div>
-                <div class="setting-value">{{ full_cron }}</div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <select id="full-preset" class="form-select" onchange="applyPreset('full')" style="min-width:180px;">
+                        <option value="">Custom...</option>
+                        {% for key, preset in schedule_presets.items() %}
+                        <option value="{{ preset.cron }}" {% if full_cron == preset.cron %}selected{% endif %}>{{ preset.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="text" id="full-cron" value="{{ full_cron }}" class="form-select"
+                        style="width:130px; font-family:monospace; font-size:12px;"
+                        onchange="customCron('full')" placeholder="0 3 * * 0">
+                </div>
             </div>
+
+            <!-- yt-dlp Update -->
             <div class="setting-row">
-                <div>
-                    <div class="setting-label">yt-dlp Update</div>
-                    <div class="setting-desc">Auto-update to latest version</div>
+                <div style="flex:1;">
+                    <div class="setting-label" style="display:flex; align-items:center; gap:8px;">
+                        <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" id="update-enabled" class="form-checkbox"
+                                {% if update_enabled %}checked{% endif %}
+                                onchange="saveSchedules()">
+                            yt-dlp Update
+                        </label>
+                    </div>
+                    <div class="setting-desc">Auto-update the downloader to latest version</div>
                 </div>
-                <div class="setting-value">{{ update_cron }}</div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <select id="update-preset" class="form-select" onchange="applyPreset('update')" style="min-width:180px;">
+                        <option value="">Custom...</option>
+                        {% for key, preset in schedule_presets.items() %}
+                        <option value="{{ preset.cron }}" {% if update_cron == preset.cron %}selected{% endif %}>{{ preset.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="text" id="update-cron" value="{{ update_cron }}" class="form-select"
+                        style="width:130px; font-family:monospace; font-size:12px;"
+                        onchange="customCron('update')" placeholder="0 1 * * *">
+                </div>
             </div>
-            <div style="margin-top: 12px; font-size: 12px; color: var(--text-dimmer);">
-                To change schedules, edit environment variables in docker-compose.yml and restart.
+
+            <!-- Timezone -->
+            <div class="setting-row" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+                <div style="flex:1;">
+                    <div class="setting-label">🕐 Timezone</div>
+                    <div class="setting-desc">All schedule times use this timezone</div>
+                </div>
+                <div style="position:relative; min-width: 260px;" id="tz-picker-wrap">
+                    <input type="text" id="tz-search" class="form-select" value="{{ timezone }}"
+                        style="width:100%; font-size:13px; cursor:pointer;"
+                        onfocus="openTzDropdown()" oninput="filterTimezones()"
+                        autocomplete="off" spellcheck="false">
+                    <div id="tz-dropdown" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:999;
+                        max-height:280px; overflow-y:auto; background:var(--surface); border:1px solid var(--border);
+                        border-radius:0 0 6px 6px; box-shadow:0 8px 24px rgba(0,0,0,0.4);">
+                    </div>
+                </div>
             </div>
+
+            <!-- Save button -->
+            <div style="margin-top: 16px; display:flex; gap:8px; align-items:center;">
+                <button type="button" class="btn btn-primary" onclick="saveSchedules()" id="schedule-save-btn">
+                    Save Schedules
+                </button>
+                <span class="text-dim text-sm">Changes take effect immediately — no restart needed.</span>
+            </div>
+            <div style="margin-top: 6px; font-size: 12px; color: var(--text-dimmer);" id="tz-current-display">
+                🕐 Current time: <strong style="color:var(--text-dim);" id="tz-current-time">{{ current_time }}</strong>
+                (<span id="tz-current-name">{{ timezone }}</span>)
+            </div>
+
         </div>
     </div>
 
@@ -392,6 +480,159 @@
 
 <script>
 var importData = { scan_library: [], tubearchivist: [], pinchflat: [] };
+
+/* ── Schedule Management ── */
+
+function applyPreset(which) {
+    var sel = document.getElementById(which + '-preset');
+    var input = document.getElementById(which + '-cron');
+    if (sel.value) {
+        input.value = sel.value;
+    }
+}
+
+function customCron(which) {
+    // When user types a custom cron, reset the preset dropdown to "Custom..."
+    var sel = document.getElementById(which + '-preset');
+    var input = document.getElementById(which + '-cron');
+    var matched = false;
+    for (var i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === input.value) {
+            sel.selectedIndex = i;
+            matched = true;
+            break;
+        }
+    }
+    if (!matched) sel.selectedIndex = 0; // "Custom..."
+}
+
+function saveSchedules() {
+    var tz = document.getElementById('tz-search').value.trim();
+    var data = {
+        fast_cron: document.getElementById('fast-cron').value.trim(),
+        full_cron: document.getElementById('full-cron').value.trim(),
+        update_cron: document.getElementById('update-cron').value.trim(),
+        fast_enabled: document.getElementById('fast-enabled').checked,
+        full_enabled: document.getElementById('full-enabled').checked,
+        update_enabled: document.getElementById('update-enabled').checked,
+        timezone: tz,
+    };
+
+    var btn = document.getElementById('schedule-save-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    fetch('/api/schedule/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(result) {
+        btn.disabled = false;
+        btn.textContent = 'Save Schedules';
+        var statusEl = document.getElementById('schedule-status');
+        if (result.status === 'ok') {
+            statusEl.textContent = '✅ Saved!';
+            statusEl.style.color = 'var(--green)';
+            if (typeof showToastGlobal === 'function') showToastGlobal('Schedules updated!');
+            // Update timezone display if returned
+            if (result.timezone) {
+                document.getElementById('tz-current-name').textContent = result.timezone;
+                document.getElementById('tz-search').value = result.timezone;
+            }
+            if (result.current_time) {
+                document.getElementById('tz-current-time').textContent = result.current_time;
+            }
+        } else {
+            statusEl.textContent = '❌ ' + (result.message || 'Error');
+            statusEl.style.color = 'var(--red)';
+        }
+        setTimeout(function() { statusEl.textContent = ''; }, 4000);
+    })
+    .catch(function(e) {
+        btn.disabled = false;
+        btn.textContent = 'Save Schedules';
+        if (typeof showToastGlobal === 'function') showToastGlobal('Error saving: ' + e.message);
+    });
+}
+
+// Sync preset dropdowns on page load
+['fast', 'full', 'update'].forEach(function(which) { customCron(which); });
+
+/* ── Timezone Picker ── */
+var _tzList = {{ timezones | tojson }};
+var _tzDropdown = document.getElementById('tz-dropdown');
+var _tzSearch = document.getElementById('tz-search');
+var _tzOpen = false;
+
+function buildTzOptions(filter) {
+    var html = '';
+    var f = (filter || '').toLowerCase();
+    var grouped = {};
+    _tzList.forEach(function(tz) {
+        if (f && tz.toLowerCase().indexOf(f) === -1) return;
+        var parts = tz.split('/');
+        var region = parts[0];
+        if (!grouped[region]) grouped[region] = [];
+        grouped[region].push(tz);
+    });
+    // Put common US ones first
+    var order = ['US', 'America', 'Europe', 'Asia', 'Australia', 'Pacific', 'Africa', 'Atlantic', 'Indian'];
+    var regions = Object.keys(grouped).sort(function(a, b) {
+        var ai = order.indexOf(a), bi = order.indexOf(b);
+        if (ai === -1) ai = 999;
+        if (bi === -1) bi = 999;
+        return ai - bi;
+    });
+    regions.forEach(function(region) {
+        html += '<div style="padding:4px 10px;font-size:11px;color:var(--text-dimmer);font-weight:600;' +
+                'background:var(--bg);position:sticky;top:0;">' + region + '</div>';
+        grouped[region].forEach(function(tz) {
+            var display = tz.replace(/_/g, ' ');
+            var selected = tz === _tzSearch.dataset.current ? ' style="background:var(--accent);color:#fff;"' : '';
+            html += '<div class="tz-option" onclick="selectTz(\'' + tz + '\')"' + selected +
+                    ' style="padding:6px 12px;cursor:pointer;font-size:13px;" ' +
+                    'onmouseenter="this.style.background=\'var(--hover)\'" ' +
+                    'onmouseleave="this.style.background=\'\'">' + display + '</div>';
+        });
+    });
+    if (!html) html = '<div style="padding:12px;color:var(--text-dimmer);font-size:13px;">No matching timezones</div>';
+    _tzDropdown.innerHTML = html;
+}
+
+function openTzDropdown() {
+    _tzSearch.dataset.current = _tzSearch.value;
+    _tzSearch.select();
+    buildTzOptions('');
+    _tzDropdown.style.display = 'block';
+    _tzOpen = true;
+}
+
+function filterTimezones() {
+    buildTzOptions(_tzSearch.value);
+    _tzDropdown.style.display = 'block';
+    _tzOpen = true;
+}
+
+function selectTz(tz) {
+    _tzSearch.value = tz;
+    _tzSearch.dataset.current = tz;
+    _tzDropdown.style.display = 'none';
+    _tzOpen = false;
+}
+
+// Close dropdown on outside click
+document.addEventListener('click', function(e) {
+    if (_tzOpen && !document.getElementById('tz-picker-wrap').contains(e.target)) {
+        _tzDropdown.style.display = 'none';
+        _tzOpen = false;
+        // Restore previous value if user didn't pick anything valid
+        if (_tzList.indexOf(_tzSearch.value) === -1) {
+            _tzSearch.value = _tzSearch.dataset.current || '{{ timezone }}';
+        }
+    }
+});
 
 function showStatus(prefix, msg, isError) {
     var el = document.getElementById(prefix + '-status');

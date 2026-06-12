@@ -1,0 +1,14 @@
+# ============================================================
+# SlugTube Channels — Pinned Folder Names
+# ============================================================
+# Format: URL|FolderName
+# The folder name is locked — yt-dlp will always use it,
+# even if the channel renames on YouTube.
+#
+# Examples:
+# https://www.youtube.com/@HistoryChannel|History Channel
+# https://www.youtube.com/@kurzgesagt|Kurzgesagt
+# https://www.youtube.com/@3blue1brown|3Blue1Brown
+#
+# Lines starting with # are ignored.
+# ============================================================
