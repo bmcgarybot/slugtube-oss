@@ -3759,36 +3759,75 @@ def api_healthcheck_fix():
     return jsonify({"status": "queued", "queued": queued})
 
 
-@app.route("/api/healthcheck/temp-scan")
+# ── Temp file scanner state (in-memory, like health check) ──
+_temp_scan_state = {
+    "status": "idle",          # idle | scanning | done
+    "dirs_scanned": 0,
+    "files_found": 0,
+    "current_dir": "",
+    "results": [],
+}
+
+@app.route("/api/healthcheck/temp-scan", methods=["POST"])
 def api_temp_scan():
-    """Scan library for .temp / .part files (incomplete downloads)."""
-    shows_dir = os.environ.get("SHOWS_DIR", "/shows")
-    temp_files = []
-    temp_extensions = {'.temp', '.part', '.ytdl'}
+    """Start scanning library for .temp / .part files (background thread)."""
+    if _temp_scan_state["status"] == "scanning":
+        return jsonify({"status": "already_running"})
 
-    for root, dirs, files in os.walk(shows_dir):
-        for f in files:
-            ext = os.path.splitext(f)[1].lower()
-            if ext in temp_extensions:
-                path = os.path.join(root, f)
-                # Extract video ID from filename like "Title [VIDEO_ID].temp"
-                vid_match = re.search(r'\[([a-zA-Z0-9_-]{11})\]', f)
-                video_id = vid_match.group(1) if vid_match else None
-                channel = os.path.basename(root)
-                try:
-                    size = os.path.getsize(path)
-                except OSError:
-                    size = 0
-                temp_files.append({
-                    "path": path,
-                    "filename": f,
-                    "channel": channel,
-                    "video_id": video_id,
-                    "size": size,
-                    "ext": ext,
-                })
+    _temp_scan_state["status"] = "scanning"
+    _temp_scan_state["dirs_scanned"] = 0
+    _temp_scan_state["files_found"] = 0
+    _temp_scan_state["current_dir"] = ""
+    _temp_scan_state["results"] = []
 
-    return jsonify({"count": len(temp_files), "files": temp_files})
+    def scan_worker():
+        shows_dir = os.environ.get("SHOWS_DIR", "/shows")
+        temp_extensions = {'.temp', '.part', '.ytdl'}
+        found = []
+
+        for root, dirs, files in os.walk(shows_dir):
+            _temp_scan_state["dirs_scanned"] += 1
+            _temp_scan_state["current_dir"] = os.path.basename(root)
+            for f in files:
+                ext = os.path.splitext(f)[1].lower()
+                if ext in temp_extensions:
+                    path = os.path.join(root, f)
+                    vid_match = re.search(r'\[([a-zA-Z0-9_-]{11})\]', f)
+                    video_id = vid_match.group(1) if vid_match else None
+                    channel = os.path.basename(root)
+                    try:
+                        size = os.path.getsize(path)
+                    except OSError:
+                        size = 0
+                    found.append({
+                        "path": path,
+                        "filename": f,
+                        "channel": channel,
+                        "video_id": video_id,
+                        "size": size,
+                        "ext": ext,
+                    })
+                    _temp_scan_state["files_found"] = len(found)
+
+        _temp_scan_state["results"] = found
+        _temp_scan_state["status"] = "done"
+
+    t = threading.Thread(target=scan_worker, daemon=True)
+    t.start()
+    return jsonify({"status": "started"})
+
+
+@app.route("/api/healthcheck/temp-progress")
+def api_temp_progress():
+    """Poll scan progress."""
+    return jsonify({
+        "status": _temp_scan_state["status"],
+        "dirs_scanned": _temp_scan_state["dirs_scanned"],
+        "files_found": _temp_scan_state["files_found"],
+        "current_dir": _temp_scan_state["current_dir"],
+        "results": _temp_scan_state["results"] if _temp_scan_state["status"] == "done" else [],
+        "count": len(_temp_scan_state["results"]) if _temp_scan_state["status"] == "done" else _temp_scan_state["files_found"],
+    })
 
 
 @app.route("/api/healthcheck/temp-fix", methods=["POST"])
