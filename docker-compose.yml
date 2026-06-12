@@ -10,7 +10,7 @@
 
 services:
   slugtube:
-    build: C:/SlugTube-new
+    build: .
     container_name: slugtube
     restart: unless-stopped
     ports:
@@ -27,9 +27,9 @@ services:
       - G:/Youtube/shows:/shows
       # SlugTube config, cookies, archive, logs, database
       - C:/SlugTube:/config
-      # Live code mount — points straight at the git repo, no copy needed
-      - C:/SlugTube-new/scripts:/app/scripts
-      - C:/SlugTube-new/web:/app/web
+      # Live code mount — relative to this docker-compose.yml
+      - ./scripts:/app/scripts
+      - ./web:/app/web
     logging:
       driver: json-file
       options:
