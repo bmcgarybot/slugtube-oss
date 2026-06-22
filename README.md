@@ -9,7 +9,7 @@
 
 SlugTube is a self-hosted YouTube channel archiver with a fully-featured dark-themed web UI. One `docker compose up` gives you automated downloads, a searchable video library, a built-in player with resume, playlist management, and Jellyfin/Kodi-ready output — all running on your own hardware.
 
-**12,000+ lines of code. 57 API endpoints. 13 pages. Zero dependencies on anyone else's servers.**
+**14,000+ lines of code. 70 API endpoints. 14 pages. Zero dependencies on anyone else's servers.**
 
 > Built as a modern alternative to PinchFlat and TubeArchivist — simpler to deploy, easier to use, and designed to get out of your way.
 
@@ -41,6 +41,8 @@ SlugTube is a self-hosted YouTube channel archiver with a fully-featured dark-th
 - Recent activity feed
 - Pause/Resume all downloads globally
 - Cancel running downloads and clear the queue
+- **Sync Archive** — detects video files missing from the archive and adds their IDs so yt-dlp won't re-download them
+- **Merge # Folders** — finds `ChannelName#` duplicate folders created by YouTube's naming and merges them into the correct folder
 
 ### Channels
 - Unified channel table: Active (subscribed + on disk), Subscribed (pending), Library-only (untracked)
@@ -137,6 +139,8 @@ SlugTube is a self-hosted YouTube channel archiver with a fully-featured dark-th
 - Local `channels.txt` is never overwritten by updates
 - Confirmation modals on all destructive actions
 - Ghost cleanup only removes DB entries, not files (unless folder is empty)
+- Download script handles folder names with spaces using properly quoted arguments
+- SQLite connections use 30-second timeout to prevent "database is locked" errors during heavy use
 
 ---
 
@@ -443,4 +447,4 @@ If SlugTube saves you from another TubeArchivist migration headache, consider st
 
 ---
 
-*12,058 lines of code. 57 endpoints. 13 pages. 10 automation scripts. Zero JavaScript frameworks. Built with yt-dlp, Flask, SQLite, and stubbornness.*
+*14,406 lines of code. 70 endpoints. 14 pages. 10 automation scripts. Zero JavaScript frameworks. Built with yt-dlp, Flask, SQLite, and stubbornness.*

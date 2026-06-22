@@ -43,8 +43,9 @@ process_queue() {
         echo "📋 Running queued job: $job_args"
         echo ""
         # Release lock, then re-run ourselves with the queued args
+        # Use eval to restore quoted arguments (spaces in folder names)
         rm -f "$LOCK_FILE"
-        exec /app/scripts/download.sh $job_args
+        eval exec /app/scripts/download.sh "$job_args"
     fi
 }
 
@@ -63,7 +64,8 @@ if [ -f "$LOCK_FILE" ]; then
                 exit 0
             fi
         fi
-        echo "$@" > "$QUEUE_FILE"
+        # Quote each argument so spaces in folder names survive the queue round-trip
+        printf '%q ' "$@" > "$QUEUE_FILE"
         echo "🔒 Download running (PID $LOCK_PID). Queued: $MODE → will run when current job finishes."
         exit 0
     else
