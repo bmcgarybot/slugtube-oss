@@ -1357,6 +1357,42 @@
     </div>
     {% endif %}
 
+    <!-- Global Queue Helpers — MUST load before content block so watch.html can use SlugQueue -->
+    <script>
+    var SlugQueue = {
+        KEY: 'slugtube-queue',
+        MIX_KEY: 'slugtube-mix-channels',
+        get: function() { try { return JSON.parse(localStorage.getItem(this.KEY)) || []; } catch(e) { return []; } },
+        set: function(q) { localStorage.setItem(this.KEY, JSON.stringify(q)); document.dispatchEvent(new CustomEvent('queue-changed', { detail: q })); },
+        add: function(item) {
+            var q = this.get();
+            if (q.some(function(x) { return x.id === item.id; })) return false;
+            q.push(item);
+            this.set(q);
+            return true;
+        },
+        remove: function(id) { var q = this.get().filter(function(x) { return x.id !== id; }); this.set(q); return q; },
+        clear: function() { this.set([]); },
+        moveUp: function(id) {
+            var q = this.get(), idx = -1;
+            for (var i = 0; i < q.length; i++) { if (q[i].id === id) { idx = i; break; } }
+            if (idx > 0) { var tmp = q[idx]; q[idx] = q[idx-1]; q[idx-1] = tmp; this.set(q); }
+            return q;
+        },
+        moveDown: function(id) {
+            var q = this.get(), idx = -1;
+            for (var i = 0; i < q.length; i++) { if (q[i].id === id) { idx = i; break; } }
+            if (idx >= 0 && idx < q.length - 1) { var tmp = q[idx]; q[idx] = q[idx+1]; q[idx+1] = tmp; this.set(q); }
+            return q;
+        },
+        shift: function() { var q = this.get(); var item = q.shift(); this.set(q); return item; },
+        count: function() { return this.get().length; },
+        getMixChannels: function() { try { return JSON.parse(localStorage.getItem(this.MIX_KEY)) || []; } catch(e) { return []; } },
+        setMixChannels: function(arr) { localStorage.setItem(this.MIX_KEY, JSON.stringify(arr)); },
+        clearMix: function() { localStorage.removeItem(this.MIX_KEY); }
+    };
+    </script>
+
     {% block content %}{% endblock %}
 </main>
 
@@ -1512,42 +1548,8 @@ function setThemeFromCard(theme) {
 })();
 </script>
 
-<!-- Global Queue Helpers (localStorage) -->
+<!-- Global toast helper -->
 <script>
-var SlugQueue = {
-    KEY: 'slugtube-queue',
-    MIX_KEY: 'slugtube-mix-channels',
-    get: function() { try { return JSON.parse(localStorage.getItem(this.KEY)) || []; } catch(e) { return []; } },
-    set: function(q) { localStorage.setItem(this.KEY, JSON.stringify(q)); document.dispatchEvent(new CustomEvent('queue-changed', { detail: q })); },
-    add: function(item) {
-        var q = this.get();
-        // Avoid dupes
-        if (q.some(function(x) { return x.id === item.id; })) return false;
-        q.push(item);
-        this.set(q);
-        return true;
-    },
-    remove: function(id) { var q = this.get().filter(function(x) { return x.id !== id; }); this.set(q); return q; },
-    clear: function() { this.set([]); },
-    moveUp: function(id) {
-        var q = this.get(), idx = -1;
-        for (var i = 0; i < q.length; i++) { if (q[i].id === id) { idx = i; break; } }
-        if (idx > 0) { var tmp = q[idx]; q[idx] = q[idx-1]; q[idx-1] = tmp; this.set(q); }
-        return q;
-    },
-    moveDown: function(id) {
-        var q = this.get(), idx = -1;
-        for (var i = 0; i < q.length; i++) { if (q[i].id === id) { idx = i; break; } }
-        if (idx >= 0 && idx < q.length - 1) { var tmp = q[idx]; q[idx] = q[idx+1]; q[idx+1] = tmp; this.set(q); }
-        return q;
-    },
-    shift: function() { var q = this.get(); var item = q.shift(); this.set(q); return item; },
-    count: function() { return this.get().length; },
-    getMixChannels: function() { try { return JSON.parse(localStorage.getItem(this.MIX_KEY)) || []; } catch(e) { return []; } },
-    setMixChannels: function(arr) { localStorage.setItem(this.MIX_KEY, JSON.stringify(arr)); },
-    clearMix: function() { localStorage.removeItem(this.MIX_KEY); }
-};
-
 function showToastGlobal(msg) {
     var t = document.createElement('div');
     t.className = 'toast';
