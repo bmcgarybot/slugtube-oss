@@ -420,8 +420,19 @@ window.addEventListener('beforeunload', () => {
     }));
 });
 
+// ── Safety net: detect video end even if 'ended' event doesn't fire ──
+var _endedHandled = false;
+player.addEventListener('timeupdate', function() {
+    if (!_endedHandled && player.duration > 0 && player.currentTime >= player.duration - 0.5 && player.paused) {
+        _endedHandled = true;
+        player.dispatchEvent(new Event('ended'));
+    }
+});
+
 // ── Mark watched + queue-aware autoplay on end ──
 player.addEventListener('ended', () => {
+    if (_endedHandled && player.currentTime < player.duration - 1) return; // spurious re-fire
+    _endedHandled = true;
     fetch('/api/watch-progress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -454,11 +465,16 @@ player.addEventListener('ended', () => {
             var channelsParam = mixChannels.map(function(c) { return encodeURIComponent(c); }).join(',');
             var swParam = skipWatchedEnabled ? '&skip_watched=1' : '';
             fetch('/api/random-video?channels=' + channelsParam + '&exclude=' + encodeURIComponent(videoId) + swParam)
-                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (!r.ok) throw new Error('Mix channels API returned ' + r.status);
+                    return r.json();
+                })
                 .then(function(data) {
                     if (data.id) startAutoplayCountdown(data.id, data.title);
                 })
-                .catch(function() {});
+                .catch(function(err) {
+                    console.error('Mix channels fetch failed:', err);
+                });
             return;
         }
 
@@ -466,11 +482,24 @@ player.addEventListener('ended', () => {
         if (shuffleEnabled) {
             var swParam2 = skipWatchedEnabled ? '&skip_watched=1' : '';
             fetch('/api/random-video/' + encodeURIComponent(channelName) + '?exclude=' + encodeURIComponent(videoId) + swParam2)
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    if (data.id) startAutoplayCountdown(data.id, data.title);
+                .then(function(r) {
+                    if (!r.ok) throw new Error('Random video API returned ' + r.status);
+                    return r.json();
                 })
-                .catch(function() {});
+                .then(function(data) {
+                    if (data.id) {
+                        startAutoplayCountdown(data.id, data.title);
+                    } else if (nextVideoUrl) {
+                        startAutoplayCountdown(nextVideoUrl, nextVideoTitle);
+                    }
+                })
+                .catch(function(err) {
+                    console.error('Shuffle fetch failed:', err);
+                    // Fall back to sequential next
+                    if (nextVideoUrl) {
+                        startAutoplayCountdown(nextVideoUrl, nextVideoTitle);
+                    }
+                });
         } else if (nextVideoUrl) {
             // Priority 4: Sequential next
             startAutoplayCountdown(nextVideoUrl, nextVideoTitle);
