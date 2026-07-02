@@ -959,23 +959,10 @@ def api_self_update():
                             os.chmod(dest_file, 0o755)
                 updated.append("scripts")
 
-            # Merge channels.txt — add new entries from repo without removing local ones
-            src_channels = os.path.join(repo_root, "channels.txt")
-            if os.path.isfile(src_channels) and os.path.isfile(LOCAL_CHANNELS):
-                with open(LOCAL_CHANNELS, "r", errors="replace") as f:
-                    local_lines = set(f.read().splitlines())
-                with open(src_channels, "r", errors="replace") as f:
-                    repo_lines = [l for l in f.read().splitlines() if l.strip()]
-
-                new_lines = [l for l in repo_lines if l not in local_lines]
-                if new_lines:
-                    with open(LOCAL_CHANNELS, "a") as f:
-                        for l in new_lines:
-                            f.write(l + "\n")
-                    updated.append(f"channels (+{len(new_lines)} new)")
-            elif os.path.isfile(src_channels) and not os.path.isfile(LOCAL_CHANNELS):
-                shutil.copy2(src_channels, LOCAL_CHANNELS)
-                updated.append("channels (fresh copy)")
+            # NOTE: self-update deliberately does NOT touch channels.txt or
+            # anything else in /config. Code updates must never modify user
+            # data - your subscriptions, library, history, and archive are
+            # yours alone. (A merge feature used to live here; removed.)
 
         msg = f"Updated: {', '.join(updated)}. Refresh your browser (Ctrl+Shift+R)." if updated else "Already up to date."
         return _ajax_or_redirect(msg, fallback="settings")
