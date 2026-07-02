@@ -1382,6 +1382,15 @@ def add_channel():
 
 @app.route("/remove", methods=["POST"])
 def remove_channel():
+    # Record the removal so channel merges/updates NEVER silently re-add it
+    # (mirrors the per-video delete-and-block behavior).
+    try:
+        _rm_url = (request.get_json(silent=True) or {}).get("url") or request.form.get("url", "")
+        if _rm_url:
+            with open(os.path.join(os.path.dirname(CHANNELS_FILE), "channels.removed.txt"), "a") as _bf:
+                _bf.write(_rm_url.strip() + "\n")
+    except Exception:
+        pass
     url = request.form.get("url", "").strip()
     name = request.form.get("name", "").strip()
 
@@ -3892,6 +3901,39 @@ def api_temp_fix():
 
 
 # ── Startup ──
+
+BACKUP_DIR = "/config/backups"
+
+def _make_backup():
+    import zipfile, glob as _g
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    path = os.path.join(BACKUP_DIR, f"slugtube-config-{stamp}.zip")
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in _g.glob("/config/*"):
+            if os.path.isfile(f) and not f.endswith((".zip", ".log")):
+                z.write(f, os.path.basename(f))
+    backups = sorted(_g.glob(os.path.join(BACKUP_DIR, "*.zip")))
+    for old in backups[:-14]:
+        try: os.remove(old)
+        except OSError: pass
+    return path
+
+@app.route("/api/backup-now", methods=["POST"])
+def api_backup_now():
+    try:
+        return jsonify({"status": "ok", "path": _make_backup()})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+def _daily_backup_loop():
+    import time as _t
+    while True:
+        try: _make_backup()
+        except Exception: pass
+        _t.sleep(86400)
+
+threading.Thread(target=_daily_backup_loop, daemon=True).start()
 
 if __name__ == "__main__":
     os.makedirs("/config/logs", exist_ok=True)

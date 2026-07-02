@@ -528,6 +528,40 @@
            ══════════════════════════════════════════════════ */
 
         /* ── Midnight Dark (default — :root already covers this) ── */
+        
+        [data-theme="terrarium-dark"] {
+            --bg: #0d1117; --bg-card: #151d29; --bg-sidebar: #0f1620;
+            --bg-hover: #1d2937; --border: #263445;
+            --text: #e6edf3; --text-dim: #9db4c9; --text-dimmer: #5f7488;
+            --accent: #4ade80; --purple: #38bdf8; --green: #4ade80;
+            --orange: #fbbf24; --red: #f87171;
+            --bg-gradient: linear-gradient(160deg,#0d1420 0%,#101a14 100%);
+        }
+        [data-theme="terrarium-dark"] body { background: var(--bg-gradient) fixed; }
+        [data-theme="terrarium-dark"] .sidebar { background: rgba(15,22,32,.92); border-right: 1px solid #263445; }
+        [data-theme="terrarium-dark"] .card, [data-theme="terrarium-dark"] .stat-card {
+            background: #151d29; border: 1px solid #263445; }
+        [data-theme="terrarium-dark"] ::selection { background: #4ade8055; }
+
+        /* Light-mode contrast fixes: logo/name were white-on-white */
+        [data-theme$="-light"] .sidebar, [data-theme$="-light"] .sidebar a,
+        [data-theme$="-light"] .sidebar .logo, [data-theme$="-light"] .sidebar h1,
+        [data-theme$="-light"] .sidebar span { color: #24292f; }
+        [data-theme$="-light"] select, [data-theme$="-light"] input {
+            color: #24292f; background: #ffffff; border: 1px solid #d0d7de; }
+
+        
+        [data-theme="terrarium-light"] {
+            --bg: #f4f8f4; --bg-card: #ffffff; --bg-sidebar: #eef4ee;
+            --bg-hover: #e2ece2; --border: #cfdccf;
+            --text: #1c2a1f; --text-dim: #4a5f4e; --text-dimmer: #7a8f7e;
+            --accent: #16a34a; --purple: #0284c7; --green: #16a34a;
+            --orange: #d97706; --red: #dc2626;
+        }
+        [data-theme="terrarium-light"] .sidebar { background: #eef4ee; border-right: 1px solid #cfdccf; }
+        [data-theme="terrarium-light"] .card, [data-theme="terrarium-light"] .stat-card {
+            background: #ffffff; border: 1px solid #cfdccf; }
+
         [data-theme="midnight-dark"] {
             --bg: #0d1117;
             --bg-card: #161b22;
@@ -1287,31 +1321,6 @@
             color: var(--text);
         }
     </style>
-
-    <!-- SlugTube Theme v2: "Terrarium" - deep slate + living green.
-         Additive override layer; delete this block to revert. -->
-    <style id="slugtube-theme-v2">
-    :root {
-        --bg: #0d1117;
-        --bg-gradient: linear-gradient(160deg, #0d1420 0%, #101a14 100%);
-        --bg-card: #151d29;
-        --bg-sidebar: #0f1620;
-        --bg-hover: #1d2937;
-        --border: #263445;
-        --text: #e6edf3;
-        --text-dim: #9db4c9;
-        --text-dimmer: #5f7488;
-        --accent: #4ade80;          /* slug green - alive, not purple */
-        --purple: #38bdf8;          /* old purple hooks -> sky blue   */
-        --green: #4ade80;
-        --orange: #fbbf24;
-        --red: #f87171;
-    }
-    body { background: var(--bg-gradient) fixed; }
-    a, .btn, button { transition: all .15s ease; }
-    .btn:hover, button:hover { transform: translateY(-1px); }
-    ::selection { background: #4ade8055; }
-    </style>
 </head>
 <body>
 
@@ -1349,6 +1358,7 @@
     <div class="sidebar-theme-picker">
         <div class="picker-label">Theme</div>
         <select id="theme-select" onchange="applyTheme()">
+            <option value="terrarium">Terrarium 🐌</option>
             <option value="midnight">Midnight</option>
             <option value="jellyfin">Jellyfin</option>
             <option value="playnite">Playnite</option>
