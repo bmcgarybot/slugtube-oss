@@ -1739,6 +1739,13 @@ except ImportError:
     pass  # archive_audit.py not present, skip
 
 
+@app.route("/api/health")
+def api_health():
+    """Identity endpoint so ArrBox can VERIFY this is SlugTube rather than
+    just seeing something on port 5000."""
+    return jsonify({"app": "slugtube", "ok": True})
+
+
 @app.route("/api/sync-archive", methods=["POST"])
 def api_sync_archive():
     """Backfill the yt-dlp archive with YouTube IDs from the indexer DB and
