@@ -1287,6 +1287,31 @@
             color: var(--text);
         }
     </style>
+
+    <!-- SlugTube Theme v2: "Terrarium" - deep slate + living green.
+         Additive override layer; delete this block to revert. -->
+    <style id="slugtube-theme-v2">
+    :root {
+        --bg: #0d1117;
+        --bg-gradient: linear-gradient(160deg, #0d1420 0%, #101a14 100%);
+        --bg-card: #151d29;
+        --bg-sidebar: #0f1620;
+        --bg-hover: #1d2937;
+        --border: #263445;
+        --text: #e6edf3;
+        --text-dim: #9db4c9;
+        --text-dimmer: #5f7488;
+        --accent: #4ade80;          /* slug green - alive, not purple */
+        --purple: #38bdf8;          /* old purple hooks -> sky blue   */
+        --green: #4ade80;
+        --orange: #fbbf24;
+        --red: #f87171;
+    }
+    body { background: var(--bg-gradient) fixed; }
+    a, .btn, button { transition: all .15s ease; }
+    .btn:hover, button:hover { transform: translateY(-1px); }
+    ::selection { background: #4ade8055; }
+    </style>
 </head>
 <body>
 
