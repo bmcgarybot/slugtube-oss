@@ -133,8 +133,8 @@ esac
 # ── Single channel mode ──
 if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_URL" ]; then
     # Debug: show exactly what arguments were received
-    echo "[DEBUG] All arguments: $@"
-    echo "[DEBUG] \$1=$1  \$2=$2  \$3=${3:-EMPTY}  \$4=${4:-EMPTY}"
+    [ "${SLUGTUBE_DEBUG:-0}" = "1" ] && echo "[DEBUG] All arguments: $@"
+    [ "${SLUGTUBE_DEBUG:-0}" = "1" ] && echo "[DEBUG] \$1=$1  \$2=$2  \$3=${3:-EMPTY}  \$4=${4:-EMPTY}"
 
     FAST_SINGLE=false
     if [ "$MODE" = "--fast-single" ]; then
@@ -163,6 +163,7 @@ if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_
 
     # Build yt-dlp options for single channel (same as full, no playlist-end)
     YT_OPTS=(
+    --no-progress
         -o "$OUTPUT_TEMPLATE"
         --replace-in-metadata "channel" "#" ""
         --download-archive "$ARCHIVE_FILE"
@@ -364,7 +365,8 @@ while IFS= read -r line || [ -n "$line" ]; do
 
     # Build output template — use pinned folder name if set, otherwise %(channel)s
     if [ -n "$FOLDER_NAME" ]; then
-        CHANNEL_YT_OPTS=("${YT_OPTS[@]}")
+        CHANNEL_YT_OPTS=(
+    --no-progress"${YT_OPTS[@]}")
         # Replace the -o template (it's always the first element)
         CHANNEL_YT_OPTS[1]="${OUTPUT_DIR}/${FOLDER_NAME}/Season %(upload_date>%Y,release_date>%Y,modified_date>%Y)s/s%(upload_date>%Y,release_date>%Y,modified_date>%Y)se%(upload_date,release_date,modified_date)s - %(title).150s [%(id)s].%(ext)s"
     else

@@ -789,8 +789,9 @@ def run_single_channel(url, folder_name=None, fast=False):
 
         with open(LOG_FILE, "a") as logf:
             logf.write(f"\n{ts} [download] 🐌 Single channel download: {url}\n")
-            logf.write(f"{ts} [download] [DEBUG] folder_name={folder_name!r}\n")
-            logf.write(f"{ts} [download] [DEBUG] cmd={cmd!r}\n")
+            if os.environ.get("SLUGTUBE_DEBUG") == "1":
+                logf.write(f"{ts} [download] [DEBUG] folder_name={folder_name!r}\n")
+                logf.write(f"{ts} [download] [DEBUG] cmd={cmd!r}\n")
             if folder_name:
                 logf.write(f"{ts} [download] 📁 Folder: {folder_name}\n")
             logf.flush()
@@ -905,8 +906,8 @@ def api_self_update():
     import io
     import shutil
 
-    REPO = "bmcgarybot/slugtube"
-    BRANCH = "main"
+    REPO = "bmcgarybot/slugtube-oss"
+    BRANCH = "master"
     TARBALL_URL = f"https://api.github.com/repos/{REPO}/tarball/{BRANCH}"
     LOCAL_CHANNELS = "/config/channels.txt"
 
@@ -1744,48 +1745,71 @@ except ImportError:
 
 @app.route("/api/sync-archive", methods=["POST"])
 def api_sync_archive():
-    """Backfill archive with YouTube IDs from all video files on disk.
-    Scans the shows directory for [VIDEO_ID] in filenames and adds any
-    missing IDs to the archive file. Non-destructive — only appends."""
-    import re
+    """Backfill the yt-dlp archive with YouTube IDs from the indexer DB and
+    from video files on disk. Non-destructive - only appends.
+
+    Sources (union):
+      1. The indexer database - the source of truth for everything SlugTube
+         has cataloged, regardless of filename style.
+      2. Filenames containing [VIDEOID] anywhere (yt-dlp style).
+      3. Bare-ID filenames like VIDEOID.mp4 (TubeArchivist-import style).
+    YouTube IDs are EXACTLY 11 chars of [A-Za-z0-9_-]; the old 8-15 char
+    pattern both missed real IDs and added junk like [HDTV-1080p]."""
+    import re as _re
     shows_dir = "/shows"
     archive_path = ARCHIVE_FILE
 
-    # Load existing archive IDs
     existing_ids = set()
     try:
         with open(archive_path, "r") as f:
             for line in f:
                 line = line.strip()
-                if line:
-                    # Archive format is "youtube VIDEO_ID"
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        existing_ids.add(parts[1])
-                    else:
-                        existing_ids.add(parts[0])
+                if not line:
+                    continue
+                parts = line.split()
+                existing_ids.add(parts[1] if len(parts) >= 2 else parts[0])
     except FileNotFoundError:
         pass
 
-    # Scan all video files for YouTube IDs in filenames
-    # Pattern: [VIDEO_ID] where VIDEO_ID is typically 11 chars
-    yt_id_pattern = re.compile(r'\[([a-zA-Z0-9_-]{8,15})\]\.[a-zA-Z0-9]+$')
+    ID = r"[A-Za-z0-9_-]{11}"
+    bracket_re = _re.compile(r"\[(" + ID + r")\]")
+    bare_re = _re.compile(r"^(" + ID + r")$")
+    VIDEO_EXTS = (".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v")
+
     found_ids = set()
     scanned = 0
 
+    # 1) Indexer DB - the real catalog
+    db_ids = 0
+    try:
+        from indexer import get_db
+        conn = get_db()
+        for row in conn.execute("SELECT video_id FROM videos WHERE video_id IS NOT NULL"):
+            vid = (row[0] or "").strip()
+            if _re.fullmatch(ID, vid):
+                found_ids.add(vid)
+        db_ids = len(found_ids)
+        conn.close()
+    except Exception:
+        pass
+
+    # 2 + 3) Filesystem scan
     for root, dirs, files in os.walk(shows_dir):
         for fname in files:
-            # Only check video files
-            if fname.endswith(('.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v')):
-                scanned += 1
-                match = yt_id_pattern.search(fname)
-                if match:
-                    found_ids.add(match.group(1))
+            if not fname.endswith(VIDEO_EXTS):
+                continue
+            scanned += 1
+            stem = os.path.splitext(fname)[0]
+            m = bracket_re.search(stem)
+            if m:
+                found_ids.add(m.group(1))
+                continue
+            m = bare_re.match(stem)
+            if m:
+                found_ids.add(m.group(1))
 
-    # Find IDs on disk but not in archive
     missing_ids = found_ids - existing_ids
     added = 0
-
     if missing_ids:
         os.makedirs(os.path.dirname(archive_path), exist_ok=True)
         with open(archive_path, "a") as f:
@@ -1798,6 +1822,7 @@ def api_sync_archive():
     return jsonify({
         "status": "ok",
         "scanned_files": scanned,
+        "ids_from_db": db_ids,
         "ids_on_disk": len(found_ids),
         "ids_in_archive_before": len(existing_ids),
         "ids_missing": len(missing_ids),
