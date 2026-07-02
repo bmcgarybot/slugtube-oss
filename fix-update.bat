@@ -29,13 +29,17 @@ xcopy /E /Y /I "scripts" "C:\SlugTube\app\scripts" >nul
 echo      Done.
 echo.
 
-echo [4/4] Updating channels list...
-copy "C:\SlugTube\channels.txt" "C:\SlugTube\channels-backup.txt" >nul 2>&1
-copy /Y "channels.txt"                 "C:\SlugTube\channels.txt"
-echo      Done.
+echo [4/4] Merging channels list (never overwrites, respects removals)...
+copy /Y "C:\SlugTube\channels.txt" "C:\SlugTube\channels-backup.txt" >nul
+if not exist "C:\SlugTube\channels.removed.txt" type nul > "C:\SlugTube\channels.removed.txt"
+for /f "usebackq delims=" %%L in ("channels.txt") do (
+    findstr /L /C:"%%L" "C:\SlugTube\channels.txt" >nul 2>&1 || (
+        findstr /L /C:"%%L" "C:\SlugTube\channels.removed.txt" >nul 2>&1 || echo %%L>>"C:\SlugTube\channels.txt"
+    )
+)
+echo      Merged. Removed channels stay removed. Backup: channels-backup.txt
 echo.
 
-echo ============================================
 echo   All files updated!
 echo.
 echo   NOW: Restart the SlugTube container
