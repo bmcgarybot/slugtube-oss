@@ -19,20 +19,13 @@ git reset --hard origin/main
 echo      Done.
 echo.
 
-echo [2/4] Copying web files to container...
-copy /Y "web\app.py"                   "C:\SlugTube\app\web\app.py"
-copy /Y "web\indexer.py"               "C:\SlugTube\app\web\indexer.py"
-copy /Y "web\static\channels.js"       "C:\SlugTube\app\web\static\channels.js"
-copy /Y "web\templates\base.html"      "C:\SlugTube\app\web\templates\base.html"
-copy /Y "web\templates\channels.html"  "C:\SlugTube\app\web\templates\channels.html"
-copy /Y "web\templates\settings.html"  "C:\SlugTube\app\web\templates\settings.html"
-copy /Y "web\templates\watch.html"     "C:\SlugTube\app\web\templates\watch.html"
+echo [2/4] Copying ALL web files to container...
+xcopy /E /Y /I "web" "C:\SlugTube\app\web" >nul
 echo      Done.
 echo.
 
-echo [3/4] Copying scripts to container...
-copy /Y "scripts\download.sh"          "C:\SlugTube\app\scripts\download.sh"
-copy /Y "scripts\fetch-banners.sh"     "C:\SlugTube\app\scripts\fetch-banners.sh"
+echo [3/4] Copying ALL scripts to container...
+xcopy /E /Y /I "scripts" "C:\SlugTube\app\scripts" >nul
 echo      Done.
 echo.
 
