@@ -254,6 +254,7 @@ echo "📺 Processing $CHANNEL_COUNT channels..."
 # ── Build yt-dlp options ──
 # Use %(channel)s but strip trailing # via --replace-in-metadata
 YT_OPTS=(
+    --no-progress
     -o "${OUTPUT_DIR}/%(channel)s/Season %(upload_date>%Y,release_date>%Y,modified_date>%Y)s/s%(upload_date>%Y,release_date>%Y,modified_date>%Y)se%(upload_date,release_date,modified_date)s - %(title).150s [%(id)s].%(ext)s"
     --replace-in-metadata "channel" "#" ""
     --download-archive "$ARCHIVE_FILE"
@@ -365,10 +366,10 @@ while IFS= read -r line || [ -n "$line" ]; do
 
     # Build output template — use pinned folder name if set, otherwise %(channel)s
     if [ -n "$FOLDER_NAME" ]; then
-        CHANNEL_YT_OPTS=(
-    --no-progress"${YT_OPTS[@]}")
-        # Replace the -o template (it's always the first element)
-        CHANNEL_YT_OPTS[1]="${OUTPUT_DIR}/${FOLDER_NAME}/Season %(upload_date>%Y,release_date>%Y,modified_date>%Y)s/s%(upload_date>%Y,release_date>%Y,modified_date>%Y)se%(upload_date,release_date,modified_date)s - %(title).150s [%(id)s].%(ext)s"
+        CHANNEL_YT_OPTS=("${YT_OPTS[@]}")
+        # Replace the -o template value. YT_OPTS is (--no-progress, -o, <template>, ...),
+        # so the template lives at index 2.
+        CHANNEL_YT_OPTS[2]="${OUTPUT_DIR}/${FOLDER_NAME}/Season %(upload_date>%Y,release_date>%Y,modified_date>%Y)s/s%(upload_date>%Y,release_date>%Y,modified_date>%Y)se%(upload_date,release_date,modified_date)s - %(title).150s [%(id)s].%(ext)s"
     else
         CHANNEL_YT_OPTS=("${YT_OPTS[@]}")
     fi
