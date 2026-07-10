@@ -30,7 +30,13 @@ for hdir in "$SHOWS_DIR"/*\#; do
                 echo "   ⏭️ exists: $rel"
             fi
         done
-        rm -rf "$hdir" 2>/dev/null && echo "   🗑️ Removed $HASH_NAME/"
+        # Remove empty dirs only — collided files are never deleted
+        find "$hdir" -depth -type d -exec rmdir {} \; 2>/dev/null
+        if [ -d "$hdir" ]; then
+            echo "   ⚠️  Left $HASH_NAME/ in place — some files collided with existing ones (nothing deleted)"
+        else
+            echo "   🗑️ Removed $HASH_NAME/"
+        fi
         ((HASH_COUNT++)) || true
     else
         echo "🔧 Renaming: $HASH_NAME → $BASE_NAME"

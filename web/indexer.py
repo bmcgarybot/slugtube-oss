@@ -201,9 +201,11 @@ def _parse_filename(fname):
         raw = date_match.group(2)
         upload_date = f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
 
-    # Extract title: strip the episode prefix and [ID] suffix
+    # Extract title: strip the episode prefix and [ID] suffix.
+    # Episode numbers vary: SlugTube uses 8 digits (sYYYYeYYYYMMDD),
+    # Pinchflat-era files use 5-6 digits (sYYYYeMMDDNN).
     title = base
-    title = re.sub(r'^s\d{4}e\d{8}\s*-\s*', '', title)  # Remove SlugTube prefix
+    title = re.sub(r'^s\d{4}e\d{5,8}\s*-\s*', '', title)  # Remove episode prefix
     title = re.sub(r'\s*\[[A-Za-z0-9_-]{11}\]\s*$', '', title)  # Remove [ID] suffix
     title = title.strip(' -')
 
@@ -276,7 +278,8 @@ def _scan_channel(conn, channel_dir):
             has_banner = 'banner.jpg' in file_set or 'fanart.jpg' in file_set
             has_nfo = 'tvshow.nfo' in file_set
 
-        json_files = [f for f in files if f.endswith('.info.json')]
+        json_files = [f for f in files if f.endswith('.info.json')
+                      or (f.endswith('.json') and not f.endswith('.info.json'))]
         video_files = {f for f in files if os.path.splitext(f)[1].lower() in VIDEO_EXTS}
 
         log(f"    📁 {os.path.basename(root)}: {len(json_files)} json, {len(video_files)} videos, {len(files)} total files")
@@ -293,11 +296,19 @@ def _scan_channel(conn, channel_dir):
                     return os.path.join(root, candidate)
             return None
 
-        # ── Pass 1: Index from .info.json (rich metadata) ──
+        # ── Pass 1: Index from metadata sidecars ──
+        # .info.json (yt-dlp/SlugTube) preferred; plain .json accepted for
+        # Pinchflat-era files (same base name, carries the same 'id' key).
         json_processed = 0
         for fname in json_files:
             json_path = os.path.join(root, fname)
-            base_name = fname[:-len('.info.json')]  # strip .info.json
+            if fname.endswith('.info.json'):
+                base_name = fname[:-len('.info.json')]
+            else:
+                base_name = fname[:-len('.json')]
+                # Prefer .info.json when both sidecars exist for the video
+                if base_name + '.info.json' in file_set:
+                    continue
 
             try:
                 json_mtime = os.path.getmtime(json_path)
@@ -370,6 +381,23 @@ def _scan_channel(conn, channel_dir):
 
             title = info.get('title', os.path.basename(video_file))
             description = (info.get('description', '') or '')[:2000]
+
+            # One row per file: if this file was indexed under a different id
+            # (path-hash churn after a folder merge, or a synthetic id being
+            # upgraded to the real YouTube id from a sidecar), remove the
+            # stale row so it can't linger as a ghost with dead paths.
+            try:
+                # External-content FTS5 requires the special 'delete' command
+                # with the old row values — a plain DELETE corrupts the index.
+                conn.execute("""
+                    INSERT INTO videos_fts(videos_fts, rowid, id, title, description, channel_name)
+                    SELECT 'delete', rowid, id, title, description, channel_name
+                    FROM videos WHERE file_path = ? AND id != ?
+                """, (video_file, video_id))
+            except Exception:
+                pass
+            conn.execute("DELETE FROM videos WHERE file_path = ? AND id != ?",
+                         (video_file, video_id))
 
             conn.execute("""
                 INSERT OR REPLACE INTO videos
@@ -477,6 +505,20 @@ def _scan_channel(conn, channel_dir):
                     upload_date = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d')
                 except OSError:
                     pass
+
+            # One row per file (see json branch) — heals merge-orphaned rows
+            try:
+                # External-content FTS5 requires the special 'delete' command
+                # with the old row values — a plain DELETE corrupts the index.
+                conn.execute("""
+                    INSERT INTO videos_fts(videos_fts, rowid, id, title, description, channel_name)
+                    SELECT 'delete', rowid, id, title, description, channel_name
+                    FROM videos WHERE file_path = ? AND id != ?
+                """, (video_path, video_id))
+            except Exception:
+                pass
+            conn.execute("DELETE FROM videos WHERE file_path = ? AND id != ?",
+                         (video_path, video_id))
 
             conn.execute("""
                 INSERT OR REPLACE INTO videos
