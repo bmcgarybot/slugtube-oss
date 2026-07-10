@@ -58,6 +58,23 @@ done < <(find "$SHOWS_DIR" -name "*.json" -print0 2>/dev/null)
 
 echo "   📋 Found $PF_COUNT video IDs from PinchFlat JSON files"
 
+
+# ----- Method 4: TubeArchivist bare-ID filenames (VIDEOID.mp4) -----
+# TubeArchivist stores media as <channel-id>/<video-id>.mp4 with no
+# [brackets], so Methods 1-3 miss an entire TA library.
+TA_COUNT=0
+while IFS= read -r -d '' vidfile; do
+    BASENAME=$(basename "$vidfile")
+    STEM="${BASENAME%.*}"
+    # Exactly 11 chars of the YouTube ID charset, nothing else
+    if [[ "$STEM" =~ ^[a-zA-Z0-9_-]{11}$ ]]; then
+        echo "youtube $STEM" >> "$TEMP_IDS"
+        ((TA_COUNT++)) || true
+    fi
+done < <(find "$SHOWS_DIR" \( -name "*.mp4" -o -name "*.mkv" -o -name "*.webm" \) -print0 2>/dev/null)
+
+echo "   📦 Found $TA_COUNT video IDs from TubeArchivist-style bare-ID filenames"
+
 # ----- Deduplicate and merge with existing archive -----
 if [ -f "$ARCHIVE_FILE" ]; then
     cat "$ARCHIVE_FILE" >> "$TEMP_IDS"
