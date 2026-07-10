@@ -11,6 +11,24 @@ ARCHIVE_FILE="/config/archive/downloaded.txt"
 SHOWS_DIR="/shows"
 TEMP_IDS="/tmp/seed_ids.txt"
 
+
+# ── ID extraction: jq preferred, grep fallback so a missing jq can NEVER
+#    silently seed zero IDs from JSON sidecars ──
+extract_json_id() {
+    local f="$1"
+    if command -v jq >/dev/null 2>&1; then
+        jq -r '.id // empty' "$f" 2>/dev/null
+    else
+        # Fallback: pull the first "id": "<11 ID chars>" pair
+        grep -oE '"id"[[:space:]]*:[[:space:]]*"[A-Za-z0-9_-]{11}"' "$f" 2>/dev/null \
+            | head -1 | grep -oE '[A-Za-z0-9_-]{11}"$' | tr -d '"'
+    fi
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+    echo "   ⚠️  jq not found — using built-in JSON fallback (install jq for best results)"
+fi
+
 echo "🌱 Seeding archive from existing library..."
 echo "   Scanning: $SHOWS_DIR"
 
@@ -20,7 +38,7 @@ echo "   Scanning: $SHOWS_DIR"
 JSON_COUNT=0
 while IFS= read -r -d '' jsonfile; do
     # Extract video ID from the JSON
-    VID_ID=$(jq -r '.id // empty' "$jsonfile" 2>/dev/null)
+    VID_ID=$(extract_json_id "$jsonfile")
     if [ -n "$VID_ID" ]; then
         echo "youtube $VID_ID" >> "$TEMP_IDS"
         ((JSON_COUNT++)) || true
@@ -49,7 +67,7 @@ PF_COUNT=0
 while IFS= read -r -d '' jsonfile; do
     # Skip if already counted as .info.json
     [[ "$jsonfile" == *.info.json ]] && continue
-    VID_ID=$(jq -r '.id // empty' "$jsonfile" 2>/dev/null)
+    VID_ID=$(extract_json_id "$jsonfile")
     if [ -n "$VID_ID" ]; then
         echo "youtube $VID_ID" >> "$TEMP_IDS"
         ((PF_COUNT++)) || true
