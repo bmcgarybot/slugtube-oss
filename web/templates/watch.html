@@ -36,6 +36,76 @@
 <!-- Video Info -->
 <div class="video-details">
     <h1 class="video-detail-title">{{ video.title }}</h1>
+    <div style="position:relative; display:inline-block; margin:6px 0 2px 0;">
+        <button class="btn btn-sm" style="border-color:var(--accent);color:var(--accent);"
+                onclick="togglePlaylistMenu()">＋ Playlist</button>
+        <div id="pl-menu" style="display:none; position:absolute; z-index:50; top:110%; left:0; min-width:260px; background:var(--bg-card,#181818); border:1px solid var(--border-color,#333); border-radius:8px; padding:10px; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+            <div id="pl-menu-list" style="max-height:220px; overflow-y:auto; margin-bottom:8px;">
+                <div style="color:var(--text-dim,#999); font-size:13px;">Loading…</div>
+            </div>
+            <div style="display:flex; gap:6px;">
+                <input type="text" id="pl-menu-new" placeholder="New playlist…"
+                       style="flex:1; padding:5px 8px; background:rgba(255,255,255,0.05); border:1px solid var(--border-color,#333); border-radius:6px; color:var(--text,#eee); font-size:13px;">
+                <button class="btn btn-sm" onclick="plMenuCreate()">Add</button>
+            </div>
+        </div>
+    </div>
+    <script>
+    var _plVideoId = {{ video.id | tojson }};
+    function togglePlaylistMenu() {
+        var m = document.getElementById('pl-menu');
+        if (m.style.display === 'none') { m.style.display = 'block'; plMenuLoad(); }
+        else { m.style.display = 'none'; }
+    }
+    function plMenuLoad() {
+        fetch('/api/personal-playlists?video_id=' + encodeURIComponent(_plVideoId))
+            .then(function(r){return r.json()}).then(function(d){
+                var list = document.getElementById('pl-menu-list');
+                if (!d.playlists.length) {
+                    list.innerHTML = '<div style="color:var(--text-dim,#999); font-size:13px;">No playlists yet — create one below.</div>';
+                    return;
+                }
+                list.innerHTML = d.playlists.map(function(p){
+                    return '<label style="display:flex; align-items:center; gap:8px; padding:4px 2px; cursor:pointer; font-size:13px;">' +
+                        '<input type="checkbox" ' + (p.has_video ? 'checked' : '') +
+                        ' onchange="plMenuToggle(\'' + p.id + '\', this.checked)">' +
+                        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + p.title +
+                        '</span><span style="margin-left:auto;color:var(--text-dimmer,#777);">' + p.video_count + '</span></label>';
+                }).join('');
+            }).catch(function(){ 
+                document.getElementById('pl-menu-list').innerHTML = '<div style="color:#e66;font-size:13px;">Could not load playlists</div>'; 
+            });
+    }
+    function plMenuToggle(pid, add) {
+        var url = '/api/personal-playlists/' + encodeURIComponent(pid) + '/videos' + (add ? '' : '/' + encodeURIComponent(_plVideoId));
+        fetch(url, {
+            method: add ? 'POST' : 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: add ? JSON.stringify({video_id: _plVideoId}) : undefined
+        }).then(function(r){return r.json()}).then(function(){ plMenuLoad(); })
+          .catch(function(e){ showToastGlobal('Error: ' + e); });
+    }
+    function plMenuCreate() {
+        var name = (document.getElementById('pl-menu-new').value || '').trim();
+        if (!name) return;
+        fetch('/api/personal-playlists', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name})
+        }).then(function(r){return r.json()}).then(function(d){
+            if (d.status === 'ok') {
+                document.getElementById('pl-menu-new').value = '';
+                plMenuToggle(d.id, true);
+            }
+        }).catch(function(e){ showToastGlobal('Error: ' + e); });
+    }
+    document.addEventListener('click', function(e){
+        var m = document.getElementById('pl-menu');
+        if (m && m.style.display === 'block' && !e.target.closest('#pl-menu') &&
+            !e.target.closest('button[onclick="togglePlaylistMenu()"]')) {
+            m.style.display = 'none';
+        }
+    });
+    </script>
     <div class="video-detail-meta">
         <span><a href="/library/{{ video.channel_name | urlencode }}" style="color:var(--accent);text-decoration:none;">{{ video.channel_name }}</a></span>
         <span>{{ video.upload_date or 'Unknown' }}</span>

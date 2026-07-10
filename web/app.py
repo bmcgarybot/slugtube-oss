@@ -4225,3 +4225,142 @@ def api_rebuild_thumbnails():
 @app.route("/api/rebuild-thumbnails/status")
 def api_rebuild_thumbnails_status():
     return jsonify(_thumb_job)
+
+
+# ============================================================
+# Personal Playlists — user-curated, independent of channels
+# (channel_name 'Custom' — compatible with /api/create-playlist)
+# ============================================================
+
+PERSONAL_CHANNEL = "Custom"
+
+
+def _personal_playlist_rows(conn, video_id=None):
+    rows = conn.execute("""
+        SELECT p.id, p.title, p.video_count,
+               (SELECT vp.video_id FROM video_playlists vp
+                WHERE vp.playlist_id = p.id ORDER BY vp.playlist_index LIMIT 1) AS thumb_video_id
+        FROM playlists p WHERE p.channel_name = ? ORDER BY p.title
+    """, (PERSONAL_CHANNEL,)).fetchall()
+    result = []
+    member_of = set()
+    if video_id:
+        member_of = {r["playlist_id"] for r in conn.execute(
+            "SELECT playlist_id FROM video_playlists WHERE video_id = ?", (video_id,))}
+    for r in rows:
+        d = dict(r)
+        if video_id:
+            d["has_video"] = r["id"] in member_of
+        result.append(d)
+    return result
+
+
+def _refresh_playlist_count(conn, pid):
+    conn.execute("""UPDATE playlists SET video_count =
+        (SELECT COUNT(*) FROM video_playlists WHERE playlist_id = ?),
+        updated_at = datetime('now') WHERE id = ?""", (pid, pid))
+
+
+@app.route("/playlists")
+def my_playlists_page():
+    from indexer import get_db
+    conn = get_db()
+    playlists = _personal_playlist_rows(conn)
+    conn.close()
+    return render_template("my_playlists.html", playlists=playlists,
+                           detail=None, videos=[], page="playlists", job=jobs)
+
+
+@app.route("/playlists/<playlist_id>")
+def my_playlist_detail(playlist_id):
+    from indexer import get_db, get_playlist, get_playlist_videos
+    pl = get_playlist(playlist_id)
+    if not pl or pl.get("channel_name") != PERSONAL_CHANNEL:
+        abort(404)
+    videos, total = get_playlist_videos(playlist_id, sort="playlist_index",
+                                        limit=500, offset=0)
+    conn = get_db()
+    playlists = _personal_playlist_rows(conn)
+    conn.close()
+    return render_template("my_playlists.html", playlists=playlists,
+                           detail=pl, videos=videos, page="playlists", job=jobs)
+
+
+@app.route("/api/personal-playlists", methods=["GET", "POST"])
+def api_personal_playlists():
+    from indexer import get_db
+    conn = get_db()
+    if request.method == "GET":
+        video_id = request.args.get("video_id")
+        pls = _personal_playlist_rows(conn, video_id=video_id)
+        conn.close()
+        return jsonify({"playlists": pls})
+
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        conn.close()
+        return jsonify({"status": "error", "error": "name required"}), 400
+    pid = "custom_" + re.sub(r'[^a-zA-Z0-9]', '_', name.lower())
+    conn.execute("""INSERT OR IGNORE INTO playlists
+                    (id, channel_name, title, video_count, updated_at)
+                    VALUES (?, ?, ?, 0, datetime('now'))""",
+                 (pid, PERSONAL_CHANNEL, name))
+    conn.commit()
+    pls = _personal_playlist_rows(conn)
+    conn.close()
+    return jsonify({"status": "ok", "id": pid, "playlists": pls})
+
+
+@app.route("/api/personal-playlists/<playlist_id>/videos", methods=["POST"])
+def api_personal_playlist_add(playlist_id):
+    from indexer import get_db
+    data = request.get_json(silent=True) or {}
+    video_id = data.get("video_id")
+    if not video_id:
+        return jsonify({"status": "error", "error": "video_id required"}), 400
+    conn = get_db()
+    pl = conn.execute("SELECT id FROM playlists WHERE id = ? AND channel_name = ?",
+                      (playlist_id, PERSONAL_CHANNEL)).fetchone()
+    if not pl:
+        conn.close()
+        return jsonify({"status": "error", "error": "playlist not found"}), 404
+    nxt = conn.execute(
+        "SELECT COALESCE(MAX(playlist_index), 0) + 1 AS n FROM video_playlists WHERE playlist_id = ?",
+        (playlist_id,)).fetchone()["n"]
+    conn.execute("""INSERT OR IGNORE INTO video_playlists
+                    (video_id, playlist_id, playlist_index) VALUES (?, ?, ?)""",
+                 (video_id, playlist_id, nxt))
+    _refresh_playlist_count(conn, playlist_id)
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/personal-playlists/<playlist_id>/videos/<video_id>", methods=["DELETE"])
+def api_personal_playlist_remove(playlist_id, video_id):
+    from indexer import get_db
+    conn = get_db()
+    conn.execute("DELETE FROM video_playlists WHERE playlist_id = ? AND video_id = ?",
+                 (playlist_id, video_id))
+    _refresh_playlist_count(conn, playlist_id)
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/personal-playlists/<playlist_id>", methods=["DELETE"])
+def api_personal_playlist_delete(playlist_id):
+    """Deletes the playlist record only — never any video files."""
+    from indexer import get_db
+    conn = get_db()
+    pl = conn.execute("SELECT id FROM playlists WHERE id = ? AND channel_name = ?",
+                      (playlist_id, PERSONAL_CHANNEL)).fetchone()
+    if not pl:
+        conn.close()
+        return jsonify({"status": "error", "error": "playlist not found"}), 404
+    conn.execute("DELETE FROM video_playlists WHERE playlist_id = ?", (playlist_id,))
+    conn.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok"})

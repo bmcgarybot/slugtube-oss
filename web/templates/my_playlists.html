@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title_extra %} — My Playlists{% endblock %}
+
+{% block content %}
+
+{% if not detail %}
+<!-- ── Grid: all personal playlists ── -->
+<div class="pl-page-header">
+    <h1 class="pl-page-title">My Playlists</h1>
+    <p class="pl-page-subtitle">{{ playlists | length }} personal playlist{{ 's' if playlists|length != 1 }} — channel playlists live on their channel pages</p>
+</div>
+
+<div style="margin: 0 0 20px 0; display:flex; gap:8px;">
+    <input type="text" id="new-pl-name" placeholder="New playlist name…"
+           style="flex:0 1 320px; padding:8px 12px; background:var(--bg-input, rgba(255,255,255,0.05)); border:1px solid var(--border-color, #333); border-radius:6px; color:var(--text, #eee);">
+    <button class="btn" style="border-color:var(--accent);color:var(--accent);" onclick="createPersonalPlaylist()">＋ Create Playlist</button>
+</div>
+
+{% if playlists %}
+<div class="playlist-grid">
+    {% for pl in playlists %}
+    <div style="position:relative;">
+        <a href="/playlists/{{ pl.id }}" class="playlist-card">
+            <div class="playlist-thumb">
+                {% if pl.thumb_video_id %}
+                <img src="/media/thumb/{{ pl.thumb_video_id }}" alt="{{ pl.title }}" loading="lazy">
+                {% else %}
+                <div class="playlist-thumb-placeholder">PL</div>
+                {% endif %}
+                <div class="playlist-count-badge">{{ pl.video_count }} videos</div>
+            </div>
+            <div class="playlist-card-info">
+                <div class="playlist-card-title">{{ pl.title }}</div>
+                <div class="playlist-card-meta">{{ pl.video_count }} video{{ 's' if pl.video_count != 1 }}</div>
+            </div>
+        </a>
+        <button title="Delete playlist (videos are not deleted)"
+                style="position:absolute; top:6px; right:6px; background:rgba(0,0,0,0.6); border:1px solid var(--border-color,#444); color:#e66; border-radius:6px; padding:2px 8px; cursor:pointer;"
+                onclick="deletePersonalPlaylist('{{ pl.id }}', {{ pl.title | tojson }})">✕</button>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="pl-empty">
+    <p>No personal playlists yet.</p>
+    <p style="color:var(--text-dimmer);font-size:13px;">Create one above, or use “＋ Playlist” on any video's watch page.</p>
+</div>
+{% endif %}
+
+{% else %}
+<!-- ── Detail: one personal playlist ── -->
+<div class="pl-page-header">
+    <div class="pl-nav-row">
+        <a href="/playlists" class="pl-back">← My Playlists</a>
+    </div>
+    <h1 class="pl-page-title">{{ detail.title }}</h1>
+    <p class="pl-page-subtitle">{{ videos | length }} video{{ 's' if videos|length != 1 }}</p>
+</div>
+
+{% if videos %}
+<div style="display:flex; flex-direction:column; gap:6px; max-width:900px;">
+    {% for v in videos %}
+    <div style="display:flex; align-items:center; gap:12px; padding:8px; border:1px solid var(--border-color,#2a2a2a); border-radius:8px;">
+        <a href="/watch/{{ v.id }}" style="flex-shrink:0;">
+            <img src="/media/thumb/{{ v.id }}" alt="" loading="lazy"
+                 style="width:120px; height:68px; object-fit:cover; border-radius:6px; background:#111;"
+                 onerror="this.style.visibility='hidden'">
+        </a>
+        <div style="min-width:0; flex:1;">
+            <a href="/watch/{{ v.id }}" style="color:var(--text,#eee); text-decoration:none; font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ v.title }}</a>
+            <div style="color:var(--text-dim,#999); font-size:12px;">{{ v.channel_name }} · {{ v.upload_date or '' }}</div>
+        </div>
+        <button title="Remove from this playlist (video is not deleted)"
+                style="background:none; border:1px solid var(--border-color,#444); color:#e66; border-radius:6px; padding:4px 10px; cursor:pointer;"
+                onclick="removeFromPersonalPlaylist('{{ detail.id }}', '{{ v.id }}', this)">Remove</button>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="pl-empty"><p>This playlist is empty — add videos from any watch page with “＋ Playlist”.</p></div>
+{% endif %}
+{% endif %}
+
+<script>
+function createPersonalPlaylist() {
+    var name = (document.getElementById('new-pl-name').value || '').trim();
+    if (!name) { showToastGlobal('Enter a playlist name first'); return; }
+    fetch('/api/personal-playlists', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: name})
+    }).then(function(r){return r.json()}).then(function(d){
+        if (d.status === 'ok') { location.reload(); }
+        else { showToastGlobal(d.error || 'Failed'); }
+    }).catch(function(e){ showToastGlobal('Error: ' + e); });
+}
+function deletePersonalPlaylist(pid, title) {
+    if (!confirm('Delete playlist "' + title + '"?\n\nVideos are NOT deleted — only the playlist itself.')) return;
+    fetch('/api/personal-playlists/' + encodeURIComponent(pid), {method: 'DELETE'})
+        .then(function(r){return r.json()}).then(function(){ location.reload(); })
+        .catch(function(e){ showToastGlobal('Error: ' + e); });
+}
+function removeFromPersonalPlaylist(pid, vid, btn) {
+    fetch('/api/personal-playlists/' + encodeURIComponent(pid) + '/videos/' + encodeURIComponent(vid), {method: 'DELETE'})
+        .then(function(r){return r.json()}).then(function(){
+            var row = btn.closest('div[style*="display:flex"]');
+            if (row) row.remove();
+        }).catch(function(e){ showToastGlobal('Error: ' + e); });
+}
+</script>
+{% endblock %}
