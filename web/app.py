@@ -4266,8 +4266,11 @@ def my_playlists_page():
     from indexer import get_db
     conn = get_db()
     playlists = _personal_playlist_rows(conn)
+    channel_names = [r["name"] for r in conn.execute(
+        "SELECT name FROM channels WHERE name != ? ORDER BY name", (PERSONAL_CHANNEL,))]
     conn.close()
     return render_template("my_playlists.html", playlists=playlists,
+                           channel_names=channel_names,
                            detail=None, videos=[], page="playlists", job=jobs)
 
 
@@ -4364,3 +4367,59 @@ def api_personal_playlist_delete(playlist_id):
     conn.commit()
     conn.close()
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/personal-playlists/<playlist_id>/import", methods=["POST"])
+def api_personal_playlist_import(playlist_id):
+    """Bulk-import into a personal playlist from a channel playlist or an
+    entire channel. Appends in order after existing items; duplicates are
+    skipped (INSERT OR IGNORE on the junction PK). DB-only — no files touched.
+
+    JSON body: { "source_type": "playlist"|"channel", "source_id": <playlist id or channel name> }
+    """
+    from indexer import get_db
+    data = request.get_json(silent=True) or {}
+    source_type = data.get("source_type")
+    source_id = (data.get("source_id") or "").strip()
+    if source_type not in ("playlist", "channel") or not source_id:
+        return jsonify({"status": "error",
+                        "error": "source_type ('playlist'|'channel') and source_id required"}), 400
+
+    conn = get_db()
+    target = conn.execute("SELECT id FROM playlists WHERE id = ? AND channel_name = ?",
+                          (playlist_id, PERSONAL_CHANNEL)).fetchone()
+    if not target:
+        conn.close()
+        return jsonify({"status": "error", "error": "personal playlist not found"}), 404
+
+    if source_type == "playlist":
+        vids = [r["video_id"] for r in conn.execute(
+            """SELECT video_id FROM video_playlists WHERE playlist_id = ?
+               ORDER BY playlist_index""", (source_id,))]
+    else:
+        vids = [r["id"] for r in conn.execute(
+            """SELECT id FROM videos WHERE channel_name = ?
+               ORDER BY upload_date, title""", (source_id,))]
+
+    if not vids:
+        conn.close()
+        return jsonify({"status": "error", "error": "source has no videos"}), 404
+
+    nxt = conn.execute(
+        "SELECT COALESCE(MAX(playlist_index), 0) FROM video_playlists WHERE playlist_id = ?",
+        (playlist_id,)).fetchone()[0]
+    before = conn.execute(
+        "SELECT COUNT(*) FROM video_playlists WHERE playlist_id = ?",
+        (playlist_id,)).fetchone()[0]
+    for i, vid in enumerate(vids, 1):
+        conn.execute("""INSERT OR IGNORE INTO video_playlists
+                        (video_id, playlist_id, playlist_index) VALUES (?, ?, ?)""",
+                     (vid, playlist_id, nxt + i))
+    _refresh_playlist_count(conn, playlist_id)
+    after = conn.execute(
+        "SELECT COUNT(*) FROM video_playlists WHERE playlist_id = ?",
+        (playlist_id,)).fetchone()[0]
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok", "added": after - before,
+                    "skipped_duplicates": len(vids) - (after - before)})

@@ -21,6 +21,7 @@
 <!-- Playlist Grid -->
 <div class="playlist-grid">
     {% for pl in playlists %}
+    <div style="position:relative;">
     <a href="/library/{{ channel_name | urlencode }}/playlist/{{ pl.id }}?sort=playlist_index" class="playlist-card">
         <div class="playlist-thumb">
             {% if pl.thumb_video_id %}
@@ -35,6 +36,10 @@
             <div class="playlist-card-meta">{{ pl.video_count }} videos in your library</div>
         </div>
     </a>
+    <button title="Add all videos from this playlist to one of My Playlists"
+            style="position:absolute; top:6px; left:6px; background:rgba(0,0,0,0.65); border:1px solid var(--accent); color:var(--accent); border-radius:6px; padding:2px 8px; cursor:pointer; font-size:12px;"
+            onclick="importToMyPlaylist('playlist', '{{ pl.id }}', {{ pl.title | tojson }})">→ My Playlist</button>
+    </div>
     {% endfor %}
 </div>
 {% else %}
@@ -170,3 +175,41 @@
     }
 </style>
 {% endblock %}
+
+<script>
+// Shared: pick (or create) a personal playlist, then bulk-import a source into it
+function importToMyPlaylist(sourceType, sourceId, sourceTitle) {
+    fetch('/api/personal-playlists').then(function(r){return r.json()}).then(function(d){
+        var pls = d.playlists || [];
+        var msg = 'Add all of "' + sourceTitle + '" to which of My Playlists?\n\n' +
+                  pls.map(function(p, i){ return (i+1) + '. ' + p.title + ' (' + p.video_count + ')'; }).join('\n') +
+                  (pls.length ? '\n\n' : '') + 'Enter a number, or type a NEW playlist name:';
+        var answer = prompt(msg);
+        if (answer === null || !answer.trim()) return;
+        answer = answer.trim();
+        var idx = parseInt(answer, 10);
+        if (!isNaN(idx) && idx >= 1 && idx <= pls.length) {
+            doImport(pls[idx-1].id, sourceType, sourceId, sourceTitle);
+        } else {
+            fetch('/api/personal-playlists', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: answer})
+            }).then(function(r){return r.json()}).then(function(c){
+                if (c.status === 'ok') doImport(c.id, sourceType, sourceId, sourceTitle);
+                else showToastGlobal(c.error || 'Could not create playlist');
+            });
+        }
+    }).catch(function(e){ showToastGlobal('Error: ' + e); });
+}
+function doImport(targetId, sourceType, sourceId, sourceTitle) {
+    fetch('/api/personal-playlists/' + encodeURIComponent(targetId) + '/import', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({source_type: sourceType, source_id: sourceId})
+    }).then(function(r){return r.json()}).then(function(d){
+        if (d.status === 'ok') {
+            showToastGlobal('Added ' + d.added + ' video(s) from "' + sourceTitle + '"' +
+                (d.skipped_duplicates ? ' (' + d.skipped_duplicates + ' already there)' : ''));
+        } else { showToastGlobal(d.error || 'Import failed'); }
+    }).catch(function(e){ showToastGlobal('Error: ' + e); });
+}
+</script>

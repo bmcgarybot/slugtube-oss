@@ -10,10 +10,22 @@
     <p class="pl-page-subtitle">{{ playlists | length }} personal playlist{{ 's' if playlists|length != 1 }} — channel playlists live on their channel pages</p>
 </div>
 
-<div style="margin: 0 0 20px 0; display:flex; gap:8px;">
+<div style="margin: 0 0 20px 0; display:flex; gap:8px; flex-wrap:wrap;">
     <input type="text" id="new-pl-name" placeholder="New playlist name…"
            style="flex:0 1 320px; padding:8px 12px; background:var(--bg-input, rgba(255,255,255,0.05)); border:1px solid var(--border-color, #333); border-radius:6px; color:var(--text, #eee);">
     <button class="btn" style="border-color:var(--accent);color:var(--accent);" onclick="createPersonalPlaylist()">＋ Create Playlist</button>
+    {% if channel_names %}
+    <span style="flex-basis:100%; height:0;"></span>
+    <select id="import-channel" style="flex:0 1 260px; padding:8px 12px; background:var(--bg-input, rgba(255,255,255,0.05)); border:1px solid var(--border-color,#333); border-radius:6px; color:var(--text,#eee);">
+        <option value="">Import entire channel…</option>
+        {% for cn in channel_names %}<option value="{{ cn }}">{{ cn }}</option>{% endfor %}
+    </select>
+    <select id="import-target" style="flex:0 1 260px; padding:8px 12px; background:var(--bg-input, rgba(255,255,255,0.05)); border:1px solid var(--border-color,#333); border-radius:6px; color:var(--text,#eee);">
+        <option value="">…into playlist</option>
+        {% for pl in playlists %}<option value="{{ pl.id }}">{{ pl.title }}</option>{% endfor %}
+    </select>
+    <button class="btn" onclick="importChannelHere()">Import</button>
+    {% endif %}
 </div>
 
 {% if playlists %}
@@ -82,6 +94,19 @@
 {% endif %}
 
 <script>
+function importChannelHere() {
+    var ch = document.getElementById('import-channel').value;
+    var target = document.getElementById('import-target').value;
+    if (!ch) { showToastGlobal('Pick a channel to import'); return; }
+    if (!target) { showToastGlobal('Pick a target playlist (create one first if needed)'); return; }
+    fetch('/api/personal-playlists/' + encodeURIComponent(target) + '/import', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({source_type: 'channel', source_id: ch})
+    }).then(function(r){return r.json()}).then(function(d){
+        if (d.status === 'ok') { location.reload(); }
+        else { showToastGlobal(d.error || 'Import failed'); }
+    }).catch(function(e){ showToastGlobal('Error: ' + e); });
+}
 function createPersonalPlaylist() {
     var name = (document.getElementById('new-pl-name').value || '').trim();
     if (!name) { showToastGlobal('Enter a playlist name first'); return; }
