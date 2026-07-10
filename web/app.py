@@ -534,23 +534,55 @@ def get_log_tail(lines=100, filter_mode=None):
         return "No logs yet."
 
 
-def get_recent_downloads(count=20):
+
+# ── Tiny TTL cache for per-page-load hot spots ─────────────────────────
+# The dashboard used to grep the ENTIRE download log, spawn a yt-dlp
+# subprocess, parse the whole cookie jar, and count the whole archive
+# file on EVERY page load. With a 57k-line archive and a multi-MB log
+# (often over SMB), that made every dashboard render crawl.
+_ttl_cache = {}
+_ttl_lock = threading.Lock()
+
+def _cached(key, ttl, fn):
+    import time as _t
+    now = _t.time()
+    with _ttl_lock:
+        hit = _ttl_cache.get(key)
+        if hit and (now - hit[0]) < ttl:
+            return hit[1]
+    val = fn()
+    with _ttl_lock:
+        _ttl_cache[key] = (now, val)
+    return val
+
+def _cache_bust(key):
+    with _ttl_lock:
+        _ttl_cache.pop(key, None)
+
+def _recent_downloads_uncached(count=20):
+    """Read only the tail of the log (last 256KB) instead of grepping the
+    whole multi-MB file on every page load."""
     downloads = []
     try:
-        result = subprocess.run(
-            ["grep", "-E", "(Downloading|Already|\\[download\\]|✅|⏭️|❌)", LOG_FILE],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.stdout:
-            lines = result.stdout.strip().split("\n")[-count:]
-            for line in lines:
-                downloads.append(line.strip())
-    except:
+        import re as _re
+        pattern = _re.compile(r"(Downloading|Already|\[download\]|✅|⏭️|❌|🆕)")
+        with open(LOG_FILE, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - 262144))
+            tail = f.read().decode("utf-8", errors="replace")
+        matched = [ln.strip() for ln in tail.splitlines() if pattern.search(ln)]
+        downloads = matched[-count:]
+    except Exception:
         pass
     return downloads
 
 
-def get_ytdlp_version():
+def get_recent_downloads(count=20):
+    return _cached(f"recent:{count}", 15, lambda: _recent_downloads_uncached(count))
+
+
+def _ytdlp_version_uncached():
     try:
         ver = subprocess.run(["yt-dlp", "--version"], capture_output=True, text=True, timeout=5)
         return ver.stdout.strip()
@@ -558,7 +590,12 @@ def get_ytdlp_version():
         return "unknown"
 
 
-def check_cookie_health():
+def get_ytdlp_version():
+    # Spawning a subprocess per page load added ~1s to every render
+    return _cached("ytdlp_version", 3600, _ytdlp_version_uncached)
+
+
+def _cookie_health_uncached():
     """Check cookie file health: expiration, age, existence, AND YouTube rejection signals from logs."""
     cookie_path = "/config/Cookie/cookies.txt"
     if not os.path.isfile(cookie_path):
@@ -604,6 +641,11 @@ def check_cookie_health():
 
     except Exception as e:
         return {"status": "missing", "message": f"Error reading cookies: {e}", "age_days": 0, "expired_count": 0, "total_count": 0}
+
+
+def check_cookie_health():
+    # Parsing the whole cookie jar on every page load is wasteful — 60s TTL
+    return _cached("cookie_health", 60, _cookie_health_uncached)
 
 
 def _check_logs_for_cookie_rejection(file_age_days=0):
@@ -821,7 +863,7 @@ def run_single_channel(url, folder_name=None, fast=False):
             logf.flush()
 
         jobs["log"] = "\n".join(log_lines[-100:]) if log_lines else "No output"
-        jobs["status"] = "done" if proc.returncode == 0 else "error"
+        jobs["status"] = "done" if proc.returncode in (0, 101) else "error"
 
         # Trigger re-index after downloads complete
         try:
@@ -870,7 +912,7 @@ def run_download(mode):
         if log_file:
             log_file.close()
 
-        jobs["status"] = "done" if proc.returncode == 0 else "error"
+        jobs["status"] = "done" if proc.returncode in (0, 101) else "error"
         state = load_state()
         state[f"last_{mode}"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         save_state(state)
@@ -892,6 +934,7 @@ def run_update():
         result = subprocess.run(["/app/scripts/update-ytdlp.sh"], capture_output=True, text=True, timeout=120)
         jobs["log"] = result.stdout if result.stdout else "Updated"
         jobs["status"] = "done"
+        _cache_bust("ytdlp_version")
     except Exception as e:
         jobs["status"] = "error"
         jobs["log"] = str(e)
@@ -980,7 +1023,7 @@ SLUGTUBE_CODE_VERSION = "2026-05-29b"
 @app.route("/")
 def dashboard():
     channels = get_channels()
-    archive_count = count_lines(ARCHIVE_FILE)
+    archive_count = _cached("archive_count", 60, lambda: count_lines(ARCHIVE_FILE))
     disk_usage = get_disk_usage()
     state = load_state()
     config = load_config()
