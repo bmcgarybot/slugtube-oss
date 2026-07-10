@@ -14,6 +14,69 @@ CHANNELS_FILE="/config/channels.txt"
 ARCHIVE_FILE="/config/archive/downloaded.txt"
 COOKIES_FILE="/config/Cookie/cookies.txt"
 CONFIG_FILE="/config/slugtube-config.json"
+
+# ── Log rotation: keep the download log from growing unbounded ──
+# (a multi-MB log made every dashboard load grep the whole file)
+LOG_FILE_PATH="/config/logs/download.log"
+if [ -f "$LOG_FILE_PATH" ] && [ "$(stat -c%s "$LOG_FILE_PATH" 2>/dev/null || echo 0)" -gt 8388608 ]; then
+    tail -c 2097152 "$LOG_FILE_PATH" > "${LOG_FILE_PATH}.tmp" && mv "${LOG_FILE_PATH}.tmp" "$LOG_FILE_PATH"
+    echo "🧹 Rotated download log (kept last 2MB)"
+fi
+
+# ── Fast-check helper (used by --fast and --fast-single) ──
+# Fast mode uses a two-phase check instead of --break-on-existing:
+#   Phase 1: one flat-playlist metadata call lists the last N video IDs (~2s)
+#   Phase 2: diff those IDs against the archive LOCALLY; download only missing
+# --break-on-existing stopped at the FIRST archived video, so it usually
+# checked just 1 video per channel and silently missed out-of-order uploads,
+# unhidden members videos, and anything that wasn't the very latest upload.
+# This checks all N, every run, and is faster in the common case.
+FAST_CHECK_DEPTH="${FAST_CHECK_DEPTH:-50}"
+
+fast_check_channel() {
+    # $1 = channel URL, $2 = name of the yt-dlp options array to use
+    # Prints status lines; returns: 0 = downloaded new videos OK,
+    # 10 = up to date, 20 = listing failed, other = download error
+    local url="$1"
+    local -n _opts=$2
+
+    local ids
+    ids=$(yt-dlp --flat-playlist --playlist-end "$FAST_CHECK_DEPTH" \
+                 --print id --no-warnings --ignore-errors \
+                 --cookies "$COOKIES_FILE" \
+                 --sleep-requests 2 \
+                 "$url" 2>/dev/null | grep -E '^[A-Za-z0-9_-]{11}$' || true)
+
+    if [ -z "$ids" ]; then
+        echo "   ⚠️  Could not list recent videos for fast check"
+        return 20
+    fi
+
+    local checked
+    checked=$(printf '%s\n' "$ids" | sed '/^$/d' | wc -l)
+
+    # Archive lines are "youtube <id>" — extract IDs and diff locally
+    local new_ids
+    new_ids=$(printf '%s\n' "$ids" | grep -vxFf <(awk '$1=="youtube"{print $2}' "$ARCHIVE_FILE" 2>/dev/null) || true)
+
+    if [ -z "$new_ids" ]; then
+        echo "   ⏭️  Up to date — checked $checked recent videos, all archived"
+        return 10
+    fi
+
+    local new_count
+    new_count=$(printf '%s\n' "$new_ids" | sed '/^$/d' | wc -l)
+    echo "   🆕 $new_count new of $checked checked — downloading"
+
+    local urls=()
+    while IFS= read -r vid; do
+        [ -n "$vid" ] && urls+=("https://www.youtube.com/watch?v=${vid}")
+    done <<< "$new_ids"
+
+    yt-dlp "${_opts[@]}" "${urls[@]}"
+}
+
+
 PAUSE_FILE="/config/paused"
 OUTPUT_DIR="/shows"
 TEMP_DIR="/config/temp"
@@ -207,16 +270,25 @@ if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_
         YT_OPTS+=(--match-filter "duration > 60")
     fi
 
-    # Fast-single mode: only check latest 50 videos
+    # Fast-single mode: flat-list the latest videos, diff against archive,
+    # download only what's missing (checks all of them, not just until the
+    # first archived hit)
     if [ "$FAST_SINGLE" = "true" ]; then
-        YT_OPTS+=(--playlist-end 50 --break-on-existing --break-on-reject)
-        echo "⚡ Fast mode: checking latest 50 videos only"
+        echo "⚡ Fast mode: checking latest ${FAST_CHECK_DEPTH} videos (flat-list diff)"
     fi
 
     echo "📺 Channel: $SINGLE_URL"
     echo "   Started: $(date '+%H:%M:%S')"
 
-    if yt-dlp "${YT_OPTS[@]}" "$SINGLE_URL" 2>&1; then
+    if [ "$FAST_SINGLE" = "true" ]; then
+        fast_check_channel "$SINGLE_URL" YT_OPTS
+        RC=$?
+        if [ $RC -eq 0 ]; then
+            echo "   ✅ Done"
+        elif [ $RC -ne 10 ]; then
+            echo "   ❌ Error (exit code: $RC)"
+        fi
+    elif yt-dlp "${YT_OPTS[@]}" "$SINGLE_URL" 2>&1; then
         echo "   ✅ Done"
     else
         EXIT_CODE=$?
@@ -321,8 +393,7 @@ fi
 
 # ── Mode-specific options ──
 if [ "$MODE" = "--fast" ]; then
-    echo "⚡ Fast mode — checking last 50 videos per channel"
-    YT_OPTS+=(--playlist-end 50 --break-on-existing --break-on-reject)
+    echo "⚡ Fast mode — checking last ${FAST_CHECK_DEPTH} videos per channel (flat-list diff)"
 elif [ "$MODE" = "--full" ]; then
     echo "📚 Full mode — indexing entire channel playlists"
 fi
@@ -374,7 +445,19 @@ while IFS= read -r line || [ -n "$line" ]; do
         CHANNEL_YT_OPTS=("${YT_OPTS[@]}")
     fi
 
-    if yt-dlp "${CHANNEL_YT_OPTS[@]}" "$CHANNEL_URL" 2>&1; then
+    if [ "$MODE" = "--fast" ]; then
+        fast_check_channel "$CHANNEL_URL" CHANNEL_YT_OPTS
+        RC=$?
+        if [ $RC -eq 0 ]; then
+            echo "   ✅ Done"
+            ((SUCCESS++)) || true
+        elif [ $RC -eq 10 ]; then
+            ((SKIPPED++)) || true
+        else
+            echo "   ❌ Error (exit code: $RC)"
+            ((FAILED++)) || true
+        fi
+    elif yt-dlp "${CHANNEL_YT_OPTS[@]}" "$CHANNEL_URL" 2>&1; then
         echo "   ✅ Done"
         ((SUCCESS++)) || true
     else
