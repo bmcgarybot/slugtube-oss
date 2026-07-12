@@ -1064,6 +1064,20 @@ def dashboard():
     top_channels = sorted(idx_channels, key=lambda c: c.get('video_count', 0), reverse=True)[:10]
     recent_videos = get_recent_videos(limit=8)
 
+    # Check if a download is actually running (lock file or subprocess alive)
+    lock_file = "/config/slugtube.lock"
+    download_active = False
+    if os.path.exists(lock_file):
+        try:
+            with open(lock_file) as f:
+                lock_pid = int(f.read().strip())
+            os.kill(lock_pid, 0)  # Signal 0 = check if process exists
+            download_active = True
+        except (ValueError, ProcessLookupError, PermissionError):
+            pass
+    if not download_active and jobs.get("proc") and jobs["proc"].poll() is None:
+        download_active = True
+
     return render_template("dashboard.html",
         page="dashboard",
         channel_count=len(channels),
@@ -1081,6 +1095,7 @@ def dashboard():
         recent_videos=recent_videos,
         scanning=idx_status.get('scanning', False),
         cookie_health=cookie_health,
+        download_active=download_active,
     )
 
 
