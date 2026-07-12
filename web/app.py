@@ -2174,7 +2174,12 @@ def delete_playlist(playlist_id):
         deleted_files = 0
 
         if delete_videos:
-            # Get all videos in this playlist that aren't in any OTHER playlist
+            # SAFETY: Only delete videos that are:
+            #   1. In this playlist
+            #   2. NOT in any OTHER playlist
+            #   3. NOT a "main" channel video (i.e., only exists because of this playlist)
+            # We check this by requiring the video to ONLY appear in this one playlist
+            # and nowhere else in the video_playlists table.
             video_rows = conn.execute("""
                 SELECT v.id, v.file_path FROM video_playlists vp
                 JOIN videos v ON v.id = vp.video_id
@@ -2186,8 +2191,18 @@ def delete_playlist(playlist_id):
             """, (playlist_id, playlist_id)).fetchall()
 
             for vrow in video_rows:
+                vid_id = vrow["id"]
                 fpath = vrow["file_path"]
-                if fpath and os.path.exists(fpath):
+
+                # Extra safety: skip if file_path is None or empty
+                if not fpath:
+                    continue
+
+                # Extra safety: only delete if the file is actually inside /shows/
+                if not fpath.startswith("/shows/"):
+                    continue
+
+                if os.path.exists(fpath):
                     try:
                         os.remove(fpath)
                         deleted_files += 1
@@ -2202,8 +2217,9 @@ def delete_playlist(playlist_id):
                     except OSError:
                         pass
 
-                # Remove from database
-                conn.execute("DELETE FROM videos WHERE id = ?", (vrow["id"],))
+                # Remove from videos table only if file was deleted or doesn't exist
+                if not os.path.exists(fpath):
+                    conn.execute("DELETE FROM videos WHERE id = ?", (vid_id,))
 
         # Remove playlist linkages and the playlist itself
         conn.execute("DELETE FROM video_playlists WHERE playlist_id = ?", (playlist_id,))
