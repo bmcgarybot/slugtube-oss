@@ -39,6 +39,9 @@
     <button title="Add all videos from this playlist to one of My Playlists"
             style="position:absolute; top:6px; left:6px; background:rgba(0,0,0,0.65); border:1px solid var(--accent); color:var(--accent); border-radius:6px; padding:2px 8px; cursor:pointer; font-size:12px;"
             onclick="importToMyPlaylist('playlist', '{{ pl.id }}', {{ pl.title | tojson }})">→ My Playlist</button>
+    <button title="Delete this playlist"
+            style="position:absolute; top:6px; right:6px; background:rgba(0,0,0,0.65); border:1px solid var(--red, #e74c3c); color:var(--red, #e74c3c); border-radius:6px; padding:2px 8px; cursor:pointer; font-size:12px;"
+            onclick="deletePlaylist('{{ pl.id }}', {{ pl.title | tojson }}, {{ pl.video_count }})">✕</button>
     </div>
     {% endfor %}
 </div>
@@ -177,6 +180,58 @@
 {% endblock %}
 
 <script>
+// Delete a playlist with option to also delete video files
+function deletePlaylist(playlistId, playlistTitle, videoCount) {
+    var choice = prompt(
+        'Delete playlist "' + playlistTitle + '" (' + videoCount + ' videos)?\n\n' +
+        'Type one of:\n' +
+        '  1 = Delete playlist only (keep video files)\n' +
+        '  2 = Delete playlist AND video files\n' +
+        '  Cancel = Do nothing\n\n' +
+        'Note: Option 2 only deletes videos not in any other playlist.'
+    );
+    if (choice === null || !choice.trim()) return;
+    choice = choice.trim();
+
+    var deleteVideos = false;
+    if (choice === '2') {
+        deleteVideos = true;
+        if (!confirm('Are you sure? This will permanently delete video files from disk for "' + playlistTitle + '".')) return;
+    } else if (choice !== '1') {
+        alert('Invalid choice. Use 1 or 2.');
+        return;
+    }
+
+    fetch('/api/playlist/' + encodeURIComponent(playlistId) + '/delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({delete_videos: deleteVideos})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.status === 'ok') {
+            if (typeof showToastGlobal === 'function') showToastGlobal(d.message);
+            else alert(d.message);
+            // Remove the card from the grid
+            var cards = document.querySelectorAll('.playlist-card');
+            cards.forEach(function(card) {
+                if (card.href && card.href.indexOf(playlistId) !== -1) {
+                    card.parentElement.remove();
+                }
+            });
+            // Update subtitle count
+            var sub = document.querySelector('.pl-page-subtitle');
+            if (sub) {
+                var remaining = document.querySelectorAll('.playlist-card').length;
+                sub.textContent = remaining + ' playlists from {{ channel_name }}';
+            }
+        } else {
+            alert('Error: ' + (d.error || 'Unknown'));
+        }
+    })
+    .catch(function(e) { alert('Error: ' + e); });
+}
+
 // Shared: pick (or create) a personal playlist, then bulk-import a source into it
 function importToMyPlaylist(sourceType, sourceId, sourceTitle) {
     fetch('/api/personal-playlists').then(function(r){return r.json()}).then(function(d){
