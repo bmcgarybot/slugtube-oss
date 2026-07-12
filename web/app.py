@@ -393,7 +393,10 @@ def _scan_channel_stats():
                 hash_name = channel_dir.name
                 base_path = channel_dir.parent / base_name
                 if base_path.is_dir():
-                    # Both exist: merge files from # into base, then delete #
+                    # Both exist: merge files from # into base. Files whose
+                    # destination already exists are LEFT IN PLACE (never
+                    # deleted) — only empty directories are removed after.
+                    leftovers = 0
                     for root, dirs, files in os.walk(str(channel_dir)):
                         rel_root = os.path.relpath(root, str(channel_dir))
                         dest_root = base_path / rel_root
@@ -403,8 +406,21 @@ def _scan_channel_stats():
                             if not dest.exists():
                                 dest_root.mkdir(parents=True, exist_ok=True)
                                 shutil.move(str(src), str(dest))
-                    shutil.rmtree(str(channel_dir), ignore_errors=True)
-                    app.logger.info(f"Auto-merged and removed: {hash_name} → {base_name}")
+                            else:
+                                leftovers += 1
+                    # Remove now-empty dirs only; a non-empty # folder stays
+                    for root, dirs, files in os.walk(str(channel_dir), topdown=False):
+                        try:
+                            os.rmdir(root)
+                        except OSError:
+                            pass
+                    if leftovers:
+                        app.logger.warning(
+                            f"Merge {hash_name} → {base_name}: {leftovers} file(s) "
+                            f"collided with existing files and were left in "
+                            f"{hash_name}/ for manual review (nothing deleted)")
+                    else:
+                        app.logger.info(f"Auto-merged and removed: {hash_name} → {base_name}")
                 else:
                     # Only # exists: just rename it
                     try:
@@ -418,6 +434,16 @@ def _scan_channel_stats():
                     from indexer import get_db as idx_get_db
                     conn = idx_get_db()
                     conn.execute("UPDATE videos SET channel_name = ? WHERE channel_name = ?", (base_name, hash_name))
+                    # Fix ALL path columns — leaving them pointing into the
+                    # deleted # folder is what caused missing thumbnails and
+                    # unplayable merged videos.
+                    old_prefix = str(channel_dir.parent / hash_name) + "/"
+                    new_prefix = str(base_path) + "/"
+                    for col in ("file_path", "thumbnail_path", "subtitle_path", "json_path"):
+                        conn.execute(
+                            f"UPDATE videos SET {col} = ? || substr({col}, ?) "
+                            f"WHERE {col} LIKE ? || '%'",
+                            (new_prefix, len(old_prefix) + 1, old_prefix))
                     conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?", (base_name, hash_name))
                     conn.execute("UPDATE channels SET name = ?, path = ? WHERE name = ?",
                                  (base_name, str(base_path), hash_name))
@@ -534,23 +560,55 @@ def get_log_tail(lines=100, filter_mode=None):
         return "No logs yet."
 
 
-def get_recent_downloads(count=20):
+
+# ── Tiny TTL cache for per-page-load hot spots ─────────────────────────
+# The dashboard used to grep the ENTIRE download log, spawn a yt-dlp
+# subprocess, parse the whole cookie jar, and count the whole archive
+# file on EVERY page load. With a 57k-line archive and a multi-MB log
+# (often over SMB), that made every dashboard render crawl.
+_ttl_cache = {}
+_ttl_lock = threading.Lock()
+
+def _cached(key, ttl, fn):
+    import time as _t
+    now = _t.time()
+    with _ttl_lock:
+        hit = _ttl_cache.get(key)
+        if hit and (now - hit[0]) < ttl:
+            return hit[1]
+    val = fn()
+    with _ttl_lock:
+        _ttl_cache[key] = (now, val)
+    return val
+
+def _cache_bust(key):
+    with _ttl_lock:
+        _ttl_cache.pop(key, None)
+
+def _recent_downloads_uncached(count=20):
+    """Read only the tail of the log (last 256KB) instead of grepping the
+    whole multi-MB file on every page load."""
     downloads = []
     try:
-        result = subprocess.run(
-            ["grep", "-E", "(Downloading|Already|\\[download\\]|✅|⏭️|❌)", LOG_FILE],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.stdout:
-            lines = result.stdout.strip().split("\n")[-count:]
-            for line in lines:
-                downloads.append(line.strip())
-    except:
+        import re as _re
+        pattern = _re.compile(r"(Downloading|Already|\[download\]|✅|⏭️|❌|🆕)")
+        with open(LOG_FILE, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - 262144))
+            tail = f.read().decode("utf-8", errors="replace")
+        matched = [ln.strip() for ln in tail.splitlines() if pattern.search(ln)]
+        downloads = matched[-count:]
+    except Exception:
         pass
     return downloads
 
 
-def get_ytdlp_version():
+def get_recent_downloads(count=20):
+    return _cached(f"recent:{count}", 15, lambda: _recent_downloads_uncached(count))
+
+
+def _ytdlp_version_uncached():
     try:
         ver = subprocess.run(["yt-dlp", "--version"], capture_output=True, text=True, timeout=5)
         return ver.stdout.strip()
@@ -558,7 +616,12 @@ def get_ytdlp_version():
         return "unknown"
 
 
-def check_cookie_health():
+def get_ytdlp_version():
+    # Spawning a subprocess per page load added ~1s to every render
+    return _cached("ytdlp_version", 3600, _ytdlp_version_uncached)
+
+
+def _cookie_health_uncached():
     """Check cookie file health: expiration, age, existence, AND YouTube rejection signals from logs."""
     cookie_path = "/config/Cookie/cookies.txt"
     if not os.path.isfile(cookie_path):
@@ -604,6 +667,11 @@ def check_cookie_health():
 
     except Exception as e:
         return {"status": "missing", "message": f"Error reading cookies: {e}", "age_days": 0, "expired_count": 0, "total_count": 0}
+
+
+def check_cookie_health():
+    # Parsing the whole cookie jar on every page load is wasteful — 60s TTL
+    return _cached("cookie_health", 60, _cookie_health_uncached)
 
 
 def _check_logs_for_cookie_rejection(file_age_days=0):
@@ -821,7 +889,7 @@ def run_single_channel(url, folder_name=None, fast=False):
             logf.flush()
 
         jobs["log"] = "\n".join(log_lines[-100:]) if log_lines else "No output"
-        jobs["status"] = "done" if proc.returncode == 0 else "error"
+        jobs["status"] = "done" if proc.returncode in (0, 101) else "error"
 
         # Trigger re-index after downloads complete
         try:
@@ -870,7 +938,7 @@ def run_download(mode):
         if log_file:
             log_file.close()
 
-        jobs["status"] = "done" if proc.returncode == 0 else "error"
+        jobs["status"] = "done" if proc.returncode in (0, 101) else "error"
         state = load_state()
         state[f"last_{mode}"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         save_state(state)
@@ -892,6 +960,7 @@ def run_update():
         result = subprocess.run(["/app/scripts/update-ytdlp.sh"], capture_output=True, text=True, timeout=120)
         jobs["log"] = result.stdout if result.stdout else "Updated"
         jobs["status"] = "done"
+        _cache_bust("ytdlp_version")
     except Exception as e:
         jobs["status"] = "error"
         jobs["log"] = str(e)
@@ -980,7 +1049,7 @@ SLUGTUBE_CODE_VERSION = "2026-05-29b"
 @app.route("/")
 def dashboard():
     channels = get_channels()
-    archive_count = count_lines(ARCHIVE_FILE)
+    archive_count = _cached("archive_count", 60, lambda: count_lines(ARCHIVE_FILE))
     disk_usage = get_disk_usage()
     state = load_state()
     config = load_config()
@@ -994,6 +1063,20 @@ def dashboard():
     total_videos = idx_stats.get('total_videos', 0)
     top_channels = sorted(idx_channels, key=lambda c: c.get('video_count', 0), reverse=True)[:10]
     recent_videos = get_recent_videos(limit=8)
+
+    # Check if a download is actually running (lock file or subprocess alive)
+    lock_file = "/config/slugtube.lock"
+    download_active = False
+    if os.path.exists(lock_file):
+        try:
+            with open(lock_file) as f:
+                lock_pid = int(f.read().strip())
+            os.kill(lock_pid, 0)  # Signal 0 = check if process exists
+            download_active = True
+        except (ValueError, ProcessLookupError, PermissionError):
+            pass
+    if not download_active and jobs.get("proc") and jobs["proc"].poll() is None:
+        download_active = True
 
     return render_template("dashboard.html",
         page="dashboard",
@@ -1012,6 +1095,7 @@ def dashboard():
         recent_videos=recent_videos,
         scanning=idx_status.get('scanning', False),
         cookie_health=cookie_health,
+        download_active=download_active,
     )
 
 
@@ -2453,7 +2537,12 @@ def api_merge_hash_folders():
                         if not dest.exists():
                             dest_root.mkdir(parents=True, exist_ok=True)
                             shutil.move(str(src), str(dest))
-                shutil.rmtree(str(hdir), ignore_errors=True)
+                # Never delete unmoved (collided) files — remove empty dirs only
+                for root, dirs, files in os.walk(str(hdir), topdown=False):
+                    try:
+                        os.rmdir(root)
+                    except OSError:
+                        pass
             else:
                 hdir.rename(base_path)
             # DB cleanup
@@ -2461,6 +2550,14 @@ def api_merge_hash_folders():
                 from indexer import get_db as idx_get_db
                 conn = idx_get_db()
                 conn.execute("UPDATE videos SET channel_name = ? WHERE channel_name = ?", (base_name, hdir.name))
+                # Fix path columns so thumbnails/playback survive the merge
+                old_prefix = str(hdir) + "/"
+                new_prefix = str(base_path) + "/"
+                for col in ("file_path", "thumbnail_path", "subtitle_path", "json_path"):
+                    conn.execute(
+                        f"UPDATE videos SET {col} = ? || substr({col}, ?) "
+                        f"WHERE {col} LIKE ? || '%'",
+                        (new_prefix, len(old_prefix) + 1, old_prefix))
                 conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?", (base_name, hdir.name))
                 conn.execute("UPDATE channels SET name = ?, path = ? WHERE name = ?",
                              (base_name, str(base_path), hdir.name))
@@ -2491,6 +2588,46 @@ def api_cleanup_ghosts():
         conn = get_db()
         db_channels = conn.execute("SELECT name FROM channels").fetchall()
         removed = []
+
+        # Phase 0: rows whose media file no longer exists at file_path —
+        # the leftovers of old # folder merges that only updated
+        # channel_name (dead thumbnails / unplayable entries).
+        # GUARD: if the shows dir is missing or empty (network share
+        # unmounted), skip entirely — otherwise every row would look dead
+        # and watch history would be lost with them. Only rows whose
+        # channel folder exists are examined.
+        dead_rows = 0
+        shows_root = Path(SHOWS_DIR)
+        if shows_root.is_dir() and any(shows_root.iterdir()):
+            rows = conn.execute("SELECT id, file_path, channel_name FROM videos").fetchall()
+            channel_exists = {}
+            dead_ids = []
+            for r in rows:
+                fp = r['file_path'] or ''
+                if not fp:
+                    continue
+                ch = r['channel_name']
+                if ch not in channel_exists:
+                    channel_exists[ch] = (shows_root / ch).is_dir()
+                if not channel_exists[ch]:
+                    continue  # handled by ghost-channel purge, not here
+                if not os.path.isfile(fp):
+                    dead_ids.append(r['id'])
+            if dead_ids:
+                ph = ",".join("?" * len(dead_ids))
+                conn.execute(f"DELETE FROM video_playlists WHERE video_id IN ({ph})", dead_ids)
+                conn.execute(f"DELETE FROM watch_history WHERE video_id IN ({ph})", dead_ids)
+                try:
+                    conn.execute(f"""
+                        INSERT INTO videos_fts(videos_fts, rowid, id, title, description, channel_name)
+                        SELECT 'delete', rowid, id, title, description, channel_name
+                        FROM videos WHERE id IN ({ph})
+                    """, dead_ids)
+                except Exception:
+                    pass
+                conn.execute(f"DELETE FROM videos WHERE id IN ({ph})", dead_ids)
+                dead_rows = len(dead_ids)
+                app.logger.info(f"Ghost cleanup: removed {dead_rows} video rows with missing files")
 
         for row in db_channels:
             name = row['name']
@@ -2546,7 +2683,12 @@ def api_cleanup_ghosts():
             conn.commit()
             removed.extend([f"{n} (dedup)" for n in dupes_removed])
 
-        msg = f"Cleaned {len(removed)} ghost(s): {', '.join(removed)}" if removed else "No ghosts found"
+        parts = []
+        if dead_rows:
+            parts.append(f"{dead_rows} dead video row(s)")
+        if removed:
+            parts.append(f"{len(removed)} ghost channel(s): {', '.join(removed)}")
+        msg = "Cleaned " + ", ".join(parts) if parts else "No ghosts found"
         return _ajax_or_redirect(msg, fallback="channels")
 
     except Exception as e:
@@ -3961,3 +4103,338 @@ if __name__ == "__main__":
         print(f"⚠️ Indexer init failed: {e}")
 
     app.run(host="0.0.0.0", port=5000, debug=False)
+
+
+# ============================================================
+# Thumbnail Rebuild — relink sidecar images, fetch missing ones
+# ============================================================
+
+_thumb_job = {"running": False, "phase": "", "checked": 0, "relinked": 0,
+              "fetched": 0, "failed": 0, "skipped_synthetic": 0, "done_at": ""}
+
+_THUMB_SIDECAR_EXTS = ('.jpg', '.jpeg', '.png', '.webp')
+
+
+def _find_sidecar_thumb(video_path: str) -> str:
+    """Look next to the video file for <base>.jpg / <base>-thumb.jpg etc."""
+    base, _ = os.path.splitext(video_path)
+    for suffix in ('', '-thumb'):
+        for ext in _THUMB_SIDECAR_EXTS:
+            candidate = base + suffix + ext
+            if os.path.isfile(candidate):
+                return candidate
+    return ''
+
+
+def _fetch_youtube_thumb(video_id: str, dest_path: str) -> bool:
+    """Download the YouTube thumbnail for a real video id. Never overwrites."""
+    import urllib.request
+    if os.path.exists(dest_path):
+        return False
+    for variant in ("maxresdefault", "hqdefault", "mqdefault"):
+        url = f"https://i.ytimg.com/vi/{video_id}/{variant}.jpg"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = resp.read()
+            if len(data) < 2000:  # placeholder gray thumbs are tiny
+                continue
+            tmp = dest_path + ".part"
+            with open(tmp, "wb") as f:
+                f.write(data)
+            os.replace(tmp, dest_path)
+            return True
+        except Exception:
+            continue
+    return False
+
+
+def _rebuild_thumbnails_worker(fetch_missing: bool):
+    from indexer import get_db as idx_get_db
+    import time as _time
+    try:
+        conn = idx_get_db()
+        rows = conn.execute(
+            "SELECT id, file_path, thumbnail_path FROM videos").fetchall()
+
+        # Phase 1: relink — thumbnail missing/dead in DB but a sidecar
+        # image already exists next to the video file
+        _thumb_job["phase"] = "relinking"
+        for r in rows:
+            _thumb_job["checked"] += 1
+            fp = r["file_path"] or ""
+            tp = r["thumbnail_path"] or ""
+            if not fp or not os.path.isfile(fp):
+                continue  # dead rows are Clean Ghost Entries' job
+            if tp and os.path.isfile(tp):
+                continue  # already fine
+            found = _find_sidecar_thumb(fp)
+            if found:
+                conn.execute("UPDATE videos SET thumbnail_path = ? WHERE id = ?",
+                             (found, r["id"]))
+                _thumb_job["relinked"] += 1
+        conn.commit()
+
+        # Phase 2: fetch from YouTube for real-ID videos still missing one.
+        # Writes <videobase>-thumb.jpg ONLY when no such file exists —
+        # never overwrites anything.
+        if fetch_missing:
+            _thumb_job["phase"] = "fetching"
+            still_missing = conn.execute("""
+                SELECT id, file_path FROM videos
+                WHERE (thumbnail_path IS NULL OR thumbnail_path = '')
+                  AND file_path != ''
+            """).fetchall()
+            for r in still_missing:
+                vid = r["id"]
+                fp = r["file_path"] or ""
+                if not fp or not os.path.isfile(fp):
+                    continue
+                if vid.startswith("f_") or len(vid) != 11:
+                    _thumb_job["skipped_synthetic"] += 1
+                    continue
+                dest = os.path.splitext(fp)[0] + "-thumb.jpg"
+                if _fetch_youtube_thumb(vid, dest):
+                    conn.execute(
+                        "UPDATE videos SET thumbnail_path = ? WHERE id = ?",
+                        (dest, vid))
+                    _thumb_job["fetched"] += 1
+                    _time.sleep(0.05)  # be polite to i.ytimg.com
+                else:
+                    _thumb_job["failed"] += 1
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        app.logger.error(f"Thumbnail rebuild error: {e}")
+    finally:
+        _thumb_job["running"] = False
+        _thumb_job["phase"] = "done"
+        _thumb_job["done_at"] = datetime.now().strftime("%H:%M:%S")
+        app.logger.info(
+            f"Thumbnail rebuild: {_thumb_job['relinked']} relinked, "
+            f"{_thumb_job['fetched']} fetched, {_thumb_job['failed']} failed, "
+            f"{_thumb_job['skipped_synthetic']} skipped (no YouTube id) "
+            f"of {_thumb_job['checked']} checked")
+
+
+@app.route("/api/rebuild-thumbnails", methods=["POST"])
+def api_rebuild_thumbnails():
+    """Relink sidecar thumbnails; optionally fetch missing ones from YouTube.
+
+    Non-destructive: only updates DB paths and creates new -thumb.jpg files
+    where none exist. Never deletes or overwrites any file."""
+    if _thumb_job["running"]:
+        return _ajax_or_redirect("Thumbnail rebuild already running", fallback="settings")
+    fetch_missing = request.args.get("fetch", "1") != "0"
+    for k in ("checked", "relinked", "fetched", "failed", "skipped_synthetic"):
+        _thumb_job[k] = 0
+    _thumb_job.update({"running": True, "phase": "starting", "done_at": ""})
+    threading.Thread(target=_rebuild_thumbnails_worker,
+                     args=(fetch_missing,), daemon=True).start()
+    return _ajax_or_redirect(
+        "Thumbnail rebuild started — relinking sidecar images, then fetching "
+        "missing thumbs from YouTube. Check /api/rebuild-thumbnails/status.",
+        fallback="settings")
+
+
+@app.route("/api/rebuild-thumbnails/status")
+def api_rebuild_thumbnails_status():
+    return jsonify(_thumb_job)
+
+
+# ============================================================
+# Personal Playlists — user-curated, independent of channels
+# (channel_name 'Custom' — compatible with /api/create-playlist)
+# ============================================================
+
+PERSONAL_CHANNEL = "Custom"
+
+
+def _personal_playlist_rows(conn, video_id=None):
+    rows = conn.execute("""
+        SELECT p.id, p.title, p.video_count,
+               (SELECT vp.video_id FROM video_playlists vp
+                WHERE vp.playlist_id = p.id ORDER BY vp.playlist_index LIMIT 1) AS thumb_video_id
+        FROM playlists p WHERE p.channel_name = ? ORDER BY p.title
+    """, (PERSONAL_CHANNEL,)).fetchall()
+    result = []
+    member_of = set()
+    if video_id:
+        member_of = {r["playlist_id"] for r in conn.execute(
+            "SELECT playlist_id FROM video_playlists WHERE video_id = ?", (video_id,))}
+    for r in rows:
+        d = dict(r)
+        if video_id:
+            d["has_video"] = r["id"] in member_of
+        result.append(d)
+    return result
+
+
+def _refresh_playlist_count(conn, pid):
+    conn.execute("""UPDATE playlists SET video_count =
+        (SELECT COUNT(*) FROM video_playlists WHERE playlist_id = ?),
+        updated_at = datetime('now') WHERE id = ?""", (pid, pid))
+
+
+@app.route("/playlists")
+def my_playlists_page():
+    from indexer import get_db
+    conn = get_db()
+    playlists = _personal_playlist_rows(conn)
+    channel_names = [r["name"] for r in conn.execute(
+        "SELECT name FROM channels WHERE name != ? ORDER BY name", (PERSONAL_CHANNEL,))]
+    conn.close()
+    return render_template("my_playlists.html", playlists=playlists,
+                           channel_names=channel_names,
+                           detail=None, videos=[], page="playlists", job=jobs)
+
+
+@app.route("/playlists/<playlist_id>")
+def my_playlist_detail(playlist_id):
+    from indexer import get_db, get_playlist, get_playlist_videos
+    pl = get_playlist(playlist_id)
+    if not pl or pl.get("channel_name") != PERSONAL_CHANNEL:
+        abort(404)
+    videos, total = get_playlist_videos(playlist_id, sort="playlist_index",
+                                        limit=500, offset=0)
+    conn = get_db()
+    playlists = _personal_playlist_rows(conn)
+    conn.close()
+    return render_template("my_playlists.html", playlists=playlists,
+                           detail=pl, videos=videos, page="playlists", job=jobs)
+
+
+@app.route("/api/personal-playlists", methods=["GET", "POST"])
+def api_personal_playlists():
+    from indexer import get_db
+    conn = get_db()
+    if request.method == "GET":
+        video_id = request.args.get("video_id")
+        pls = _personal_playlist_rows(conn, video_id=video_id)
+        conn.close()
+        return jsonify({"playlists": pls})
+
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        conn.close()
+        return jsonify({"status": "error", "error": "name required"}), 400
+    pid = "custom_" + re.sub(r'[^a-zA-Z0-9]', '_', name.lower())
+    conn.execute("""INSERT OR IGNORE INTO playlists
+                    (id, channel_name, title, video_count, updated_at)
+                    VALUES (?, ?, ?, 0, datetime('now'))""",
+                 (pid, PERSONAL_CHANNEL, name))
+    conn.commit()
+    pls = _personal_playlist_rows(conn)
+    conn.close()
+    return jsonify({"status": "ok", "id": pid, "playlists": pls})
+
+
+@app.route("/api/personal-playlists/<playlist_id>/videos", methods=["POST"])
+def api_personal_playlist_add(playlist_id):
+    from indexer import get_db
+    data = request.get_json(silent=True) or {}
+    video_id = data.get("video_id")
+    if not video_id:
+        return jsonify({"status": "error", "error": "video_id required"}), 400
+    conn = get_db()
+    pl = conn.execute("SELECT id FROM playlists WHERE id = ? AND channel_name = ?",
+                      (playlist_id, PERSONAL_CHANNEL)).fetchone()
+    if not pl:
+        conn.close()
+        return jsonify({"status": "error", "error": "playlist not found"}), 404
+    nxt = conn.execute(
+        "SELECT COALESCE(MAX(playlist_index), 0) + 1 AS n FROM video_playlists WHERE playlist_id = ?",
+        (playlist_id,)).fetchone()["n"]
+    conn.execute("""INSERT OR IGNORE INTO video_playlists
+                    (video_id, playlist_id, playlist_index) VALUES (?, ?, ?)""",
+                 (video_id, playlist_id, nxt))
+    _refresh_playlist_count(conn, playlist_id)
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/personal-playlists/<playlist_id>/videos/<video_id>", methods=["DELETE"])
+def api_personal_playlist_remove(playlist_id, video_id):
+    from indexer import get_db
+    conn = get_db()
+    conn.execute("DELETE FROM video_playlists WHERE playlist_id = ? AND video_id = ?",
+                 (playlist_id, video_id))
+    _refresh_playlist_count(conn, playlist_id)
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/personal-playlists/<playlist_id>", methods=["DELETE"])
+def api_personal_playlist_delete(playlist_id):
+    """Deletes the playlist record only — never any video files."""
+    from indexer import get_db
+    conn = get_db()
+    pl = conn.execute("SELECT id FROM playlists WHERE id = ? AND channel_name = ?",
+                      (playlist_id, PERSONAL_CHANNEL)).fetchone()
+    if not pl:
+        conn.close()
+        return jsonify({"status": "error", "error": "playlist not found"}), 404
+    conn.execute("DELETE FROM video_playlists WHERE playlist_id = ?", (playlist_id,))
+    conn.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/personal-playlists/<playlist_id>/import", methods=["POST"])
+def api_personal_playlist_import(playlist_id):
+    """Bulk-import into a personal playlist from a channel playlist or an
+    entire channel. Appends in order after existing items; duplicates are
+    skipped (INSERT OR IGNORE on the junction PK). DB-only — no files touched.
+
+    JSON body: { "source_type": "playlist"|"channel", "source_id": <playlist id or channel name> }
+    """
+    from indexer import get_db
+    data = request.get_json(silent=True) or {}
+    source_type = data.get("source_type")
+    source_id = (data.get("source_id") or "").strip()
+    if source_type not in ("playlist", "channel") or not source_id:
+        return jsonify({"status": "error",
+                        "error": "source_type ('playlist'|'channel') and source_id required"}), 400
+
+    conn = get_db()
+    target = conn.execute("SELECT id FROM playlists WHERE id = ? AND channel_name = ?",
+                          (playlist_id, PERSONAL_CHANNEL)).fetchone()
+    if not target:
+        conn.close()
+        return jsonify({"status": "error", "error": "personal playlist not found"}), 404
+
+    if source_type == "playlist":
+        vids = [r["video_id"] for r in conn.execute(
+            """SELECT video_id FROM video_playlists WHERE playlist_id = ?
+               ORDER BY playlist_index""", (source_id,))]
+    else:
+        vids = [r["id"] for r in conn.execute(
+            """SELECT id FROM videos WHERE channel_name = ?
+               ORDER BY upload_date, title""", (source_id,))]
+
+    if not vids:
+        conn.close()
+        return jsonify({"status": "error", "error": "source has no videos"}), 404
+
+    nxt = conn.execute(
+        "SELECT COALESCE(MAX(playlist_index), 0) FROM video_playlists WHERE playlist_id = ?",
+        (playlist_id,)).fetchone()[0]
+    before = conn.execute(
+        "SELECT COUNT(*) FROM video_playlists WHERE playlist_id = ?",
+        (playlist_id,)).fetchone()[0]
+    for i, vid in enumerate(vids, 1):
+        conn.execute("""INSERT OR IGNORE INTO video_playlists
+                        (video_id, playlist_id, playlist_index) VALUES (?, ?, ?)""",
+                     (vid, playlist_id, nxt + i))
+    _refresh_playlist_count(conn, playlist_id)
+    after = conn.execute(
+        "SELECT COUNT(*) FROM video_playlists WHERE playlist_id = ?",
+        (playlist_id,)).fetchone()[0]
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok", "added": after - before,
+                    "skipped_duplicates": len(vids) - (after - before)})
