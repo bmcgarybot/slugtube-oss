@@ -2156,6 +2156,72 @@ def playlists_overview(channel_name):
     )
 
 
+@app.route("/api/playlist/<playlist_id>/delete", methods=["POST"])
+def delete_playlist(playlist_id):
+    """Delete a playlist. Optionally delete the video files too."""
+    from indexer import get_db
+    delete_videos = request.json.get("delete_videos", False) if request.is_json else False
+
+    conn = get_db()
+    try:
+        # Get playlist info
+        pl_row = conn.execute("SELECT * FROM playlists WHERE id = ?", (playlist_id,)).fetchone()
+        if not pl_row:
+            conn.close()
+            return jsonify({"status": "error", "error": "Playlist not found"}), 404
+
+        pl_title = pl_row["title"]
+        deleted_files = 0
+
+        if delete_videos:
+            # Get all videos in this playlist that aren't in any OTHER playlist
+            video_rows = conn.execute("""
+                SELECT v.id, v.file_path FROM video_playlists vp
+                JOIN videos v ON v.id = vp.video_id
+                WHERE vp.playlist_id = ?
+                AND v.id NOT IN (
+                    SELECT video_id FROM video_playlists
+                    WHERE playlist_id != ?
+                )
+            """, (playlist_id, playlist_id)).fetchall()
+
+            for vrow in video_rows:
+                fpath = vrow["file_path"]
+                if fpath and os.path.exists(fpath):
+                    try:
+                        os.remove(fpath)
+                        deleted_files += 1
+                        # Also remove sidecar files (.srt, .jpg, .json, etc.)
+                        base = os.path.splitext(fpath)[0]
+                        for ext in ['.srt', '.jpg', '.webp', '.json', '.nfo',
+                                    '.en.srt', '.en-orig.srt', '.en-GB.srt', '.en-en-GB.srt',
+                                    '.info.json']:
+                            sidecar = base + ext
+                            if os.path.exists(sidecar):
+                                os.remove(sidecar)
+                    except OSError:
+                        pass
+
+                # Remove from database
+                conn.execute("DELETE FROM videos WHERE id = ?", (vrow["id"],))
+
+        # Remove playlist linkages and the playlist itself
+        conn.execute("DELETE FROM video_playlists WHERE playlist_id = ?", (playlist_id,))
+        conn.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+        conn.commit()
+        conn.close()
+
+        msg = f"Deleted playlist \"{pl_title}\""
+        if delete_videos:
+            msg += f" and {deleted_files} video file(s)"
+
+        return jsonify({"status": "ok", "message": msg, "deleted_files": deleted_files})
+
+    except Exception as e:
+        conn.close()
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+
 @app.route("/library/<path:channel_name>/playlist/<playlist_id>")
 def playlist_view(channel_name, playlist_id):
     from indexer import get_playlist_videos, get_playlist, get_index_status, get_db, get_channel_playlists
