@@ -2976,7 +2976,7 @@ def api_fetch_art(channel_name):
             if os.path.isfile(poster_file):
                 print(f"🎨 ✅ Fetched art for {channel_name}", flush=True)
                 # Update DB directly (thread-safe, no Flask context needed)
-                conn = _sqlite3.connect(DB_PATH, timeout=10)
+                conn = _sqlite3.connect(DB_PATH, timeout=120)
                 conn.execute("UPDATE channels SET has_poster = 1 WHERE name = ?", (channel_name,))
                 conn.commit()
                 conn.close()
