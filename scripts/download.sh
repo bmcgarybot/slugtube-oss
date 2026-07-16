@@ -73,7 +73,7 @@ fast_check_channel() {
         [ -n "$vid" ] && urls+=("https://www.youtube.com/watch?v=${vid}")
     done <<< "$new_ids"
 
-    yt-dlp "${_opts[@]}" "${urls[@]}"
+    yt-dlp "${_opts[@]}" "${urls[@]}" || true
 }
 
 
