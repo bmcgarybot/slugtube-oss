@@ -267,7 +267,9 @@ if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_
         YT_OPTS+=(--write-info-json)
     fi
     if [ "$SKIP_SHORTS" = "true" ]; then
-        YT_OPTS+=(--match-filter "duration > 60")
+        YT_OPTS+=(--match-filter "duration > 60 & !is_live")
+    else
+        YT_OPTS+=(--match-filter "!is_live")
     fi
 
     # Fast-single mode: flat-list the latest videos, diff against archive,
@@ -388,7 +390,9 @@ fi
 
 # Skip shorts
 if [ "$SKIP_SHORTS" = "true" ]; then
-    YT_OPTS+=(--match-filter "duration > 60")
+    YT_OPTS+=(--match-filter "duration > 60 & !is_live")
+else
+    YT_OPTS+=(--match-filter "!is_live")
 fi
 
 # ── Mode-specific options ──
