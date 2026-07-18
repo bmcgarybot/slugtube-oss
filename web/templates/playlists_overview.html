@@ -18,30 +18,47 @@
 </div>
 
 {% if playlists %}
+<!-- Bulk Actions Bar -->
+<div class="bulk-bar" style="margin-bottom:20px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+    <button class="btn btn-sm" onclick="toggleSelectMode()" id="select-mode-btn" style="border-color:var(--accent);color:var(--accent);">☐ Select Mode</button>
+    <span id="bulk-actions" style="display:none; gap:8px; flex-wrap:wrap; align-items:center;">
+        <button class="btn btn-sm" onclick="selectAll()" style="border-color:#888;color:#888;">Select All</button>
+        <button class="btn btn-sm" onclick="selectEmpty()" style="border-color:#f0ad4e;color:#f0ad4e;">Select Empty (0 videos)</button>
+        <button class="btn btn-sm" onclick="deselectAll()" style="border-color:#888;color:#888;">Deselect All</button>
+        <span id="selected-count" style="color:var(--text-dim);font-size:13px;margin-left:8px;">0 selected</span>
+        <button class="btn btn-sm" onclick="bulkDelete(false)" style="border-color:#e74c3c;color:#e74c3c;">🗑 Delete Selected (keep files)</button>
+        <button class="btn btn-sm" onclick="bulkDelete(true)" style="border-color:#c0392b;color:#c0392b;">🗑 Delete Selected + Files</button>
+    </span>
+</div>
+
 <!-- Playlist Grid -->
 <div class="playlist-grid">
     {% for pl in playlists %}
-    <div style="position:relative;">
-    <a href="/library/{{ channel_name | urlencode }}/playlist/{{ pl.id }}?sort=playlist_index" class="playlist-card">
-        <div class="playlist-thumb">
-            {% if pl.thumb_video_id %}
-            <img src="/media/thumb/{{ pl.thumb_video_id }}" alt="{{ pl.title }}" loading="lazy">
-            {% else %}
-            <div class="playlist-thumb-placeholder">PL</div>
-            {% endif %}
-            <div class="playlist-count-badge">{{ pl.video_count }} videos</div>
-        </div>
-        <div class="playlist-card-info">
-            <div class="playlist-card-title">{{ pl.title }}</div>
-            <div class="playlist-card-meta">{{ pl.video_count }} videos in your library</div>
-        </div>
-    </a>
-    <button title="Add all videos from this playlist to one of My Playlists"
-            style="position:absolute; top:6px; left:6px; background:rgba(0,0,0,0.65); border:1px solid var(--accent); color:var(--accent); border-radius:6px; padding:2px 8px; cursor:pointer; font-size:12px;"
-            onclick="importToMyPlaylist('playlist', '{{ pl.id }}', {{ pl.title | tojson }})">→ My Playlist</button>
-    <button title="Delete this playlist"
-            style="position:absolute; top:6px; right:6px; background:rgba(0,0,0,0.65); border:1px solid var(--red, #e74c3c); color:var(--red, #e74c3c); border-radius:6px; padding:2px 8px; cursor:pointer; font-size:12px;"
-            onclick="deletePlaylist('{{ pl.id }}', {{ pl.title | tojson }}, {{ pl.video_count }})">✕</button>
+    <div class="pl-wrapper" data-playlist-id="{{ pl.id }}" data-title="{{ pl.title }}" data-count="{{ pl.video_count }}" style="position:relative;">
+        <label class="pl-checkbox-label" style="display:none; position:absolute; top:6px; left:6px; z-index:10; cursor:pointer;">
+            <input type="checkbox" class="pl-checkbox" data-id="{{ pl.id }}" onchange="updateSelectedCount()"
+                   style="width:18px; height:18px; cursor:pointer; accent-color:var(--accent);">
+        </label>
+        <a href="/library/{{ channel_name | urlencode }}/playlist/{{ pl.id }}?sort=playlist_index" class="playlist-card">
+            <div class="playlist-thumb">
+                {% if pl.thumb_video_id %}
+                <img src="/media/thumb/{{ pl.thumb_video_id }}" alt="{{ pl.title }}" loading="lazy">
+                {% else %}
+                <div class="playlist-thumb-placeholder">PL</div>
+                {% endif %}
+                <div class="playlist-count-badge">{{ pl.video_count }} videos</div>
+            </div>
+            <div class="playlist-card-info">
+                <div class="playlist-card-title">{{ pl.title }}</div>
+                <div class="playlist-card-meta">{{ pl.video_count }} videos in your library</div>
+            </div>
+        </a>
+        <button title="Add all videos from this playlist to one of My Playlists"
+                class="pl-overlay-btn pl-import-btn"
+                onclick="event.preventDefault(); event.stopPropagation(); importToMyPlaylist('playlist', '{{ pl.id }}', {{ pl.title | tojson }})">→ My Playlist</button>
+        <button title="Delete this playlist"
+                class="pl-overlay-btn pl-delete-btn"
+                onclick="event.preventDefault(); event.stopPropagation(); deletePlaylist('{{ pl.id }}', {{ pl.title | tojson }}, {{ pl.video_count }})">✕</button>
     </div>
     {% endfor %}
 </div>
@@ -57,171 +74,193 @@
 
 <style>
     /* ── Page Header ── */
-    .pl-page-header {
-        margin-bottom: 24px;
-    }
-    .pl-nav-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 12px;
-    }
-    .pl-back {
-        font-size: 13px;
-        color: var(--text-dim);
-        text-decoration: none;
-        transition: color 0.15s;
-    }
+    .pl-page-header { margin-bottom: 24px; }
+    .pl-nav-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .pl-back { font-size: 13px; color: var(--text-dim); text-decoration: none; transition: color 0.15s; }
     .pl-back:hover { color: var(--accent); }
-    .pl-page-title {
-        font-size: 28px;
-        font-weight: 700;
-        margin: 0 0 4px;
-    }
-    .pl-page-subtitle {
-        font-size: 14px;
-        color: var(--text-dim);
-        margin: 0;
-    }
+    .pl-page-title { font-size: 28px; font-weight: 700; margin: 0 0 4px; }
+    .pl-page-subtitle { font-size: 14px; color: var(--text-dim); margin: 0; }
 
     /* ── Playlist Grid ── */
-    .playlist-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 20px;
-    }
+    .playlist-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
     .playlist-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        overflow: hidden;
-        text-decoration: none;
-        color: var(--text);
-        transition: all 0.2s;
+        background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+        overflow: hidden; text-decoration: none; color: var(--text); transition: all 0.2s; display:block;
     }
-    .playlist-card:hover {
-        border-color: var(--accent);
-        transform: translateY(-3px);
-        box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+    .playlist-card:hover { border-color: var(--accent); transform: translateY(-3px); box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
+
+    /* ── Overlay buttons ── */
+    .pl-overlay-btn {
+        position: absolute; z-index: 5; background: rgba(0,0,0,0.75); border-radius: 6px;
+        padding: 4px 10px; cursor: pointer; font-size: 12px; font-weight: 600;
+        transition: opacity 0.15s, transform 0.1s;
     }
+    .pl-overlay-btn:hover { transform: scale(1.1); opacity: 1 !important; }
+    .pl-import-btn { bottom: 60px; left: 6px; border: 1px solid var(--accent); color: var(--accent); }
+    .pl-delete-btn { bottom: 60px; right: 6px; border: 1px solid #e74c3c; color: #e74c3c; }
 
     /* ── Playlist Thumbnail ── */
-    .playlist-thumb {
-        position: relative;
-        width: 100%;
-        aspect-ratio: 16/9;
-        overflow: hidden;
-        background: var(--bg);
-    }
-    .playlist-thumb img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
+    .playlist-thumb { position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; background: var(--bg); }
+    .playlist-thumb img { width: 100%; height: 100%; object-fit: cover; }
     .playlist-thumb-placeholder {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 48px;
-        background: var(--bg-hover);
+        width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+        font-size: 48px; background: var(--bg-hover);
     }
     .playlist-count-badge {
-        position: absolute;
-        bottom: 8px;
-        right: 8px;
-        background: rgba(0,0,0,0.85);
-        color: white;
-        padding: 4px 10px;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 600;
+        position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.85);
+        color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
     }
 
     /* ── Card Info ── */
-    .playlist-card-info {
-        padding: 14px 16px;
-    }
+    .playlist-card-info { padding: 14px 16px; }
     .playlist-card-title {
-        font-weight: 600;
-        font-size: 15px;
-        line-height: 1.4;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
+        font-weight: 600; font-size: 15px; line-height: 1.4;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
     }
-    .playlist-card-meta {
-        font-size: 12px;
-        color: var(--text-dim);
-        margin-top: 6px;
-    }
+    .playlist-card-meta { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
 
     /* ── Empty State ── */
-    .pl-empty {
-        text-align: center;
-        padding: 60px 20px;
-        color: var(--text-dim);
-    }
-    .pl-empty-icon {
-        font-size: 48px;
-        margin-bottom: 12px;
-    }
+    .pl-empty { text-align: center; padding: 60px 20px; color: var(--text-dim); }
+    .pl-empty-icon { font-size: 48px; margin-bottom: 12px; }
+
+    /* ── Selected state ── */
+    .pl-wrapper.selected .playlist-card { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 
     /* ── Mobile ── */
     @media (max-width: 768px) {
-        .playlist-grid {
-            grid-template-columns: 1fr;
-        }
+        .playlist-grid { grid-template-columns: 1fr; }
         .pl-page-title { font-size: 22px; }
     }
 </style>
 
 <script>
-// Delete a playlist with option to also delete video files
-function deletePlaylist(playlistId, playlistTitle, videoCount) {
-    var choice = prompt(
-        'Delete playlist "' + playlistTitle + '" (' + videoCount + ' videos)?\n\n' +
-        'Type one of:\n' +
-        '  1 = Delete playlist only (keep video files)\n' +
-        '  2 = Delete playlist AND video files\n' +
-        '  Cancel = Do nothing\n\n' +
-        'Note: Option 2 only deletes videos not in any other playlist.'
-    );
-    if (choice === null || !choice.trim()) return;
-    choice = choice.trim();
+var selectMode = false;
 
-    var deleteVideos = false;
-    if (choice === '2') {
-        deleteVideos = true;
-        if (!confirm('Are you sure? This will permanently delete video files from disk for "' + playlistTitle + '".')) return;
-    } else if (choice !== '1') {
-        alert('Invalid choice. Use 1 or 2.');
-        return;
+function toggleSelectMode() {
+    selectMode = !selectMode;
+    var btn = document.getElementById('select-mode-btn');
+    var bulkActions = document.getElementById('bulk-actions');
+    var checkboxes = document.querySelectorAll('.pl-checkbox-label');
+    if (selectMode) {
+        btn.textContent = '☑ Exit Select Mode';
+        btn.style.borderColor = '#e74c3c';
+        btn.style.color = '#e74c3c';
+        bulkActions.style.display = 'flex';
+        checkboxes.forEach(function(cb) { cb.style.display = 'block'; });
+    } else {
+        btn.textContent = '☐ Select Mode';
+        btn.style.borderColor = 'var(--accent)';
+        btn.style.color = 'var(--accent)';
+        bulkActions.style.display = 'none';
+        checkboxes.forEach(function(cb) { cb.style.display = 'none'; });
+        deselectAll();
     }
+}
+
+function selectAll() {
+    document.querySelectorAll('.pl-checkbox').forEach(function(cb) { cb.checked = true; });
+    updateSelectedCount();
+}
+
+function selectEmpty() {
+    document.querySelectorAll('.pl-wrapper').forEach(function(w) {
+        var count = parseInt(w.dataset.count, 10) || 0;
+        var cb = w.querySelector('.pl-checkbox');
+        if (count === 0) cb.checked = true;
+    });
+    updateSelectedCount();
+}
+
+function deselectAll() {
+    document.querySelectorAll('.pl-checkbox').forEach(function(cb) { cb.checked = false; });
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    var checked = document.querySelectorAll('.pl-checkbox:checked').length;
+    document.getElementById('selected-count').textContent = checked + ' selected';
+    // Visual feedback
+    document.querySelectorAll('.pl-wrapper').forEach(function(w) {
+        var cb = w.querySelector('.pl-checkbox');
+        if (cb.checked) w.classList.add('selected');
+        else w.classList.remove('selected');
+    });
+}
+
+function getSelectedIds() {
+    var ids = [];
+    document.querySelectorAll('.pl-checkbox:checked').forEach(function(cb) {
+        ids.push(cb.dataset.id);
+    });
+    return ids;
+}
+
+function bulkDelete(deleteVideos) {
+    var ids = getSelectedIds();
+    if (ids.length === 0) { showToastGlobal('No playlists selected'); return; }
+
+    var msg = 'Delete ' + ids.length + ' playlist(s)?';
+    if (deleteVideos) {
+        msg += '\n\n⚠️ This will also DELETE video files (only those not in other playlists).';
+    } else {
+        msg += '\n\nVideo files will NOT be deleted.';
+    }
+    if (!confirm(msg)) return;
+    if (deleteVideos && !confirm('FINAL WARNING: Permanently delete video files for ' + ids.length + ' playlists?')) return;
+
+    var completed = 0;
+    var errors = 0;
+
+    ids.forEach(function(pid) {
+        fetch('/api/playlist/' + encodeURIComponent(pid) + '/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({delete_videos: deleteVideos})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            completed++;
+            if (d.status === 'ok') {
+                var wrapper = document.querySelector('.pl-wrapper[data-playlist-id="' + pid + '"]');
+                if (wrapper) wrapper.remove();
+            } else {
+                errors++;
+            }
+            if (completed === ids.length) {
+                showToastGlobal('Deleted ' + (completed - errors) + ' playlist(s)' + (errors ? ', ' + errors + ' failed' : ''));
+                // Update subtitle
+                var sub = document.querySelector('.pl-page-subtitle');
+                if (sub) {
+                    var remaining = document.querySelectorAll('.pl-wrapper').length;
+                    sub.textContent = remaining + ' playlists from {{ channel_name }}';
+                }
+                updateSelectedCount();
+            }
+        })
+        .catch(function() { completed++; errors++; });
+    });
+}
+
+// Single delete — simplified to confirm() instead of prompt()
+function deletePlaylist(playlistId, playlistTitle, videoCount) {
+    if (!confirm('Delete playlist "' + playlistTitle + '" (' + videoCount + ' videos)?\n\nPlaylist will be removed. Video files are kept.')) return;
 
     fetch('/api/playlist/' + encodeURIComponent(playlistId) + '/delete', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({delete_videos: deleteVideos})
+        body: JSON.stringify({delete_videos: false})
     })
     .then(function(r) { return r.json(); })
     .then(function(d) {
         if (d.status === 'ok') {
             if (typeof showToastGlobal === 'function') showToastGlobal(d.message);
-            else alert(d.message);
-            // Remove the card from the grid
-            var cards = document.querySelectorAll('.playlist-card');
-            cards.forEach(function(card) {
-                if (card.href && card.href.indexOf(playlistId) !== -1) {
-                    card.parentElement.remove();
-                }
-            });
-            // Update subtitle count
+            // Remove the card
+            var wrapper = document.querySelector('.pl-wrapper[data-playlist-id="' + playlistId + '"]');
+            if (wrapper) wrapper.remove();
+            // Update count
             var sub = document.querySelector('.pl-page-subtitle');
             if (sub) {
-                var remaining = document.querySelectorAll('.playlist-card').length;
+                var remaining = document.querySelectorAll('.pl-wrapper').length;
                 sub.textContent = remaining + ' playlists from {{ channel_name }}';
             }
         } else {
@@ -231,7 +270,7 @@ function deletePlaylist(playlistId, playlistTitle, videoCount) {
     .catch(function(e) { alert('Error: ' + e); });
 }
 
-// Shared: pick (or create) a personal playlist, then bulk-import a source into it
+// Import to My Playlists
 function importToMyPlaylist(sourceType, sourceId, sourceTitle) {
     fetch('/api/personal-playlists').then(function(r){return r.json()}).then(function(d){
         var pls = d.playlists || [];
@@ -255,6 +294,7 @@ function importToMyPlaylist(sourceType, sourceId, sourceTitle) {
         }
     }).catch(function(e){ showToastGlobal('Error: ' + e); });
 }
+
 function doImport(targetId, sourceType, sourceId, sourceTitle) {
     fetch('/api/personal-playlists/' + encodeURIComponent(targetId) + '/import', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
