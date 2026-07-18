@@ -177,7 +177,6 @@
         .pl-page-title { font-size: 22px; }
     }
 </style>
-{% endblock %}
 
 <script>
 // Delete a playlist with option to also delete video files
@@ -268,3 +267,5 @@ function doImport(targetId, sourceType, sourceId, sourceTitle) {
     }).catch(function(e){ showToastGlobal('Error: ' + e); });
 }
 </script>
+
+{% endblock %}
