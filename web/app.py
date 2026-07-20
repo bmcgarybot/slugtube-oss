@@ -2296,29 +2296,53 @@ def playlist_view(channel_name, playlist_id):
 
 @app.route("/watch/<video_id>")
 def watch(video_id):
-    from indexer import get_video, get_channel_videos
+    from indexer import get_video, get_channel_videos, get_playlist_videos, get_playlist
 
     video = get_video(video_id)
     if not video:
         abort(404)
 
-    # Get prev/next for navigation
-    channel_videos, _ = get_channel_videos(video['channel_name'], sort='newest', limit=5000)
+    # Check for playlist context (e.g. ?playlist=custom_my_list)
+    playlist_id = request.args.get('playlist', '')
+    playlist_info = None
+    playlist_video_ids = []
+
     prev_video = None
     next_video = None
-    for i, v in enumerate(channel_videos):
-        if v['id'] == video_id:
-            if i > 0:
-                prev_video = channel_videos[i - 1]
-            if i < len(channel_videos) - 1:
-                next_video = channel_videos[i + 1]
-            break
+
+    if playlist_id:
+        playlist_info = get_playlist(playlist_id)
+        if playlist_info:
+            pl_videos, _ = get_playlist_videos(playlist_id, sort='playlist_index', limit=5000)
+            playlist_video_ids = [v['id'] for v in pl_videos]
+            for i, v in enumerate(pl_videos):
+                if v['id'] == video_id:
+                    if i > 0:
+                        prev_video = pl_videos[i - 1]
+                    if i < len(pl_videos) - 1:
+                        next_video = pl_videos[i + 1]
+                    break
+
+    if not playlist_info:
+        # Fall back to channel-based prev/next
+        playlist_id = ''
+        channel_videos, _ = get_channel_videos(video['channel_name'], sort='newest', limit=5000)
+        for i, v in enumerate(channel_videos):
+            if v['id'] == video_id:
+                if i > 0:
+                    prev_video = channel_videos[i - 1]
+                if i < len(channel_videos) - 1:
+                    next_video = channel_videos[i + 1]
+                break
 
     return render_template("watch.html",
         page="library",
         video=video,
         prev_video=prev_video,
         next_video=next_video,
+        playlist_id=playlist_id,
+        playlist_info=playlist_info,
+        playlist_video_ids=playlist_video_ids,
         job=jobs,
         paused=is_paused(),
     )
@@ -2517,6 +2541,16 @@ def api_watch_progress():
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/video-info/<video_id>")
+def api_video_info(video_id):
+    """Return basic info for a video (used by playlist shuffle to get title)."""
+    from indexer import get_video
+    video = get_video(video_id)
+    if not video:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({"id": video['id'], "title": video['title'], "channel_name": video['channel_name']})
 
 
 @app.route("/api/random-video/<path:channel_name>")

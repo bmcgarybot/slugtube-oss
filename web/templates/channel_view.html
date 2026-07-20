@@ -103,7 +103,7 @@
     {% if not (latest_video and v.id == latest_video.id and offset == 0) %}
     <div class="video-card-wrapper" data-video-id="{{ v.id }}">
         <input type="checkbox" class="video-checkbox" data-id="{{ v.id }}" onchange="updateSelectedCount()" style="display:none;">
-        <a href="/watch/{{ v.id }}" class="video-card">
+        <a href="/watch/{{ v.id }}{% if active_playlist %}?playlist={{ active_playlist.id }}{% endif %}" class="video-card">
         <div class="video-thumb">
             {% if v.thumbnail_path %}
             <img src="/media/thumb/{{ v.id }}" alt="{{ v.title }}" loading="lazy">

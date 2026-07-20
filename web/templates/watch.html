@@ -8,6 +8,13 @@
 </div>
 
 <!-- Video Player -->
+{% if playlist_info %}
+<div style="background:var(--bg-card,#1a1a1a); border:1px solid var(--accent); border-radius:8px; padding:8px 14px; margin-bottom:10px; display:flex; align-items:center; gap:8px; font-size:13px;">
+    <span style="color:var(--accent);">▶ Playlist:</span>
+    <span style="color:var(--text,#eee); font-weight:600;">{{ playlist_info.title }}</span>
+    <span style="color:var(--text-dim,#999); margin-left:auto;">{{ playlist_video_ids|length }} videos</span>
+</div>
+{% endif %}
 <div class="player-container">
     <video id="player" controls autoplay preload="metadata"
         {% if video.position_seconds and not video.watched %}
@@ -121,10 +128,10 @@
             {% if video.watched %}Watched{% else %}Mark Watched{% endif %}
         </button>
         {% if prev_video %}
-        <a href="/watch/{{ prev_video.id }}" class="btn btn-sm" id="prev-btn">Previous</a>
+        <a href="/watch/{{ prev_video.id }}{% if playlist_id %}?playlist={{ playlist_id }}{% endif %}" class="btn btn-sm" id="prev-btn">Previous</a>
         {% endif %}
         {% if next_video %}
-        <a href="/watch/{{ next_video.id }}" class="btn btn-sm" id="next-btn">Next</a>
+        <a href="/watch/{{ next_video.id }}{% if playlist_id %}?playlist={{ playlist_id }}{% endif %}" class="btn btn-sm" id="next-btn">Next</a>
         {% endif %}
         <div class="player-toggles">
             <button id="autoplay-btn" class="btn btn-sm toggle-btn" onclick="toggleAutoplay()" title="Auto-play next video when current ends">
@@ -269,6 +276,8 @@ var channelName = {{ video.channel_name | tojson }};
 var nextVideoUrl = {{ (next_video.id if next_video else '') | tojson }};
 var nextVideoTitle = {{ (next_video.title if next_video else '') | tojson }};
 var prevVideoUrl = {{ (prev_video.id if prev_video else '') | tojson }};
+var playlistId = {{ (playlist_id or '') | tojson }};
+var playlistVideoIds = {{ (playlist_video_ids or []) | tojson }};
 
 // ── Autoplay + Shuffle state ──
 var autoplayEnabled = localStorage.getItem('slugtube-autoplay') === 'true';
@@ -419,6 +428,10 @@ function startAutoplayCountdown(nextId, nextTitle) {
     var count = 5;
     countEl.textContent = count;
     overlay.style.display = '';
+    // Save fullscreen state when countdown starts (video just ended)
+    if (document.fullscreenElement) {
+        sessionStorage.setItem('slugtube-fullscreen', '1');
+    }
     autoplayTimer = setInterval(function() {
         count--;
         countEl.textContent = count;
@@ -436,7 +449,13 @@ function cancelAutoplay() {
 function playNow() {
     clearInterval(autoplayTimer);
     if (autoplayTarget) {
-        window.location.href = '/watch/' + encodeURIComponent(autoplayTarget);
+        var url = '/watch/' + encodeURIComponent(autoplayTarget);
+        if (playlistId) url += '?playlist=' + encodeURIComponent(playlistId);
+        // Remember fullscreen state for next page
+        if (document.fullscreenElement) {
+            sessionStorage.setItem('slugtube-fullscreen', '1');
+        }
+        window.location.href = url;
     }
 }
 
@@ -447,6 +466,33 @@ if (resumePos) {
         player.currentTime = parseFloat(resumePos);
     }, { once: true });
 }
+
+// ── Fullscreen persistence across autoplay ──
+(function() {
+    if (sessionStorage.getItem('slugtube-fullscreen') === '1') {
+        sessionStorage.removeItem('slugtube-fullscreen');
+        // Wait for player to be ready, then request fullscreen
+        player.addEventListener('loadeddata', function() {
+            // Small delay to let the browser settle
+            setTimeout(function() {
+                var container = document.querySelector('.player-container');
+                (container || player).requestFullscreen().catch(function(e) {
+                    // Some browsers block without user gesture — silently fail
+                    console.log('Could not auto-restore fullscreen:', e.message);
+                });
+            }, 300);
+        }, { once: true });
+    }
+})();
+
+// Track fullscreen state for autoplay transitions
+document.addEventListener('fullscreenchange', function() {
+    if (document.fullscreenElement) {
+        sessionStorage.setItem('slugtube-was-fullscreen', '1');
+    } else {
+        sessionStorage.removeItem('slugtube-was-fullscreen');
+    }
+});
 
 // ── Save progress every 10 seconds ──
 let lastSaved = 0;
@@ -548,28 +594,47 @@ player.addEventListener('ended', () => {
             return;
         }
 
-        // Priority 3: Shuffle within channel
+        // Priority 3: Shuffle (playlist-aware or channel-based)
         if (shuffleEnabled) {
-            var swParam2 = skipWatchedEnabled ? '&skip_watched=1' : '';
-            fetch('/api/random-video/' + encodeURIComponent(channelName) + '?exclude=' + encodeURIComponent(videoId) + swParam2)
-                .then(function(r) {
-                    if (!r.ok) throw new Error('Random video API returned ' + r.status);
-                    return r.json();
-                })
-                .then(function(data) {
-                    if (data.id) {
-                        startAutoplayCountdown(data.id, data.title);
-                    } else if (nextVideoUrl) {
-                        startAutoplayCountdown(nextVideoUrl, nextVideoTitle);
-                    }
-                })
-                .catch(function(err) {
-                    console.error('Shuffle fetch failed:', err);
-                    // Fall back to sequential next
-                    if (nextVideoUrl) {
-                        startAutoplayCountdown(nextVideoUrl, nextVideoTitle);
-                    }
-                });
+            if (playlistId && playlistVideoIds.length > 0) {
+                // Shuffle within the current playlist
+                var candidates = playlistVideoIds.filter(function(id) { return id !== videoId; });
+                if (candidates.length > 0) {
+                    var pickId = candidates[Math.floor(Math.random() * candidates.length)];
+                    // Fetch title for the picked video
+                    fetch('/api/video-info/' + encodeURIComponent(pickId))
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            startAutoplayCountdown(pickId, data.title || 'Next video');
+                        })
+                        .catch(function() {
+                            startAutoplayCountdown(pickId, 'Next video');
+                        });
+                } else if (nextVideoUrl) {
+                    startAutoplayCountdown(nextVideoUrl, nextVideoTitle);
+                }
+            } else {
+                // Shuffle within channel (original behavior)
+                var swParam2 = skipWatchedEnabled ? '&skip_watched=1' : '';
+                fetch('/api/random-video/' + encodeURIComponent(channelName) + '?exclude=' + encodeURIComponent(videoId) + swParam2)
+                    .then(function(r) {
+                        if (!r.ok) throw new Error('Random video API returned ' + r.status);
+                        return r.json();
+                    })
+                    .then(function(data) {
+                        if (data.id) {
+                            startAutoplayCountdown(data.id, data.title);
+                        } else if (nextVideoUrl) {
+                            startAutoplayCountdown(nextVideoUrl, nextVideoTitle);
+                        }
+                    })
+                    .catch(function(err) {
+                        console.error('Shuffle fetch failed:', err);
+                        if (nextVideoUrl) {
+                            startAutoplayCountdown(nextVideoUrl, nextVideoTitle);
+                        }
+                    });
+            }
         } else if (nextVideoUrl) {
             // Priority 4: Sequential next
             startAutoplayCountdown(nextVideoUrl, nextVideoTitle);
@@ -631,10 +696,20 @@ document.addEventListener('keydown', (e) => {
             player.muted = !player.muted;
             break;
         case 'n':
-            if (nextVideoUrl) window.location.href = '/watch/' + encodeURIComponent(nextVideoUrl);
+            if (nextVideoUrl) {
+                var url = '/watch/' + encodeURIComponent(nextVideoUrl);
+                if (playlistId) url += '?playlist=' + encodeURIComponent(playlistId);
+                if (document.fullscreenElement) sessionStorage.setItem('slugtube-fullscreen', '1');
+                window.location.href = url;
+            }
             break;
         case 'p':
-            if (prevVideoUrl) window.location.href = '/watch/' + encodeURIComponent(prevVideoUrl);
+            if (prevVideoUrl) {
+                var url = '/watch/' + encodeURIComponent(prevVideoUrl);
+                if (playlistId) url += '?playlist=' + encodeURIComponent(playlistId);
+                if (document.fullscreenElement) sessionStorage.setItem('slugtube-fullscreen', '1');
+                window.location.href = url;
+            }
             break;
         case 'q':
             toggleQueuePanel();
