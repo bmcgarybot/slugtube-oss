@@ -26,28 +26,52 @@
 <div class="card">
     <div class="card-header">
         <span>Results for "{{ query }}" — {{ search_results|length }} found</span>
-        <a href="/library" class="btn btn-sm">✕ Clear</a>
+        <div style="display:flex;gap:8px;align-items:center;">
+            {% if search_results %}
+            <button class="btn btn-purple btn-sm" id="toggle-select-btn" onclick="toggleSelectMode()" title="Select videos for bulk actions">Select Videos</button>
+            {% endif %}
+            <a href="/library" class="btn btn-sm">✕ Clear</a>
+        </div>
     </div>
+
+    <!-- Bulk Action Bar (hidden until select mode) -->
+    {% if search_results %}
+    <div id="bulk-action-bar" class="bulk-bar" style="display:none;">
+        <div class="bulk-bar-left">
+            <label class="bulk-select-all"><input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this)"> Select All</label>
+            <span id="selected-count" class="bulk-count">0 selected</span>
+        </div>
+        <div class="bulk-bar-right">
+            <button class="btn btn-purple btn-sm" onclick="showPlaylistDialog()" title="Add selected videos to a custom playlist">Add to Playlist</button>
+            <button class="btn btn-danger btn-sm" onclick="showDeleteDialog()" title="Delete selected videos from disk">Delete Selected</button>
+            <button class="btn btn-ghost btn-sm" onclick="toggleSelectMode()">Cancel</button>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="card-body">
         {% if search_results %}
-        <div class="video-grid">
+        <div class="video-grid" id="video-grid">
             {% for v in search_results %}
-            <a href="/watch/{{ v.id }}" class="video-card">
-                <div class="video-thumb">
-                    {% if v.thumbnail_path %}
-                    <img src="/media/thumb/{{ v.id }}" alt="{{ v.title }}" loading="lazy">
-                    {% else %}
-                    <div class="thumb-placeholder">▶</div>
-                    {% endif %}
-                    <span class="video-duration">{{ format_duration(v.duration) }}</span>
-                    {% if v.watched %}<span class="watched-badge">✓</span>{% endif %}
-                </div>
-                <div class="video-info">
-                    <div class="video-title">{{ v.title }}</div>
-                    <div class="video-meta">{{ v.channel_name }} · {{ v.upload_date or 'Unknown' }}</div>
-                    <div class="video-meta">{{ format_size(v.file_size) }}</div>
-                </div>
-            </a>
+            <div class="video-card-wrapper" data-video-id="{{ v.id }}">
+                <input type="checkbox" class="video-checkbox" data-id="{{ v.id }}" onchange="updateSelectedCount()" style="display:none;">
+                <a href="/watch/{{ v.id }}" class="video-card">
+                    <div class="video-thumb">
+                        {% if v.thumbnail_path %}
+                        <img src="/media/thumb/{{ v.id }}" alt="{{ v.title }}" loading="lazy">
+                        {% else %}
+                        <div class="thumb-placeholder">▶</div>
+                        {% endif %}
+                        <span class="video-duration">{{ format_duration(v.duration) }}</span>
+                        {% if v.watched %}<span class="watched-badge">✓</span>{% endif %}
+                    </div>
+                    <div class="video-info">
+                        <div class="video-title">{{ v.title }}</div>
+                        <div class="video-meta">{{ v.channel_name }} · {{ v.upload_date or 'Unknown' }}</div>
+                        <div class="video-meta">{{ format_size(v.file_size) }}</div>
+                    </div>
+                </a>
+            </div>
             {% endfor %}
         </div>
         {% else %}
@@ -271,6 +295,29 @@
         border-color: var(--accent);
         box-shadow: 0 0 0 3px rgba(88,166,255,0.1);
     }
+
+    /* ── Bulk Select Mode ── */
+    .bulk-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; margin: 0 16px 16px; background: var(--bg-card); border: 1px solid var(--purple, #8b5cf6); border-radius: 10px; gap: 16px; }
+    .bulk-bar-left { display: flex; align-items: center; gap: 14px; }
+    .bulk-bar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .bulk-select-all { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; user-select: none; }
+    .bulk-select-all input { width: 16px; height: 16px; cursor: pointer; accent-color: #8b5cf6; }
+    .bulk-count { font-size: 13px; font-weight: 600; color: var(--purple, #8b5cf6); }
+
+    .select-mode .video-checkbox { display: block !important; position: absolute; top: 8px; left: 8px; z-index: 10; width: 20px; height: 20px; cursor: pointer; accent-color: #8b5cf6; }
+    .select-mode .video-card-wrapper { position: relative; cursor: pointer; }
+    .select-mode .video-card-wrapper.selected { outline: 2px solid #8b5cf6; border-radius: 10px; }
+    .select-mode .video-card-wrapper.selected .video-card { opacity: 0.85; }
+    .select-mode .video-card { pointer-events: none; }
+
+    .btn-purple { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+    .btn-purple:hover { background: #7c3aed; border-color: #7c3aed; }
+    .btn-ghost { background: transparent; color: var(--text-dim); border-color: var(--border); }
+
+    @media (max-width: 600px) {
+        .bulk-bar { flex-direction: column; gap: 10px; }
+        .bulk-bar-left, .bulk-bar-right { justify-content: center; }
+    }
 </style>
 
 {% if index_status.scanning %}
@@ -288,6 +335,211 @@
         } catch(e) {}
     }, 8000);
 })();
+</script>
+{% endif %}
+
+{% if query and search_results %}
+<script>
+let selectMode = false;
+
+function toggleSelectMode() {
+    selectMode = !selectMode;
+    const grid = document.getElementById('video-grid');
+    const bar = document.getElementById('bulk-action-bar');
+    const btn = document.getElementById('toggle-select-btn');
+
+    if (selectMode) {
+        grid.classList.add('select-mode');
+        bar.style.display = 'flex';
+        btn.textContent = 'Selecting...';
+        btn.classList.add('btn-purple');
+    } else {
+        grid.classList.remove('select-mode');
+        bar.style.display = 'none';
+        btn.textContent = 'Select Videos';
+        document.querySelectorAll('.video-checkbox').forEach(cb => {
+            cb.checked = false;
+            cb.closest('.video-card-wrapper').classList.remove('selected');
+        });
+        document.getElementById('select-all-cb').checked = false;
+        updateSelectedCount();
+    }
+}
+
+document.addEventListener('click', function(e) {
+    if (!selectMode) return;
+    const wrapper = e.target.closest('.video-card-wrapper');
+    if (!wrapper) return;
+    if (e.target.classList.contains('video-checkbox')) return;
+    e.preventDefault();
+    const cb = wrapper.querySelector('.video-checkbox');
+    cb.checked = !cb.checked;
+    wrapper.classList.toggle('selected', cb.checked);
+    updateSelectedCount();
+});
+
+function toggleSelectAll(master) {
+    const checkboxes = document.querySelectorAll('.video-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = master.checked;
+        cb.closest('.video-card-wrapper').classList.toggle('selected', master.checked);
+    });
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    const count = document.querySelectorAll('.video-checkbox:checked').length;
+    document.getElementById('selected-count').textContent = count + ' selected';
+}
+
+function getSelectedIds() {
+    return Array.from(document.querySelectorAll('.video-checkbox:checked')).map(cb => cb.dataset.id);
+}
+
+function showDeleteDialog() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return alert('No videos selected');
+
+    var overlay = document.createElement('div');
+    overlay.id = 'delete-modal-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:999;display:flex;align-items:center;justify-content:center;';
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:420px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,0.5);';
+
+    modal.innerHTML = '<h3 style="margin:0 0 12px;font-size:16px;color:var(--text);">Delete ' + ids.length + ' video(s)?</h3>'
+        + '<p style="font-size:13px;color:var(--text-dim);margin-bottom:16px;">This will permanently remove the selected files from disk.</p>'
+        + '<label style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer;margin-bottom:20px;">'
+        + '<input type="checkbox" id="delete-exclude-cb" class="form-checkbox" checked>'
+        + '<div><span style="font-size:13px;font-weight:600;color:var(--text);">Also exclude from future downloads</span>'
+        + '<div style="font-size:12px;color:var(--text-dimmer);margin-top:2px;">Prevents these videos from being re-downloaded</div></div></label>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+        + '<button class="btn btn-ghost" onclick="closeDeleteDialog()">Cancel</button>'
+        + '<button class="btn btn-danger" onclick="confirmDelete()">Delete</button></div>';
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeDeleteDialog(); });
+}
+
+function closeDeleteDialog() {
+    var overlay = document.getElementById('delete-modal-overlay');
+    if (overlay) overlay.remove();
+}
+
+function confirmDelete() {
+    const ids = getSelectedIds();
+    const alsoExclude = document.getElementById('delete-exclude-cb').checked;
+    closeDeleteDialog();
+
+    fetch('/api/bulk-delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({video_ids: ids, exclude: alsoExclude})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            alert('Deleted ' + data.deleted + ' video(s).' + (alsoExclude ? ' Excluded from future downloads.' : ''));
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown'));
+        }
+    })
+    .catch(err => alert('Request failed: ' + err));
+}
+
+function showPlaylistDialog() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return alert('No videos selected');
+
+    var overlay = document.createElement('div');
+    overlay.id = 'playlist-modal-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:999;display:flex;align-items:center;justify-content:center;';
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:420px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,0.5);';
+
+    // Get the channel name from the first selected video's data
+    var firstWrapper = document.querySelector('.video-checkbox:checked').closest('.video-card-wrapper');
+    var channelEl = firstWrapper ? firstWrapper.querySelector('.video-meta') : null;
+    var channelName = channelEl ? channelEl.textContent.split('·')[0].trim() : 'Mixed';
+
+    modal.innerHTML = '<h3 style="margin:0 0 12px;font-size:16px;color:var(--text);">Add ' + ids.length + ' video(s) to playlist</h3>'
+        + '<p style="font-size:13px;color:var(--text-dim);margin-bottom:16px;">Create a new custom playlist or add to an existing one.</p>'
+        + '<div id="pl-existing-list" style="max-height:180px; overflow-y:auto; margin-bottom:12px;"><div style="color:var(--text-dim);font-size:13px;">Loading playlists...</div></div>'
+        + '<div style="display:flex;gap:6px;margin-bottom:16px;">'
+        + '<input type="text" id="playlist-name-input" placeholder="New playlist name..." style="flex:1;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;">'
+        + '<button class="btn btn-purple btn-sm" onclick="confirmNewPlaylist()">Create</button></div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+        + '<button class="btn btn-ghost" onclick="closePlaylistDialog()">Close</button></div>';
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closePlaylistDialog(); });
+
+    // Load existing playlists
+    fetch('/api/personal-playlists')
+        .then(r => r.json())
+        .then(data => {
+            var list = document.getElementById('pl-existing-list');
+            if (!data.playlists || data.playlists.length === 0) {
+                list.innerHTML = '<div style="color:var(--text-dim);font-size:13px;">No playlists yet — create one below.</div>';
+                return;
+            }
+            list.innerHTML = data.playlists.map(function(p) {
+                return '<button class="btn btn-sm" style="display:block;width:100%;text-align:left;margin-bottom:4px;" onclick="addToExistingPlaylist(\'' + p.id + '\')">'
+                    + p.title + ' <span style="color:var(--text-dimmer);">(' + p.video_count + ')</span></button>';
+            }).join('');
+        })
+        .catch(function() {
+            document.getElementById('pl-existing-list').innerHTML = '<div style="color:#e66;font-size:13px;">Could not load playlists</div>';
+        });
+
+    setTimeout(function() { document.getElementById('playlist-name-input').focus(); }, 100);
+}
+
+function closePlaylistDialog() {
+    var overlay = document.getElementById('playlist-modal-overlay');
+    if (overlay) overlay.remove();
+}
+
+function addToExistingPlaylist(playlistId) {
+    const ids = getSelectedIds();
+    var promises = ids.map(function(vid) {
+        return fetch('/api/personal-playlists/' + encodeURIComponent(playlistId) + '/videos', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({video_id: vid})
+        });
+    });
+    Promise.all(promises).then(function() {
+        closePlaylistDialog();
+        alert('Added ' + ids.length + ' video(s) to playlist.');
+    }).catch(function(err) { alert('Error: ' + err); });
+}
+
+function confirmNewPlaylist() {
+    const ids = getSelectedIds();
+    const name = document.getElementById('playlist-name-input').value.trim();
+    if (!name) return alert('Please enter a playlist name');
+
+    // Create playlist then add videos
+    fetch('/api/personal-playlists', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: name})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            return addToExistingPlaylist(data.id);
+        } else {
+            alert('Error: ' + (data.error || 'Unknown'));
+        }
+    })
+    .catch(err => alert('Request failed: ' + err));
+}
 </script>
 {% endif %}
 {% endblock %}
