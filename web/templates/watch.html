@@ -422,10 +422,19 @@ var autoplayTarget = null;
 var autoplayTargetTitle = null;
 
 function startAutoplayCountdown(nextId, nextTitle) {
+    // Never start a countdown we can't fulfill. If no explicit target was
+    // passed, fall back to the server-computed sequential next; if there's
+    // still nothing, there's no next video — don't show a doomed timer.
+    var target = nextId || nextVideoUrl;
+    if (!target) {
+        var ov0 = document.getElementById('autoplay-overlay');
+        if (ov0) ov0.style.display = 'none';
+        return;
+    }
     var overlay = document.getElementById('autoplay-overlay');
     var titleEl = document.getElementById('autoplay-next-title');
     var countEl = document.getElementById('countdown');
-    autoplayTarget = nextId;
+    autoplayTarget = target;
     autoplayTargetTitle = nextTitle;
     titleEl.textContent = nextTitle || 'Next video';
     var count = 5;
@@ -437,9 +446,11 @@ function startAutoplayCountdown(nextId, nextTitle) {
     }
     autoplayTimer = setInterval(function() {
         count--;
+        if (count < 0) count = 0;
         countEl.textContent = count;
         if (count <= 0) {
             clearInterval(autoplayTimer);
+            autoplayTimer = null;
             playNow();
         }
     }, 1000);
@@ -451,14 +462,21 @@ function cancelAutoplay() {
 }
 function playNow() {
     clearInterval(autoplayTimer);
-    if (autoplayTarget) {
-        var url = '/watch/' + encodeURIComponent(autoplayTarget);
+    autoplayTimer = null;
+    var target = autoplayTarget || nextVideoUrl;  // fall back to sequential next
+    if (target) {
+        var url = '/watch/' + encodeURIComponent(target);
         if (playlistId) url += '?playlist=' + encodeURIComponent(playlistId);
         // Remember fullscreen state for next page
         if (document.fullscreenElement) {
             sessionStorage.setItem('slugtube-fullscreen', '1');
         }
         window.location.href = url;
+    } else {
+        // No next video to play — hide the overlay instead of leaving a
+        // stuck (or negative) countdown on screen
+        var ov = document.getElementById('autoplay-overlay');
+        if (ov) ov.style.display = 'none';
     }
 }
 
@@ -540,9 +558,15 @@ window.addEventListener('beforeunload', () => {
 });
 
 // ── Safety net: detect video end even if 'ended' event doesn't fire ──
+// Some browsers/streams don't emit 'ended' reliably. The old check also
+// required player.paused, but at true end-of-file many players keep
+// paused=false while currentTime sits at (or just past) duration — so
+// 'ended' was never dispatched and autoplay never started. We now treat
+// "currentTime has reached duration" as ended regardless of paused.
 var _endedHandled = false;
 player.addEventListener('timeupdate', function() {
-    if (!_endedHandled && player.duration > 0 && player.currentTime >= player.duration - 0.5 && player.paused) {
+    if (_endedHandled || !player.duration) return;
+    if (player.currentTime >= player.duration - 0.5) {
         _endedHandled = true;
         player.dispatchEvent(new Event('ended'));
     }
