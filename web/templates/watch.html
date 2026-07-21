@@ -274,7 +274,7 @@
 
 <script>
 const player = document.getElementById('player');
-const videoId = '{{ video.id }}';
+var videoId = '{{ video.id }}';
 var channelName = {{ video.channel_name | tojson }};
 var nextVideoUrl = {{ (next_video.id if next_video else '') | tojson }};
 var nextVideoTitle = {{ (next_video.title if next_video else '') | tojson }};
@@ -464,19 +464,94 @@ function playNow() {
     clearInterval(autoplayTimer);
     autoplayTimer = null;
     var target = autoplayTarget || nextVideoUrl;  // fall back to sequential next
-    if (target) {
-        var url = '/watch/' + encodeURIComponent(target);
-        if (playlistId) url += '?playlist=' + encodeURIComponent(playlistId);
-        // Remember fullscreen state for next page
-        if (document.fullscreenElement) {
-            sessionStorage.setItem('slugtube-fullscreen', '1');
-        }
-        window.location.href = url;
-    } else {
-        // No next video to play — hide the overlay instead of leaving a
-        // stuck (or negative) countdown on screen
+    if (!target) {
         var ov = document.getElementById('autoplay-overlay');
         if (ov) ov.style.display = 'none';
+        return;
+    }
+    // If we're currently fullscreen, swap the video IN PLACE instead of
+    // navigating — a page load always drops fullscreen and browsers won't
+    // let us programmatically re-enter without a user gesture. Swapping the
+    // source keeps the same <video> element fullscreen with no interruption.
+    var isFs = document.fullscreenElement || document.webkitFullscreenElement;
+    if (isFs) {
+        playInPlace(target);
+        return;
+    }
+    var url = '/watch/' + encodeURIComponent(target);
+    if (playlistId) url += '?playlist=' + encodeURIComponent(playlistId);
+    if (document.fullscreenElement) {
+        sessionStorage.setItem('slugtube-fullscreen', '1');
+    }
+    window.location.href = url;
+}
+
+// Load the next video into the current player without leaving the page,
+// so fullscreen is preserved. Updates the URL, title, and per-video state
+// enough to keep the experience seamless; falls back to a normal
+// navigation if anything goes wrong.
+function playInPlace(nextId) {
+    var overlay = document.getElementById('autoplay-overlay');
+    if (overlay) overlay.style.display = 'none';
+
+    // Point the player at the new file and play
+    var src = player.querySelector('source');
+    if (src) {
+        src.src = '/media/video/' + encodeURIComponent(nextId);
+        player.load();
+        var pr = player.play();
+        if (pr && pr.catch) pr.catch(function(){});
+    } else {
+        // No <source> element to swap — fall back to navigation
+        fallbackNavigate(nextId);
+        return;
+    }
+
+    // Update address bar + tab title without reloading
+    try {
+        var newUrl = '/watch/' + encodeURIComponent(nextId) +
+                     (playlistId ? '?playlist=' + encodeURIComponent(playlistId) : '');
+        window.history.replaceState({}, '', newUrl);
+    } catch (e) {}
+
+    // Refresh the lightweight on-page bits from the API; if it fails, the
+    // video is already playing so it's non-fatal
+    fetch('/api/video-info/' + encodeURIComponent(nextId))
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (!data) return;
+            if (data.title) {
+                document.title = data.title + ' — SlugTube';
+                var h1 = document.querySelector('.video-detail-title');
+                if (h1) h1.textContent = data.title;
+            }
+        })
+        .catch(function(){});
+
+    // Advance our client-side "current video" pointer so the NEXT autoplay
+    // targets the right subsequent video
+    videoId = nextId;
+    _endedHandled = false;
+    recomputeNextFromPlaylist(nextId);
+}
+
+function fallbackNavigate(nextId) {
+    var url = '/watch/' + encodeURIComponent(nextId);
+    if (playlistId) url += '?playlist=' + encodeURIComponent(playlistId);
+    window.location.href = url;
+}
+
+// After an in-place swap, figure out the new sequential next video from
+// the playlist id list we already have, so chained autoplay keeps working.
+function recomputeNextFromPlaylist(currentId) {
+    autoplayTarget = null;
+    if (playlistId && playlistVideoIds && playlistVideoIds.length) {
+        var idx = playlistVideoIds.indexOf(currentId);
+        if (idx >= 0 && idx < playlistVideoIds.length - 1) {
+            nextVideoUrl = playlistVideoIds[idx + 1];
+            return;
+        }
+        nextVideoUrl = '';  // was last in playlist
     }
 }
 
@@ -489,31 +564,52 @@ if (resumePos) {
 }
 
 // ── Fullscreen persistence across autoplay ──
+// NOTE: browsers only allow programmatic fullscreen shortly after a
+// user gesture. Autoplay navigation has no gesture on the new page, so
+// this is best-effort: it works in some browsers (Safari, older Chrome
+// grace-period) and is silently declined in others. We try several
+// entry points and the video element's own fullscreen as a fallback.
 (function() {
-    if (sessionStorage.getItem('slugtube-fullscreen') === '1') {
-        sessionStorage.removeItem('slugtube-fullscreen');
-        // Wait for player to be ready, then request fullscreen
-        player.addEventListener('loadeddata', function() {
-            // Small delay to let the browser settle
-            setTimeout(function() {
-                var container = document.querySelector('.player-container');
-                (container || player).requestFullscreen().catch(function(e) {
-                    // Some browsers block without user gesture — silently fail
-                    console.log('Could not auto-restore fullscreen:', e.message);
-                });
-            }, 300);
-        }, { once: true });
-    }
-})();
+    if (sessionStorage.getItem('slugtube-fullscreen') !== '1') return;
+    sessionStorage.removeItem('slugtube-fullscreen');
 
-// Track fullscreen state for autoplay transitions
-document.addEventListener('fullscreenchange', function() {
-    if (document.fullscreenElement) {
-        sessionStorage.setItem('slugtube-was-fullscreen', '1');
-    } else {
-        sessionStorage.removeItem('slugtube-was-fullscreen');
+    function enterFullscreen() {
+        var container = document.querySelector('.player-container') || player;
+        var fn = container.requestFullscreen
+              || container.webkitRequestFullscreen
+              || container.mozRequestFullScreen
+              || container.msRequestFullscreen;
+        try {
+            if (fn) {
+                var p = fn.call(container);
+                if (p && p.catch) p.catch(tryNativeVideo);
+            } else {
+                tryNativeVideo();
+            }
+        } catch (e) {
+            tryNativeVideo();
+        }
     }
-});
+
+    function tryNativeVideo() {
+        // iOS / Safari: the <video> element has its own fullscreen that
+        // is sometimes permitted when the container request is not.
+        var vfn = player.webkitEnterFullscreen || player.webkitRequestFullscreen;
+        if (vfn) { try { vfn.call(player); } catch (e) {} }
+    }
+
+    // Try as early as the media is usable, and again on first play, to
+    // catch whichever moment the browser still counts as gesture-adjacent
+    var tried = false;
+    function attempt() {
+        if (tried) return;
+        tried = true;
+        setTimeout(enterFullscreen, 150);
+    }
+    if (player.readyState >= 2) attempt();
+    player.addEventListener('loadeddata', attempt, { once: true });
+    player.addEventListener('play', attempt, { once: true });
+})();
 
 // ── Save progress every 10 seconds ──
 let lastSaved = 0;
