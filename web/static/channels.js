@@ -395,7 +395,7 @@ function renderVideoGrid(videos) {
         var watchedClass = v.watched ? ' is-watched' : '';
         var checkbox = bulkMode ? '<input type="checkbox" class="bulk-checkbox" data-id="' + escHtml(v.id) + '" onclick="event.preventDefault();event.stopPropagation();this.checked=!this.checked;updateBulkCount();" style="position:absolute;top:8px;left:8px;z-index:5;width:18px;height:18px;cursor:pointer;">' : '';
 
-        html += '<a class="video-card' + watchedClass + '" style="position:relative;" ' + (bulkMode ? 'onclick="event.preventDefault();var cb=this.querySelector(\'.bulk-checkbox\');cb.checked=!cb.checked;updateBulkCount();"' : 'href="/watch/' + encodeURIComponent(v.id) + '"') + '>' +
+        html += '<a class="video-card' + watchedClass + '" draggable="false" style="position:relative;" ' + (bulkMode ? 'onclick="event.preventDefault();var cb=this.querySelector(\'.bulk-checkbox\');cb.checked=!cb.checked;updateBulkCount();"' : 'href="/watch/' + encodeURIComponent(v.id) + '"') + '>' +
             checkbox +
             '<div class="video-thumb" style="' + thumbStyle + '">' + thumbPh + dur + watched + progressLabel + progress + '</div>' +
             '<div class="video-info">' +
@@ -574,6 +574,16 @@ function updateBulkCount() {
         return t && t.checked;
     }
 
+    // Video cards are <a> links. In Chromium/Brave, mousedown+move on a
+    // link starts a NATIVE drag (dragging the link), which cancels our
+    // mousemove/mouseup and the marquee never forms. Cancel dragstart
+    // inside the grid while in select mode so our custom drag can run.
+    document.addEventListener('dragstart', function(e) {
+        if (!bulkOn()) return;
+        var grid = document.getElementById('video-grid');
+        if (grid && grid.contains(e.target)) e.preventDefault();
+    });
+
     document.addEventListener('mousedown', function(e) {
         if (e.button !== 0 || !bulkOn()) return;
         var grid = document.getElementById('video-grid');
@@ -584,6 +594,8 @@ function updateBulkCount() {
         moved = false;
         startX = e.pageX;
         startY = e.pageY;
+        // Stop the browser from starting a text/link selection or drag
+        e.preventDefault();
     });
 
     document.addEventListener('mousemove', function(e) {
