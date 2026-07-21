@@ -89,6 +89,7 @@
     <div class="bulk-bar-left">
         <label class="bulk-select-all"><input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this)"> Select All</label>
         <span id="selected-count" class="bulk-count">0 selected</span>
+        <span class="bulk-hint">Tip: click-drag across the videos to select a bunch at once</span>
     </div>
     <div class="bulk-bar-right">
         <button class="btn btn-purple btn-sm" onclick="showPlaylistDialog()" title="Add selected videos to a custom playlist">Add to Playlist</button>
@@ -225,6 +226,8 @@
     /* ── Bulk Select Mode ── */
     .bulk-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; margin-bottom: 16px; background: var(--bg-card); border: 1px solid var(--purple); border-radius: 10px; gap: 16px; }
     .bulk-bar-left { display: flex; align-items: center; gap: 14px; }
+    .bulk-hint { font-size: 12px; color: var(--text-dimmer); }
+    @media (max-width: 640px) { .bulk-hint { display: none; } }
     .bulk-bar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .bulk-select-all { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; user-select: none; }
     .bulk-select-all input { width: 16px; height: 16px; cursor: pointer; accent-color: #8b5cf6; }
@@ -235,6 +238,10 @@
     .select-mode .video-card-wrapper.selected { outline: 2px solid #8b5cf6; border-radius: 10px; }
     .select-mode .video-card-wrapper.selected .video-card { opacity: 0.85; }
     .select-mode .video-card { pointer-events: none; }
+    /* Rubber-band drag selection */
+    #drag-marquee { position: absolute; z-index: 50; border: 1.5px solid #8b5cf6; background: rgba(139, 92, 246, 0.15); border-radius: 4px; pointer-events: none; }
+    body.is-dragging { user-select: none; -webkit-user-select: none; }
+    .select-mode #video-grid { cursor: crosshair; }
 
     /* ── Mobile ── */
     @media (max-width: 768px) {
@@ -286,6 +293,8 @@ function toggleSelectMode() {
 
 document.addEventListener('click', function(e) {
     if (!selectMode) return;
+    // A drag just happened — swallow the click so it doesn't also toggle
+    if (justDragged) { justDragged = false; return; }
     const wrapper = e.target.closest('.video-card-wrapper');
     if (!wrapper) return;
     if (e.target.classList.contains('video-checkbox')) return;
@@ -294,6 +303,87 @@ document.addEventListener('click', function(e) {
     cb.checked = !cb.checked;
     wrapper.classList.toggle('selected', cb.checked);
     updateSelectedCount();
+});
+
+// ── Rubber-band (drag-box) selection ─────────────────────────
+// Drag a box over the grid to select everything it touches, like the
+// desktop. Additive: a drag adds to whatever's already selected, so you
+// can lasso a bunch and then fine-tune with individual checkboxes.
+let dragging = false;
+let justDragged = false;
+let dragStartX = 0, dragStartY = 0;
+let marquee = null;
+
+function pointInGrid(e) {
+    const grid = document.getElementById('video-grid');
+    return grid && grid.contains(e.target);
+}
+
+document.addEventListener('mousedown', function(e) {
+    if (!selectMode || e.button !== 0) return;
+    // Don't start a lasso when grabbing a checkbox directly
+    if (e.target.classList.contains('video-checkbox')) return;
+    if (!pointInGrid(e)) return;
+    dragging = true;
+    dragStartX = e.pageX;
+    dragStartY = e.pageY;
+});
+
+document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    const dx = Math.abs(e.pageX - dragStartX);
+    const dy = Math.abs(e.pageY - dragStartY);
+    // Only treat it as a drag once the pointer clearly moves — this keeps
+    // ordinary clicks working
+    if (!marquee && dx < 5 && dy < 5) return;
+
+    if (!marquee) {
+        marquee = document.createElement('div');
+        marquee.id = 'drag-marquee';
+        document.body.appendChild(marquee);
+        document.body.classList.add('is-dragging');
+    }
+    const x = Math.min(e.pageX, dragStartX);
+    const y = Math.min(e.pageY, dragStartY);
+    const w = Math.abs(e.pageX - dragStartX);
+    const h = Math.abs(e.pageY - dragStartY);
+    marquee.style.left = x + 'px';
+    marquee.style.top = y + 'px';
+    marquee.style.width = w + 'px';
+    marquee.style.height = h + 'px';
+
+    // Select every card the box overlaps (page coords so scrolling is fine)
+    const box = { left: x, top: y, right: x + w, bottom: y + h };
+    document.querySelectorAll('.video-card-wrapper').forEach(function(wrapper) {
+        const r = wrapper.getBoundingClientRect();
+        const cr = {
+            left: r.left + window.scrollX,
+            top: r.top + window.scrollY,
+            right: r.right + window.scrollX,
+            bottom: r.bottom + window.scrollY,
+        };
+        const hit = !(cr.right < box.left || cr.left > box.right ||
+                      cr.bottom < box.top || cr.top > box.bottom);
+        if (hit) {
+            const cb = wrapper.querySelector('.video-checkbox');
+            if (!cb.checked) {
+                cb.checked = true;
+                wrapper.classList.add('selected');
+            }
+        }
+    });
+    updateSelectedCount();
+});
+
+document.addEventListener('mouseup', function() {
+    if (!dragging) return;
+    dragging = false;
+    if (marquee) {
+        marquee.remove();
+        marquee = null;
+        document.body.classList.remove('is-dragging');
+        justDragged = true;  // block the click that follows a drag
+    }
 });
 
 function toggleSelectAll(master) {

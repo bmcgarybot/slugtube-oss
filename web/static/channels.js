@@ -552,7 +552,96 @@ function updateBulkCount() {
     var checks = document.querySelectorAll('.bulk-checkbox:checked');
     var label = document.getElementById('bulk-count');
     if (label) label.textContent = checks.length + ' selected';
+    // Keep card outlines in sync with checkbox state
+    document.querySelectorAll('#video-grid .video-card').forEach(function(card) {
+        var cb = card.querySelector('.bulk-checkbox');
+        card.classList.toggle('bulk-selected', !!(cb && cb.checked));
+    });
 }
+
+// ── Rubber-band (drag-box) selection ─────────────────────────
+// When Select mode is on, click-drag a box over the grid to select
+// every video it touches — like selecting files on the desktop. It
+// ticks the same .bulk-checkbox inputs the buttons use, so delete /
+// add-to-playlist all work unchanged. Additive: a drag adds to the
+// current selection so you can lasso, then fine-tune with checkboxes.
+(function initDragSelect() {
+    var dragging = false, moved = false;
+    var startX = 0, startY = 0, box = null;
+
+    function bulkOn() {
+        var t = document.getElementById('bulk-mode-toggle');
+        return t && t.checked;
+    }
+
+    document.addEventListener('mousedown', function(e) {
+        if (e.button !== 0 || !bulkOn()) return;
+        var grid = document.getElementById('video-grid');
+        if (!grid || !grid.contains(e.target)) return;
+        // Let a direct checkbox click behave normally
+        if (e.target.classList.contains('bulk-checkbox')) return;
+        dragging = true;
+        moved = false;
+        startX = e.pageX;
+        startY = e.pageY;
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!dragging) return;
+        var dx = Math.abs(e.pageX - startX), dy = Math.abs(e.pageY - startY);
+        if (!box && dx < 5 && dy < 5) return;  // ignore tiny jitters
+        moved = true;
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'drag-marquee';
+            document.body.appendChild(box);
+            document.body.classList.add('dragging-select');
+        }
+        var x = Math.min(e.pageX, startX), y = Math.min(e.pageY, startY);
+        var w = Math.abs(e.pageX - startX), h = Math.abs(e.pageY - startY);
+        box.style.left = x + 'px';
+        box.style.top = y + 'px';
+        box.style.width = w + 'px';
+        box.style.height = h + 'px';
+
+        var sel = { left: x, top: y, right: x + w, bottom: y + h };
+        document.querySelectorAll('#video-grid .video-card').forEach(function(card) {
+            var r = card.getBoundingClientRect();
+            var cr = {
+                left: r.left + window.scrollX,
+                top: r.top + window.scrollY,
+                right: r.right + window.scrollX,
+                bottom: r.bottom + window.scrollY
+            };
+            var hit = !(cr.right < sel.left || cr.left > sel.right ||
+                        cr.bottom < sel.top || cr.top > sel.bottom);
+            if (hit) {
+                var cb = card.querySelector('.bulk-checkbox');
+                if (cb && !cb.checked) cb.checked = true;
+            }
+        });
+        updateBulkCount();
+    });
+
+    document.addEventListener('mouseup', function(e) {
+        if (!dragging) return;
+        dragging = false;
+        if (box) {
+            box.remove();
+            box = null;
+            document.body.classList.remove('dragging-select');
+        }
+        // Swallow the click that follows a real drag so it doesn't toggle
+        if (moved) {
+            var swallow = function(ev) {
+                ev.stopPropagation();
+                ev.preventDefault();
+                document.removeEventListener('click', swallow, true);
+            };
+            document.addEventListener('click', swallow, true);
+        }
+    });
+})();
 
 function bulkSelectAll() {
     document.querySelectorAll('.bulk-checkbox').forEach(function(cb) { cb.checked = true; });

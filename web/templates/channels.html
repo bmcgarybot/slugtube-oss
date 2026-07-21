@@ -53,6 +53,7 @@
     </div>
     <div id="bulk-action-bar" style="display:none;padding:8px 12px;margin-bottom:12px;background:var(--bg-card);border:1px solid var(--accent);border-radius:10px;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
         <span id="bulk-count" style="font-size:13px;color:var(--text);font-weight:600;">0 selected</span>
+        <span style="font-size:12px;color:var(--text-dimmer);">— or click-drag across videos to select a bunch</span>
         <button class="btn btn-sm btn-accent" onclick="bulkSelectAll()">Select All</button>
         <button class="btn btn-sm" onclick="bulkSelectNone()">Select None</button>
         <button class="btn btn-sm btn-blue" onclick="bulkAddToPlaylist()">Add to Playlist</button>
@@ -130,6 +131,10 @@
 .detail-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;flex-shrink:0}
 .video-toolbar{display:flex;align-items:center;gap:12px;margin:12px 0 8px;flex-wrap:wrap}
 .video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-top:8px}
+#drag-marquee{position:absolute;z-index:50;border:1.5px solid var(--accent);background:rgba(88,166,255,0.15);border-radius:4px;pointer-events:none}
+body.dragging-select{user-select:none;-webkit-user-select:none;cursor:crosshair}
+.video-card.bulk-selected{outline:2px solid var(--accent);outline-offset:-1px}
+.video-card.bulk-selected .video-thumb{opacity:.85}
 .video-card{border-radius:8px;overflow:hidden;background:var(--bg-card);border:1px solid var(--border);transition:transform .2s,box-shadow .2s;cursor:pointer;text-decoration:none;color:var(--text);display:block}
 .video-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.25)}
 .video-thumb{width:100%;aspect-ratio:16/9;background-size:cover;background-position:center;background-color:var(--bg-hover);position:relative}

@@ -70,10 +70,23 @@
 </div>
 
 {% if videos %}
-<div style="display:flex; flex-direction:column; gap:6px; max-width:900px;">
+<div style="display:flex; align-items:center; gap:12px; max-width:900px; margin-bottom:10px; flex-wrap:wrap;">
+    <label style="cursor:pointer; color:var(--text-dim,#999); font-size:14px;">
+        <input type="checkbox" id="pl-select-toggle" onchange="plToggleSelectMode(this.checked)" style="margin-right:5px;">Select
+    </label>
+    <div id="pl-bulk-bar" style="display:none; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span id="pl-bulk-count" style="font-size:13px; font-weight:600; color:var(--text,#eee);">0 selected</span>
+        <span style="font-size:12px; color:var(--text-dimmer,#777);">— or click-drag across rows</span>
+        <button class="btn btn-sm" onclick="plSelectAll()">Select All</button>
+        <button class="btn btn-sm" onclick="plSelectNone()">Select None</button>
+        <button class="btn btn-sm btn-danger" onclick="plRemoveSelected('{{ detail.id }}')">Remove Selected</button>
+    </div>
+</div>
+<div id="pl-video-list" style="display:flex; flex-direction:column; gap:6px; max-width:900px;">
     {% for v in videos %}
-    <div style="display:flex; align-items:center; gap:12px; padding:8px; border:1px solid var(--border-color,#2a2a2a); border-radius:8px;">
-        <a href="/watch/{{ v.id }}{% if detail %}?playlist={{ detail.id }}{% endif %}" style="flex-shrink:0;">
+    <div class="pl-row" data-id="{{ v.id }}" style="display:flex; align-items:center; gap:12px; padding:8px; border:1px solid var(--border-color,#2a2a2a); border-radius:8px;">
+        <input type="checkbox" class="pl-checkbox" data-id="{{ v.id }}" onchange="plUpdateCount()" style="display:none; width:18px; height:18px; cursor:pointer; flex-shrink:0; accent-color:#8b5cf6;">
+        <a href="/watch/{{ v.id }}{% if detail %}?playlist={{ detail.id }}{% endif %}" class="pl-thumb-link" style="flex-shrink:0;">
             <img src="/media/thumb/{{ v.id }}" alt="" loading="lazy"
                  style="width:120px; height:68px; object-fit:cover; border-radius:6px; background:#111;"
                  onerror="this.style.visibility='hidden'">
@@ -128,9 +141,126 @@ function deletePersonalPlaylist(pid, title) {
 function removeFromPersonalPlaylist(pid, vid, btn) {
     fetch('/api/personal-playlists/' + encodeURIComponent(pid) + '/videos/' + encodeURIComponent(vid), {method: 'DELETE'})
         .then(function(r){return r.json()}).then(function(){
-            var row = btn.closest('div[style*="display:flex"]');
+            var row = btn.closest('.pl-row');
             if (row) row.remove();
         }).catch(function(e){ showToastGlobal('Error: ' + e); });
 }
+
+// ── Playlist multi-select (checkboxes + Select All + drag box) ──
+// "Remove" here only takes videos OUT of this playlist — files are
+// never deleted from disk. Bulk remove reuses the same per-video
+// endpoint the single Remove button uses.
+var plSelectMode = false;
+
+function plToggleSelectMode(on) {
+    plSelectMode = on;
+    document.getElementById('pl-bulk-bar').style.display = on ? 'flex' : 'none';
+    document.querySelectorAll('.pl-checkbox').forEach(function(cb) {
+        cb.style.display = on ? 'block' : 'none';
+        if (!on) { cb.checked = false; cb.closest('.pl-row').classList.remove('pl-selected'); }
+    });
+    // In select mode, clicking a row toggles it instead of navigating
+    document.querySelectorAll('#pl-video-list .pl-thumb-link, #pl-video-list a').forEach(function(a) {
+        a.style.pointerEvents = on ? 'none' : '';
+    });
+    plUpdateCount();
+}
+
+function plUpdateCount() {
+    var n = document.querySelectorAll('.pl-checkbox:checked').length;
+    var label = document.getElementById('pl-bulk-count');
+    if (label) label.textContent = n + ' selected';
+    document.querySelectorAll('.pl-row').forEach(function(row) {
+        var cb = row.querySelector('.pl-checkbox');
+        row.classList.toggle('pl-selected', !!(cb && cb.checked));
+    });
+}
+
+function plSelectAll() {
+    document.querySelectorAll('.pl-checkbox').forEach(function(cb){ cb.checked = true; });
+    plUpdateCount();
+}
+function plSelectNone() {
+    document.querySelectorAll('.pl-checkbox').forEach(function(cb){ cb.checked = false; });
+    plUpdateCount();
+}
+
+function plRemoveSelected(pid) {
+    var checked = Array.from(document.querySelectorAll('.pl-checkbox:checked'));
+    if (checked.length === 0) { showToastGlobal('No videos selected'); return; }
+    if (!confirm('Remove ' + checked.length + ' video(s) from this playlist?\n\nThe video files are NOT deleted.')) return;
+    var ids = checked.map(function(cb){ return cb.dataset.id; });
+    Promise.all(ids.map(function(vid) {
+        return fetch('/api/personal-playlists/' + encodeURIComponent(pid) + '/videos/' + encodeURIComponent(vid), {method: 'DELETE'})
+            .then(function(r){ return r.ok; }).catch(function(){ return false; });
+    })).then(function(results) {
+        ids.forEach(function(vid, i) {
+            if (results[i]) {
+                var row = document.querySelector('.pl-row[data-id="' + (window.CSS && CSS.escape ? CSS.escape(vid) : vid) + '"]');
+                if (row) row.remove();
+            }
+        });
+        var failed = results.filter(function(r){ return !r; }).length;
+        if (failed) showToastGlobal(failed + ' could not be removed');
+        plUpdateCount();
+    });
+}
+
+// Rubber-band drag select over playlist rows
+(function initPlDragSelect() {
+    var dragging = false, moved = false, startX = 0, startY = 0, box = null;
+    document.addEventListener('mousedown', function(e) {
+        if (e.button !== 0 || !plSelectMode) return;
+        var list = document.getElementById('pl-video-list');
+        if (!list || !list.contains(e.target)) return;
+        if (e.target.classList.contains('pl-checkbox')) return;
+        dragging = true; moved = false; startX = e.pageX; startY = e.pageY;
+    });
+    document.addEventListener('mousemove', function(e) {
+        if (!dragging) return;
+        if (!box && Math.abs(e.pageX-startX) < 5 && Math.abs(e.pageY-startY) < 5) return;
+        moved = true;
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'pl-drag-marquee';
+            box.style.cssText = 'position:absolute;z-index:50;border:1.5px solid #8b5cf6;background:rgba(139,92,246,0.15);border-radius:4px;pointer-events:none;';
+            document.body.appendChild(box);
+            document.body.style.userSelect = 'none';
+        }
+        var x = Math.min(e.pageX,startX), y = Math.min(e.pageY,startY);
+        var w = Math.abs(e.pageX-startX), h = Math.abs(e.pageY-startY);
+        box.style.left = x+'px'; box.style.top = y+'px'; box.style.width = w+'px'; box.style.height = h+'px';
+        var sel = { left:x, top:y, right:x+w, bottom:y+h };
+        document.querySelectorAll('.pl-row').forEach(function(row) {
+            var r = row.getBoundingClientRect();
+            var cr = { left:r.left+scrollX, top:r.top+scrollY, right:r.right+scrollX, bottom:r.bottom+scrollY };
+            if (!(cr.right<sel.left || cr.left>sel.right || cr.bottom<sel.top || cr.top>sel.bottom)) {
+                var cb = row.querySelector('.pl-checkbox');
+                if (cb && !cb.checked) cb.checked = true;
+            }
+        });
+        plUpdateCount();
+    });
+    document.addEventListener('mouseup', function() {
+        if (!dragging) return;
+        dragging = false;
+        if (box) { box.remove(); box = null; document.body.style.userSelect = ''; }
+    });
+})();
+
+// In select mode, clicking anywhere on a row toggles its checkbox
+document.addEventListener('click', function(e) {
+    if (!plSelectMode) return;
+    var row = e.target.closest('.pl-row');
+    if (!row) return;
+    if (e.target.classList.contains('pl-checkbox')) return;
+    if (e.target.tagName === 'BUTTON') return;  // let Remove work
+    var cb = row.querySelector('.pl-checkbox');
+    if (cb) { cb.checked = !cb.checked; plUpdateCount(); }
+});
 </script>
+<style>
+.pl-row.pl-selected { outline:2px solid #8b5cf6; outline-offset:-1px; }
+#pl-video-list.selecting .pl-row { cursor:pointer; }
+</style>
 {% endblock %}
