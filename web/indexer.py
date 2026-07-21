@@ -42,11 +42,24 @@ _index_status = {"scanning": False, "last_scan": 0, "total": 0, "channels": 0}
 
 
 def get_db():
-    """Get a SQLite connection with WAL mode for concurrent reads."""
-    conn = sqlite3.connect(DB_PATH, timeout=120)
+    """Get a SQLite connection tuned for a long-running indexer sharing
+    the database with the live web app.
+
+    WAL lets readers and one writer coexist. The indexer previously held
+    a write transaction open across a whole channel's filesystem walk
+    (minutes), so any other writer waited out the timeout and failed with
+    'database is locked', silently skipping that channel. We set an
+    explicit busy_timeout and (below, in the scan) keep write
+    transactions short.
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    # Wait up to 30s for a lock, retrying continuously, instead of failing
+    conn.execute("PRAGMA busy_timeout=30000")
+    # Faster, still crash-safe under WAL
+    conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
 
@@ -454,6 +467,10 @@ def _scan_channel(conn, channel_dir):
             json_processed += 1
             if json_processed % 100 == 0:
                 log(f"    ... processed {json_processed}/{len(json_files)} info.json files")
+                # Release the write lock periodically so the live web app
+                # (and other requests) can write between batches instead of
+                # waiting out the whole channel and hitting 'database locked'
+                conn.commit()
 
         # ── Pass 2: Index video files WITHOUT .info.json ──
         for vfname in video_files:
