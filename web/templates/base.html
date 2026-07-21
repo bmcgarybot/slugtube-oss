@@ -1194,6 +1194,19 @@
         .video-card:focus-within .queue-add-btn { opacity: 1; pointer-events: auto; }
         .queue-add-btn:hover { background: var(--accent); border-color: var(--accent); }
 
+        .card-download-btn {
+            position: absolute; bottom: 6px; right: 40px; z-index: 5;
+            width: 28px; height: 28px; border-radius: 50%;
+            background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.2);
+            color: #fff; font-size: 15px; line-height: 1; text-decoration: none;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; opacity: 0; transition: opacity 0.15s, background 0.15s;
+            pointer-events: none;
+        }
+        .video-card:hover .card-download-btn,
+        .video-card:focus-within .card-download-btn { opacity: 1; pointer-events: auto; }
+        .card-download-btn:hover { background: var(--accent); border-color: var(--accent); }
+
         /* ── Queue Panel (Player page) ── */
         .queue-panel {
             position: fixed; top: 0; right: 0; bottom: 0; width: 340px;

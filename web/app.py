@@ -2546,6 +2546,39 @@ def delete_video(video_id):
 
 # ── Media Serving ──────────────────────────────────
 
+@app.route("/media/download/<video_id>")
+def download_video(video_id):
+    """Download the original video file to the user's device.
+
+    Same file that's served for playback, but sent as an attachment
+    with a human-friendly '<title>.<ext>' name instead of the internal
+    id. No re-encoding — it's the file already on disk.
+    """
+    from indexer import get_video
+
+    video = get_video(video_id)
+    if not video or not os.path.isfile(video['file_path']):
+        abort(404)
+
+    file_path = video['file_path']
+    mime = mimetypes.guess_type(file_path)[0] or 'video/mp4'
+
+    # Build a safe download filename from the title, keeping the real
+    # extension from the file on disk.
+    ext = os.path.splitext(file_path)[1] or '.mp4'
+    raw_title = video.get('title') or video_id
+    safe_title = re.sub(r'[\\/:*?"<>|]', '_', raw_title).strip().rstrip('.')
+    safe_title = (safe_title[:150] or video_id)
+    download_name = f"{safe_title}{ext}"
+
+    return send_file(
+        file_path,
+        mimetype=mime,
+        as_attachment=True,
+        download_name=download_name,
+    )
+
+
 @app.route("/media/video/<video_id>")
 def serve_video(video_id):
     """Serve video file with range request support for seeking."""

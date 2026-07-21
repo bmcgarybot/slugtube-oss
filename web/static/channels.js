@@ -937,6 +937,16 @@ function addQueueBtnToVideoCards() {
             showToastGlobal(added ? 'Added to queue' : 'Already in queue');
         };
         thumbEl.appendChild(btn);
+
+        // Download button — grabs the original file from the server
+        var dl = document.createElement('a');
+        dl.className = 'card-download-btn';
+        dl.textContent = '⭳';
+        dl.title = 'Download to your device';
+        dl.href = '/media/download/' + encodeURIComponent(vData.id);
+        dl.setAttribute('download', '');
+        dl.onclick = function(e) { e.stopPropagation(); };
+        thumbEl.appendChild(dl);
     });
 }
 

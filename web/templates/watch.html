@@ -46,6 +46,9 @@
     <div style="position:relative; display:inline-block; margin:6px 0 2px 0;">
         <button class="btn btn-sm" style="border-color:var(--accent);color:var(--accent);"
                 onclick="togglePlaylistMenu()">＋ Playlist</button>
+        <a class="btn btn-sm" style="border-color:var(--accent);color:var(--accent);margin-left:6px;text-decoration:none;"
+           href="/media/download/{{ video.id }}" download
+           title="Download this video to your device">⭳ Download</a>
         <div id="pl-menu" style="display:none; position:absolute; z-index:50; top:110%; left:0; min-width:260px; background:var(--bg-card,#181818); border:1px solid var(--border-color,#333); border-radius:8px; padding:10px; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
             <div id="pl-menu-list" style="max-height:220px; overflow-y:auto; margin-bottom:8px;">
                 <div style="color:var(--text-dim,#999); font-size:13px;">Loading…</div>
