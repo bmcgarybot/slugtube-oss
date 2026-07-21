@@ -1431,6 +1431,139 @@ def save_schedule():
     })
 
 
+def _auto_fetch_channel_art(channel_name, channel_url):
+    """Auto-fetch poster + banner for a newly added channel (background thread).
+    Uses the same 3-method approach as fetch-banners.sh but for a single channel."""
+    import re as _re
+
+    channel_path = os.path.join(SHOWS_DIR, channel_name)
+    cookies = "/config/Cookie/cookies.txt"
+    # Strip /videos suffix for channel page access
+    clean_url = channel_url.rstrip("/")
+    if clean_url.endswith("/videos"):
+        clean_url = clean_url[:-7]
+
+    def _do_fetch():
+        import sqlite3 as _sqlite3
+        try:
+            from indexer import DB_PATH
+        except Exception:
+            DB_PATH = "/config/slugtube.db"
+
+        got_poster = os.path.isfile(os.path.join(channel_path, "poster.jpg"))
+        got_banner = os.path.isfile(os.path.join(channel_path, "banner.jpg"))
+
+        # Skip playlists — they don't have channel art
+        if "playlist?" in channel_url:
+            return
+
+        # ── METHOD 1: Scrape YouTube channel page HTML ──
+        if not got_poster or not got_banner:
+            try:
+                curl_cmd = ["curl", "-sL", "--max-time", "15",
+                    "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+                    "-H", "Accept-Language: en-US,en;q=0.9"]
+                if os.path.isfile(cookies):
+                    curl_cmd += ["-b", cookies]
+                curl_cmd.append(clean_url)
+                result = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=20)
+                page_html = result.stdout
+
+                if page_html and not got_poster:
+                    # Extract og:image (channel avatar)
+                    m = _re.search(r'<meta\s+property="og:image"\s+content="([^"]+)"', page_html)
+                    if m:
+                        poster_url = _re.sub(r'=s\d+', '=s900', m.group(1))
+                        dl = subprocess.run(["curl", "-sL", "--max-time", "10", "-o",
+                            os.path.join(channel_path, "poster.jpg"), poster_url],
+                            capture_output=True, timeout=15)
+                        if os.path.isfile(os.path.join(channel_path, "poster.jpg")) and \
+                           os.path.getsize(os.path.join(channel_path, "poster.jpg")) > 0:
+                            got_poster = True
+                            print(f"🎨 ✅ Auto-fetched poster for {channel_name} (og:image)", flush=True)
+                        else:
+                            try: os.remove(os.path.join(channel_path, "poster.jpg"))
+                            except: pass
+
+                if page_html and not got_banner:
+                    # Extract banner from ytInitialData JSON
+                    import json as _json
+                    m = _re.search(r'var\s+ytInitialData\s*=\s*(\{.*?\});', page_html, _re.DOTALL)
+                    if not m:
+                        m = _re.search(r'ytInitialData"\s*:\s*(\{.*?\})\s*[,;]', page_html, _re.DOTALL)
+                    if m:
+                        try:
+                            data = _json.loads(m.group(1))
+                            header = data.get('header', {})
+                            banner_url = ''
+                            # New path: pageHeaderRenderer (2025+)
+                            phr = header.get('pageHeaderRenderer', {})
+                            if phr:
+                                vm = phr.get('content', {}).get('pageHeaderViewModel', {})
+                                ibvm = vm.get('banner', {}).get('imageBannerViewModel', {})
+                                sources = ibvm.get('image', {}).get('sources', [])
+                                if sources:
+                                    best = max(sources, key=lambda s: s.get('width', 0))
+                                    banner_url = best.get('url', '')
+                            # Old path: c4TabbedHeaderRenderer
+                            if not banner_url:
+                                c4 = header.get('c4TabbedHeaderRenderer', {})
+                                thumbs = c4.get('banner', {}).get('thumbnails', [])
+                                if thumbs:
+                                    best = max(thumbs, key=lambda t: t.get('width', 0))
+                                    banner_url = best.get('url', '')
+                            if banner_url:
+                                if banner_url.startswith('//'):
+                                    banner_url = 'https:' + banner_url
+                                dl = subprocess.run(["curl", "-sL", "--max-time", "10", "-o",
+                                    os.path.join(channel_path, "banner.jpg"), banner_url],
+                                    capture_output=True, timeout=15)
+                                if os.path.isfile(os.path.join(channel_path, "banner.jpg")) and \
+                                   os.path.getsize(os.path.join(channel_path, "banner.jpg")) > 0:
+                                    got_banner = True
+                                    print(f"🎨 ✅ Auto-fetched banner for {channel_name}", flush=True)
+                                else:
+                                    try: os.remove(os.path.join(channel_path, "banner.jpg"))
+                                    except: pass
+                        except Exception:
+                            pass
+            except Exception as e:
+                print(f"🎨 ⚠️ Method 1 failed for {channel_name}: {e}", flush=True)
+
+        # ── METHOD 2: yt-dlp thumbnail (poster only, last resort) ──
+        if not got_poster:
+            try:
+                yt_cmd = ["yt-dlp", "--write-thumbnail", "--skip-download",
+                    "--playlist-items", "1", "--convert-thumbnails", "jpg",
+                    "-o", os.path.join(channel_path, "poster")]
+                if os.path.isfile(cookies):
+                    yt_cmd += ["--cookies", cookies]
+                yt_cmd.append(channel_url)
+                subprocess.run(yt_cmd, capture_output=True, text=True, timeout=120)
+                if os.path.isfile(os.path.join(channel_path, "poster.jpg")):
+                    got_poster = True
+                    print(f"🎨 ✅ Auto-fetched poster for {channel_name} (yt-dlp)", flush=True)
+            except Exception as e:
+                print(f"🎨 ⚠️ Method 2 failed for {channel_name}: {e}", flush=True)
+
+        # Update DB
+        if got_poster or got_banner:
+            try:
+                conn = _sqlite3.connect(DB_PATH, timeout=120)
+                if got_poster:
+                    conn.execute("UPDATE channels SET has_poster = 1 WHERE name = ?", (channel_name,))
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
+
+        if not got_poster and not got_banner:
+            print(f"🎨 ❌ Could not auto-fetch any art for {channel_name}", flush=True)
+
+    thread = threading.Thread(target=_do_fetch, daemon=True)
+    thread.start()
+
+
 @app.route("/add", methods=["POST"])
 def add_channel():
     url = request.form.get("url", "").strip()
@@ -1461,6 +1594,8 @@ def add_channel():
         if folder_name:
             ch_dir = Path(SHOWS_DIR) / folder_name
             ch_dir.mkdir(parents=True, exist_ok=True)
+            # Auto-fetch channel art in background
+            _auto_fetch_channel_art(folder_name, url)
     return redirect(request.referrer or url_for("channels"))
 
 
@@ -2296,29 +2431,53 @@ def playlist_view(channel_name, playlist_id):
 
 @app.route("/watch/<video_id>")
 def watch(video_id):
-    from indexer import get_video, get_channel_videos
+    from indexer import get_video, get_channel_videos, get_playlist_videos, get_playlist
 
     video = get_video(video_id)
     if not video:
         abort(404)
 
-    # Get prev/next for navigation
-    channel_videos, _ = get_channel_videos(video['channel_name'], sort='newest', limit=5000)
+    # Check for playlist context (e.g. ?playlist=custom_my_list)
+    playlist_id = request.args.get('playlist', '')
+    playlist_info = None
+    playlist_video_ids = []
+
     prev_video = None
     next_video = None
-    for i, v in enumerate(channel_videos):
-        if v['id'] == video_id:
-            if i > 0:
-                prev_video = channel_videos[i - 1]
-            if i < len(channel_videos) - 1:
-                next_video = channel_videos[i + 1]
-            break
+
+    if playlist_id:
+        playlist_info = get_playlist(playlist_id)
+        if playlist_info:
+            pl_videos, _ = get_playlist_videos(playlist_id, sort='playlist_index', limit=5000)
+            playlist_video_ids = [v['id'] for v in pl_videos]
+            for i, v in enumerate(pl_videos):
+                if v['id'] == video_id:
+                    if i > 0:
+                        prev_video = pl_videos[i - 1]
+                    if i < len(pl_videos) - 1:
+                        next_video = pl_videos[i + 1]
+                    break
+
+    if not playlist_info:
+        # Fall back to channel-based prev/next
+        playlist_id = ''
+        channel_videos, _ = get_channel_videos(video['channel_name'], sort='newest', limit=5000)
+        for i, v in enumerate(channel_videos):
+            if v['id'] == video_id:
+                if i > 0:
+                    prev_video = channel_videos[i - 1]
+                if i < len(channel_videos) - 1:
+                    next_video = channel_videos[i + 1]
+                break
 
     return render_template("watch.html",
         page="library",
         video=video,
         prev_video=prev_video,
         next_video=next_video,
+        playlist_id=playlist_id,
+        playlist_info=playlist_info,
+        playlist_video_ids=playlist_video_ids,
         job=jobs,
         paused=is_paused(),
     )
@@ -2517,6 +2676,16 @@ def api_watch_progress():
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/video-info/<video_id>")
+def api_video_info(video_id):
+    """Return basic info for a video (used by playlist shuffle to get title)."""
+    from indexer import get_video
+    video = get_video(video_id)
+    if not video:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({"id": video['id'], "title": video['title'], "channel_name": video['channel_name']})
 
 
 @app.route("/api/random-video/<path:channel_name>")
@@ -2976,7 +3145,7 @@ def api_fetch_art(channel_name):
             if os.path.isfile(poster_file):
                 print(f"🎨 ✅ Fetched art for {channel_name}", flush=True)
                 # Update DB directly (thread-safe, no Flask context needed)
-                conn = _sqlite3.connect(DB_PATH, timeout=10)
+                conn = _sqlite3.connect(DB_PATH, timeout=120)
                 conn.execute("UPDATE channels SET has_poster = 1 WHERE name = ?", (channel_name,))
                 conn.commit()
                 conn.close()
