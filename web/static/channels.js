@@ -566,7 +566,7 @@ function updateBulkCount() {
 // add-to-playlist all work unchanged. Additive: a drag adds to the
 // current selection so you can lasso, then fine-tune with checkboxes.
 (function initDragSelect() {
-    var dragging = false, moved = false;
+    var dragging = false, moved = false, activeId = null;
     var startX = 0, startY = 0, box = null;
 
     function bulkOn() {
@@ -574,34 +574,32 @@ function updateBulkCount() {
         return t && t.checked;
     }
 
-    // Video cards are <a> links. In Chromium/Brave, mousedown+move on a
-    // link starts a NATIVE drag (dragging the link), which cancels our
-    // mousemove/mouseup and the marquee never forms. Cancel dragstart
-    // inside the grid while in select mode so our custom drag can run.
-    document.addEventListener('dragstart', function(e) {
-        if (!bulkOn()) return;
-        var grid = document.getElementById('video-grid');
-        if (grid && grid.contains(e.target)) e.preventDefault();
-    });
+    function grid() { return document.getElementById('video-grid'); }
 
-    document.addEventListener('mousedown', function(e) {
-        if (e.button !== 0 || !bulkOn()) return;
-        var grid = document.getElementById('video-grid');
-        if (!grid || !grid.contains(e.target)) return;
-        // Let a direct checkbox click behave normally
-        if (e.target.classList.contains('bulk-checkbox')) return;
+    // Pointer Events + pointer capture is the reliable way to implement a
+    // drag gesture in Chromium/Brave. Unlike mouse events, a captured
+    // pointer keeps delivering pointermove/up to us even as it moves over
+    // links, and it doesn't trigger the browser's native link/image drag.
+    document.addEventListener('pointerdown', function(e) {
+        if (e.button !== 0 || e.pointerType === 'touch' || !bulkOn()) return;
+        var g = grid();
+        if (!g || !g.contains(e.target)) return;
+        if (e.target.classList && e.target.classList.contains('bulk-checkbox')) return;
+
         dragging = true;
         moved = false;
+        activeId = e.pointerId;
         startX = e.pageX;
         startY = e.pageY;
-        // Stop the browser from starting a text/link selection or drag
+        // Capture on the grid so every subsequent move/up comes to us
+        try { g.setPointerCapture(e.pointerId); } catch (_) {}
         e.preventDefault();
     });
 
-    document.addEventListener('mousemove', function(e) {
-        if (!dragging) return;
+    document.addEventListener('pointermove', function(e) {
+        if (!dragging || e.pointerId !== activeId) return;
         var dx = Math.abs(e.pageX - startX), dy = Math.abs(e.pageY - startY);
-        if (!box && dx < 5 && dy < 5) return;  // ignore tiny jitters
+        if (!box && dx < 5 && dy < 5) return;
         moved = true;
         if (!box) {
             box = document.createElement('div');
@@ -627,31 +625,41 @@ function updateBulkCount() {
             };
             var hit = !(cr.right < sel.left || cr.left > sel.right ||
                         cr.bottom < sel.top || cr.top > sel.bottom);
-            if (hit) {
-                var cb = card.querySelector('.bulk-checkbox');
-                if (cb && !cb.checked) cb.checked = true;
-            }
+            var cb = card.querySelector('.bulk-checkbox');
+            if (cb && hit && !cb.checked) cb.checked = true;
         });
         updateBulkCount();
     });
 
-    document.addEventListener('mouseup', function(e) {
-        if (!dragging) return;
+    function endDrag(e) {
+        if (!dragging || (e && e.pointerId !== activeId)) return;
         dragging = false;
+        var g = grid();
+        if (g && activeId !== null) { try { g.releasePointerCapture(activeId); } catch (_) {} }
+        activeId = null;
         if (box) {
             box.remove();
             box = null;
             document.body.classList.remove('dragging-select');
         }
-        // Swallow the click that follows a real drag so it doesn't toggle
         if (moved) {
+            // Swallow the click that follows a real drag so it doesn't toggle
             var swallow = function(ev) {
                 ev.stopPropagation();
                 ev.preventDefault();
                 document.removeEventListener('click', swallow, true);
             };
             document.addEventListener('click', swallow, true);
+            // Safety: clear the swallow if no click arrives
+            setTimeout(function() { document.removeEventListener('click', swallow, true); }, 400);
         }
+    }
+    document.addEventListener('pointerup', endDrag);
+    document.addEventListener('pointercancel', endDrag);
+
+    // Prevent native drag of links/images inside the grid during select mode
+    document.addEventListener('dragstart', function(e) {
+        if (bulkOn() && grid() && grid().contains(e.target)) e.preventDefault();
     });
 })();
 
