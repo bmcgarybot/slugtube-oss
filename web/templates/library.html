@@ -483,6 +483,10 @@ function showPlaylistDialog() {
         .then(r => r.json())
         .then(data => {
             var list = document.getElementById('pl-existing-list');
+            if (data && data.status === 'error') {
+                list.innerHTML = '<div style="color:#e66;font-size:13px;">' + (data.error || 'Could not load playlists') + '</div>';
+                return;
+            }
             if (!data.playlists || data.playlists.length === 0) {
                 list.innerHTML = '<div style="color:var(--text-dim);font-size:13px;">No playlists yet — create one below.</div>';
                 return;
@@ -493,7 +497,7 @@ function showPlaylistDialog() {
             }).join('');
         })
         .catch(function() {
-            document.getElementById('pl-existing-list').innerHTML = '<div style="color:#e66;font-size:13px;">Could not load playlists</div>';
+            document.getElementById('pl-existing-list').innerHTML = '<div style="color:#e66;font-size:13px;">The library is busy — try again in a moment.</div>';
         });
 
     setTimeout(function() { document.getElementById('playlist-name-input').focus(); }, 100);

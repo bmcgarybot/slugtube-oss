@@ -16,6 +16,30 @@ from pathlib import Path
 app = Flask(__name__)
 
 
+@app.errorhandler(Exception)
+def _json_errors_for_api(err):
+    """Any unhandled exception in an /api/ route should return JSON, not
+    Flask's HTML error page. The frontend does response.json() on these,
+    and an HTML body causes 'Unexpected token <, "<!doctype"... is not
+    valid JSON' — masking the real problem (often a transient DB lock
+    during a scan/merge). Non-API routes keep normal HTML errors.
+    """
+    from werkzeug.exceptions import HTTPException
+
+    if request.path.startswith("/api/"):
+        code = err.code if isinstance(err, HTTPException) else 500
+        msg = getattr(err, "description", None) or str(err) or "Server error"
+        # Lock contention is transient and retryable — say so clearly
+        if "database is locked" in str(err).lower():
+            msg = "The library is busy (a scan or merge may be running). Try again in a moment."
+        return jsonify({"status": "error", "error": msg}), code
+    # Let non-API routes fall through to default handling
+    if isinstance(err, HTTPException):
+        return err
+    raise err
+
+
+
 @app.route("/api/version")
 def api_version():
     """Quick check: what code version is the container running?"""
