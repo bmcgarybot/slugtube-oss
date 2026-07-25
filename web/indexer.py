@@ -38,7 +38,14 @@ log_warn = _logger.warning
 log_err = _logger.error
 
 _index_lock = threading.Lock()
-_index_status = {"scanning": False, "last_scan": 0, "total": 0, "channels": 0}
+_index_status = {"scanning": False, "last_scan": 0, "total": 0, "channels": 0, "cancel": False}
+
+
+def request_index_cancel():
+    """Ask a running index scan to stop at the next channel boundary.
+    Python threads can't be force-killed, so the scan loop checks this
+    flag and exits cleanly. Safe to call even when nothing is running."""
+    _index_status["cancel"] = True
 
 
 def get_db():
@@ -1009,6 +1016,7 @@ def run_index(force=False):
 
     with _index_lock:
         _index_status["scanning"] = True
+        _index_status["cancel"] = False  # fresh scan clears any stale request
         start = time.time()
         log("📚 Starting scan...")
 
@@ -1037,6 +1045,10 @@ def run_index(force=False):
             num_dirs = len(channel_dirs)
 
             for i, channel_dir in enumerate(channel_dirs, 1):
+                # Honor a cancel request from the dashboard's "Cancel All"
+                if _index_status.get("cancel"):
+                    log(f"⛔ Scan cancelled by user after {total_channels} channel(s).")
+                    break
                 try:
                     ch_start = time.time()
                     # Quick skip: if channel dir mtime hasn't changed since last index, skip
@@ -1078,8 +1090,8 @@ def run_index(force=False):
                         pass
                     continue
 
-            # Clean up videos whose files no longer exist
-            if force:
+            # Clean up videos whose files no longer exist (skip if cancelled)
+            if force and not _index_status.get("cancel"):
                 cursor = conn.execute("SELECT id, file_path FROM videos")
                 dead = []
                 for row in cursor:
@@ -1096,7 +1108,10 @@ def run_index(force=False):
             _index_status["total"] = total_videos
             _index_status["channels"] = total_channels
             _index_status["last_scan"] = time.time()
-            log(f"📚 Indexer done — {total_videos} videos across {total_channels} channels ({elapsed:.1f}s)")
+            if _index_status.get("cancel"):
+                log(f"⛔ Indexer stopped (cancelled) — {total_videos} videos across {total_channels} channels ({elapsed:.1f}s)")
+            else:
+                log(f"📚 Indexer done — {total_videos} videos across {total_channels} channels ({elapsed:.1f}s)")
 
         except BaseException as e:
             import traceback
@@ -1104,6 +1119,7 @@ def run_index(force=False):
             log_err(traceback.format_exc())
         finally:
             _index_status["scanning"] = False
+            _index_status["cancel"] = False
 
 
 def start_background_index(force=False, playlist_channels=None):

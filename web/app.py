@@ -1755,7 +1755,18 @@ def cancel_all():
     if queued_files:
         cancelled.append(f"Cleared {len(queued_files)} queued job(s)")
 
-    # 4. Reset job state
+    # 4. Signal any running background scan/index thread to stop. Threads
+    #    can't be force-killed, so this sets a flag the scan loop checks at
+    #    each channel; it stops cleanly instead of the log growing forever
+    #    after the dashboard already says "cancelled".
+    try:
+        from indexer import request_index_cancel
+        request_index_cancel()
+        cancelled.append("Requested scan/index stop")
+    except Exception:
+        pass
+
+    # 5. Reset job state
     jobs["status"] = "idle"
     jobs["mode"] = None
     jobs["proc"] = None
