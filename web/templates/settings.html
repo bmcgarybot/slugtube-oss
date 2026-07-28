@@ -264,6 +264,32 @@
                 </div>
             </div>
 
+            <!-- Playlist Indexing -->
+            <div class="setting-row">
+                <div style="flex:1;">
+                    <div class="setting-label" style="display:flex; align-items:center; gap:8px;">
+                        <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" id="playlist-enabled" class="form-checkbox"
+                                {% if playlist_enabled %}checked{% endif %}
+                                onchange="saveSchedules()">
+                            Playlist Indexing
+                        </label>
+                    </div>
+                    <div class="setting-desc">Refresh playlists for flagged channels (add-only, never deletes). Runs from YouTube, so keep it infrequent.</div>
+                </div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <select id="playlist-preset" class="form-select" onchange="applyPreset('playlist')" style="min-width:180px;">
+                        <option value="">Custom...</option>
+                        {% for key, preset in schedule_presets.items() %}
+                        <option value="{{ preset.cron }}" {% if playlist_cron == preset.cron %}selected{% endif %}>{{ preset.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="text" id="playlist-cron" value="{{ playlist_cron }}" class="form-select"
+                        style="width:130px; font-family:monospace; font-size:12px;"
+                        onchange="customCron('playlist')" placeholder="0 4 1 * *">
+                </div>
+            </div>
+
             <!-- Timezone -->
             <div class="setting-row" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
                 <div style="flex:1;">
@@ -526,6 +552,8 @@ function saveSchedules() {
         fast_cron: document.getElementById('fast-cron').value.trim(),
         full_cron: document.getElementById('full-cron').value.trim(),
         update_cron: document.getElementById('update-cron').value.trim(),
+        playlist_cron: document.getElementById('playlist-cron').value.trim(),
+        playlist_enabled: document.getElementById('playlist-enabled').checked,
         fast_enabled: document.getElementById('fast-enabled').checked,
         full_enabled: document.getElementById('full-enabled').checked,
         update_enabled: document.getElementById('update-enabled').checked,

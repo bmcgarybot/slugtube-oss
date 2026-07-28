@@ -104,9 +104,11 @@ DEFAULT_CONFIG = {
     "fast_cron": None,    # None = use env var default
     "full_cron": None,
     "update_cron": None,
+    "playlist_cron": None,
     "fast_enabled": True,
     "full_enabled": True,
     "update_enabled": True,
+    "playlist_enabled": True,
 }
 
 # ── Human-friendly schedule presets ──
@@ -260,10 +262,12 @@ def rebuild_cron(config=None):
     fast = get_schedule(config, "fast_cron", "0 */6 * * *")
     full = get_schedule(config, "full_cron", "0 3 * * 0")
     update = get_schedule(config, "update_cron", "0 1 * * *")
+    playlist = get_schedule(config, "playlist_cron", "0 4 1 * *")  # monthly, 1st @ 4am
 
     fast_enabled = config.get("fast_enabled", True)
     full_enabled = config.get("full_enabled", True)
     update_enabled = config.get("update_enabled", True)
+    playlist_enabled = config.get("playlist_enabled", True)
 
     tz = get_timezone()
 
@@ -288,6 +292,16 @@ def rebuild_cron(config=None):
         lines.append(f"{update} root /app/scripts/update-ytdlp.sh >> /config/logs/slugtube.log 2>&1")
     else:
         lines.append(f"# DISABLED: {update} root /app/scripts/update-ytdlp.sh >> /config/logs/slugtube.log 2>&1")
+
+    # Playlist indexing runs on its own (default monthly) schedule by
+    # curling the local endpoint — it's a Python job, not a shell script.
+    pl_cmd = (f'{playlist} root curl -fsS -X POST '
+              f'http://127.0.0.1:5000/api/reindex-all-playlists '
+              f'>> /config/logs/slugtube.log 2>&1')
+    if playlist_enabled:
+        lines.append(pl_cmd)
+    else:
+        lines.append(f"# DISABLED: {pl_cmd}")
 
     lines.append("")  # trailing newline required by cron
 
@@ -533,11 +547,27 @@ def _get_playlist_channels():
     return [ch for ch in get_channels() if ch.get('index_playlists')]
 
 
-def _trigger_background_index(force=False):
-    """Start background index, automatically including playlist channels."""
+def _trigger_background_index(force=False, include_playlists=False):
+    """Start background index. By default this indexes VIDEOS only —
+    fast and incremental. Playlist indexing (which re-fetches every
+    flagged channel's playlists from YouTube, minutes of network work)
+    only runs when include_playlists=True: on its own schedule or the
+    explicit manual button. This keeps boots and post-download re-indexes
+    from re-hammering YouTube every time."""
+    from indexer import start_background_index
+    pl_channels = _get_playlist_channels() if include_playlists else None
+    start_background_index(force=force, playlist_channels=pl_channels if pl_channels else None)
+
+
+def _trigger_playlist_index():
+    """Scheduled/manual playlist refresh for all flagged channels.
+    Additive only — never deletes existing playlists or memberships."""
     from indexer import start_background_index
     pl_channels = _get_playlist_channels()
-    start_background_index(force=force, playlist_channels=pl_channels if pl_channels else None)
+    if not pl_channels:
+        return
+    # force=False → video pass stays incremental; playlists always fetched
+    start_background_index(force=False, playlist_channels=pl_channels)
 
 
 def get_disk_usage():
@@ -1357,6 +1387,7 @@ def settings():
     fast_cron = get_schedule(config, "fast_cron", "0 */6 * * *")
     full_cron = get_schedule(config, "full_cron", "0 3 * * 0")
     update_cron = get_schedule(config, "update_cron", "0 1 * * *")
+    playlist_cron = get_schedule(config, "playlist_cron", "0 4 1 * *")
     state = load_state()
     save_status = request.args.get("saved", None)
     tz = get_timezone()
@@ -1369,6 +1400,8 @@ def settings():
         fast_enabled=config.get("fast_enabled", True),
         full_enabled=config.get("full_enabled", True),
         update_enabled=config.get("update_enabled", True),
+        playlist_cron=playlist_cron,
+        playlist_enabled=config.get("playlist_enabled", True),
         schedule_presets=SCHEDULE_PRESETS,
         timezone=tz,
         timezones=get_timezone_list(),
@@ -1427,6 +1460,8 @@ def save_schedule():
         config["full_cron"] = data["full_cron"]
     if "update_cron" in data:
         config["update_cron"] = data["update_cron"]
+    if "playlist_cron" in data:
+        config["playlist_cron"] = data["playlist_cron"]
 
     # Update enabled/disabled
     if "fast_enabled" in data:
@@ -1435,6 +1470,8 @@ def save_schedule():
         config["full_enabled"] = bool(data["full_enabled"])
     if "update_enabled" in data:
         config["update_enabled"] = bool(data["update_enabled"])
+    if "playlist_enabled" in data:
+        config["playlist_enabled"] = bool(data["playlist_enabled"])
 
     save_config(config)
     success = rebuild_cron(config)
@@ -3131,6 +3168,23 @@ def api_delete_folder(channel_name):
     return _ajax_or_redirect(f"Deleted {channel_name}")
 
 
+@app.route("/api/reindex-all-playlists", methods=["POST"])
+def api_reindex_all_playlists():
+    """Refresh playlists for ALL flagged channels. Called by the scheduled
+    cron job (default monthly) and available as a manual 'refresh now'.
+    Additive only — never deletes existing playlists or memberships."""
+    from indexer import _index_status
+    if _index_status.get("scanning"):
+        return jsonify({"status": "busy", "message": "A scan is already running"}), 409
+
+    pl_channels = _get_playlist_channels()
+    if not pl_channels:
+        return jsonify({"status": "ok", "message": "No flagged channels"}), 200
+
+    _trigger_playlist_index()
+    return jsonify({"status": "ok", "message": f"Refreshing playlists for {len(pl_channels)} channel(s)"}), 200
+
+
 @app.route("/api/reindex-playlists/<path:channel_name>", methods=["POST"])
 def api_reindex_playlists(channel_name):
     """Re-index playlists for a single channel (runs in background)."""
@@ -3152,6 +3206,11 @@ def api_reindex_playlists(channel_name):
         if request.referrer:
             return redirect(request.referrer)
         return jsonify({"status": "error", "message": f"Channel not found in channels.txt: {channel_name}"}), 404
+
+    # Manually indexing a channel's playlists also FLAGS it for the
+    # scheduled auto-refresh, so anything you index once stays tracked
+    # going forward (previously this was a one-off with no memory).
+    _set_playlist_flag(channel_name, True)
 
     def _run_playlist_index():
         try:
@@ -3228,6 +3287,44 @@ def api_fetch_art(channel_name):
     thread.start()
 
     return _ajax_or_redirect(f"Fetching artwork for {channel_name}...")
+
+
+def _set_playlist_flag(channel_name, enabled):
+    """Add or remove the |playlists flag for a channel in channels.txt.
+    Returns True if the file was changed. Shared by the toggle button and
+    the manual reindex action so both keep the flag in sync."""
+    try:
+        with open(CHANNELS_FILE, "r") as f:
+            lines = f.readlines()
+    except OSError:
+        return False
+
+    new_lines = []
+    changed = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("#") or not stripped:
+            new_lines.append(line)
+            continue
+        parts = stripped.split("|")
+        name = parts[1].strip() if len(parts) > 1 else ""
+        if name == channel_name:
+            has_flag = any(p.strip().lower() == 'playlists' for p in parts[2:])
+            if enabled and not has_flag:
+                new_lines.append(stripped + "|playlists\n")
+                changed = True
+            elif not enabled and has_flag:
+                new_lines.append("|".join(p for p in parts if p.strip().lower() != 'playlists') + "\n")
+                changed = True
+            else:
+                new_lines.append(line)
+        else:
+            new_lines.append(line)
+
+    if changed:
+        with open(CHANNELS_FILE, "w") as f:
+            f.writelines(new_lines)
+    return changed
 
 
 @app.route("/api/toggle-playlists/<path:channel_name>", methods=["POST"])

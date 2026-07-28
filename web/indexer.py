@@ -968,41 +968,45 @@ def index_channel_playlists(channel_url, channel_name):
     try:
         conn = get_db()
 
-        # Clear existing playlist data for this channel
-        existing_pls = conn.execute(
-            "SELECT id FROM playlists WHERE channel_name = ?", (channel_name,)
-        ).fetchall()
-        for row in existing_pls:
-            conn.execute("DELETE FROM video_playlists WHERE playlist_id = ?", (row['id'],))
-        conn.execute("DELETE FROM playlists WHERE channel_name = ?", (channel_name,))
+        # ADDITIVE ONLY — never delete. Previously this wiped every
+        # playlist for the channel and rebuilt from YouTube's current
+        # response, so a dropped/renamed playlist (or a partial fetch)
+        # permanently lost data. Now we only insert/update: playlists and
+        # their video memberships are added or refreshed, never removed.
+        # If YouTube stops returning a playlist or a video, what we already
+        # have is kept.
 
         total_matched = 0
 
         for pl_id, pl_title, video_entries in playlist_data:
-            # Insert playlist record
+            # Insert or refresh the playlist record (title can change)
             conn.execute("""
-                INSERT OR REPLACE INTO playlists (id, channel_name, title, video_count, updated_at)
+                INSERT INTO playlists (id, channel_name, title, video_count, updated_at)
                 VALUES (?, ?, ?, 0, ?)
+                ON CONFLICT(id) DO UPDATE SET title=excluded.title, updated_at=excluded.updated_at
             """, (pl_id, channel_name, pl_title, now))
 
             matched = 0
             for vid, vidx in video_entries:
-                # Check if this video exists in our library
+                # Only link videos that exist in our library
                 exists = conn.execute("SELECT id FROM videos WHERE id = ?", (vid,)).fetchone()
                 if exists:
+                    # Add or update the membership; never delete existing ones
                     conn.execute("""
                         INSERT OR REPLACE INTO video_playlists (video_id, playlist_id, playlist_index)
                         VALUES (?, ?, ?)
                     """, (vid, pl_id, vidx))
                     matched += 1
 
-            # Update playlist video count (matched only)
-            conn.execute("""
-                UPDATE playlists SET video_count = ? WHERE id = ?
-            """, (matched, pl_id))
+            # Video count = current membership total in the DB (which may be
+            # >= what YouTube returned this run, since we keep old members)
+            total_in_pl = conn.execute(
+                "SELECT COUNT(*) FROM video_playlists WHERE playlist_id = ?", (pl_id,)
+            ).fetchone()[0]
+            conn.execute("UPDATE playlists SET video_count = ? WHERE id = ?", (total_in_pl, pl_id))
 
             total_matched += matched
-            log(f"    ✅ {pl_title}: {matched}/{len(video_entries)} videos matched in library")
+            log(f"    ✅ {pl_title}: {matched}/{len(video_entries)} matched this run, {total_in_pl} total tracked")
 
         conn.commit()
         conn.close()
