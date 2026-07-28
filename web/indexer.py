@@ -917,6 +917,11 @@ def index_channel_playlists(channel_url, channel_name):
     playlist_data = []  # list of (pl_id, pl_title, [(video_id, playlist_index), ...])
 
     for i, pl in enumerate(raw_playlists):
+        # Honor a Cancel All from the dashboard — this loop hits YouTube
+        # once per playlist, so it's the important one to be able to stop
+        if _index_status.get("cancel"):
+            log(f"  ⛔ Playlist indexing cancelled for {channel_name} after {i} playlist(s).")
+            break
         pl_id = pl['id']
         pl_title = pl['title']
         pl_url = pl['url'] or f"https://www.youtube.com/playlist?list={pl_id}"
@@ -1119,7 +1124,11 @@ def run_index(force=False):
             log_err(traceback.format_exc())
         finally:
             _index_status["scanning"] = False
-            _index_status["cancel"] = False
+            # NOTE: do NOT reset the 'cancel' flag here. Playlist indexing
+            # runs AFTER run_index() returns; clearing cancel now would let
+            # a cancel requested during the main scan get lost before the
+            # playlist loop can honor it. The driver in start_background_index
+            # (and the standalone-scan callers) own the reset.
 
 
 def start_background_index(force=False, playlist_channels=None):
@@ -1132,18 +1141,28 @@ def start_background_index(force=False, playlist_channels=None):
                           main video index completes.
     """
     def _run():
-        run_index(force=force)
-        # After video indexing, run playlist indexing for flagged channels
-        if playlist_channels:
-            log(f"🎵 Starting playlist indexing for {len(playlist_channels)} channels...")
-            for ch in playlist_channels:
-                try:
-                    index_channel_playlists(ch['url'], ch['name'])
-                except Exception as e:
-                    import traceback
-                    log_err(f"❌ Playlist indexing failed for {ch['name']}: {e}")
-                    log_err(traceback.format_exc())
-            log("🎵 Playlist indexing complete for all flagged channels")
+        try:
+            run_index(force=force)
+            # After video indexing, run playlist indexing for flagged channels
+            if playlist_channels:
+                log(f"🎵 Starting playlist indexing for {len(playlist_channels)} channels...")
+                for ch in playlist_channels:
+                    if _index_status.get("cancel"):
+                        log("🎵 ⛔ Playlist indexing cancelled before all channels done.")
+                        break
+                    try:
+                        index_channel_playlists(ch['url'], ch['name'])
+                    except Exception as e:
+                        import traceback
+                        log_err(f"❌ Playlist indexing failed for {ch['name']}: {e}")
+                        log_err(traceback.format_exc())
+                if not _index_status.get("cancel"):
+                    log("🎵 Playlist indexing complete for all flagged channels")
+        finally:
+            # Single owner of the reset: whatever happened (normal finish
+            # or cancel, with or without playlist indexing), clear the flag
+            # so the next scan starts clean.
+            _index_status["cancel"] = False
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
