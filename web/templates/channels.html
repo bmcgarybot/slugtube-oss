@@ -224,7 +224,7 @@ body.dragging-select{user-select:none;-webkit-user-select:none;cursor:crosshair}
     <button class="btn btn-sm btn-ghost" onclick="clearMixSelection()">✕ Clear</button>
 </div>
 
-<script src="/static/channels.js"></script>
+<script src="{{ static_v('channels.js') }}"></script>
 <script>initChannelsPage({{ 'true' if job.status == 'running' else 'false' }});</script>
 
 {% endblock %}

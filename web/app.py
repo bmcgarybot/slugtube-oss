@@ -16,6 +16,37 @@ from pathlib import Path
 app = Flask(__name__)
 
 
+@app.template_global()
+def static_v(filename):
+    """Return /static/<filename>?v=<mtime> for cache-busting.
+
+    Without this, browsers (and any reverse proxy in front of the app) keep
+    serving a cached copy of JS/CSS after an update — so code fixes appear
+    to have no effect even though the file on disk changed. Keying the URL
+    to the file's modification time guarantees a fresh fetch whenever the
+    file actually changes, and full caching the rest of the time.
+    """
+    path = os.path.join(app.static_folder or "", filename)
+    try:
+        stamp = int(os.path.getmtime(path))
+    except OSError:
+        stamp = 0
+    return f"/static/{filename}?v={stamp}"
+
+
+@app.after_request
+def _no_stale_static(resp):
+    """Make static assets revalidate. Combined with the ?v=<mtime> URLs this
+    ensures a code update is actually picked up instead of a proxy or the
+    browser serving a stale copy indefinitely."""
+    try:
+        if request.path.startswith("/static/"):
+            resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+    except Exception:
+        pass
+    return resp
+
+
 @app.errorhandler(Exception)
 def _json_errors_for_api(err):
     """Any unhandled exception in an /api/ route should return JSON, not
