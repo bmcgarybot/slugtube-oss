@@ -405,6 +405,46 @@
                 <button type="submit" class="btn btn-green" {% if job.status == 'running' %}disabled{% endif %} title="Rebuild the database by scanning all video files on disk. Does NOT download anything.">Rebuild Library Index</button>
             </form>
             <button class="btn btn-ghost" title="Remove database entries for channels no longer in your channel list and deduplicate entries. Does not delete any files." onclick="confirmAction('Clean Ghost Entries', 'This removes database entries for channels no longer in your channel list and deduplicates any entries with the same name. No video files will be deleted. Continue?', function(){ fetch('/api/cleanup-ghosts',{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'}}).then(function(r){return r.json()}).then(function(d){showToastGlobal(d.message||'Done')}).catch(function(e){showToastGlobal('Error: '+e)}) })">Clean Ghost Entries</button>
+            <button class="btn btn-ghost" id="repair-ids-btn" title="Recover real YouTube IDs for videos imported without metadata (TubeArchivist bare-ID filenames, Pinchflat sidecar-only IDs). Shows a preview first — nothing changes until you confirm." onclick="repairVideoIds()">Repair Video IDs</button>
+            <script>
+            // Two-step: always preview (dry run) first, then apply only on
+            // explicit confirmation. Videos imported without metadata get a
+            // placeholder f_<hash> id, which blocks archive sync and playlist
+            // matching for them.
+            function repairVideoIds() {
+                showToastGlobal('Checking for videos with placeholder IDs...');
+                fetch('/api/repair-video-ids', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
+                    .then(function(r){ return r.json(); })
+                    .then(function(d){
+                        if (d.status === 'busy') { showToastGlobal(d.message || 'A scan is running - try again after'); return; }
+                        if (d.status !== 'ok') { showToastGlobal(d.error || 'Failed'); return; }
+                        if (!d.scanned) { showToastGlobal('No placeholder IDs found - nothing to repair.'); return; }
+                        var lines = [
+                            d.scanned + ' video(s) have placeholder IDs.',
+                            d.recoverable + ' can be recovered' + (d.already_present ? ' (' + d.already_present + ' skipped: real ID already in library)' : '') + '.',
+                            d.unresolved + ' have no recoverable ID and will be left alone.',
+                            ''
+                        ];
+                        if (d.examples && d.examples.length) {
+                            lines.push('Examples:');
+                            d.examples.forEach(function(e){ lines.push('  ' + e.old + '  ->  ' + e.new); });
+                            lines.push('');
+                        }
+                        lines.push('Apply these changes? Watch history and playlist links follow each ID. Nothing is deleted.');
+                        if (!confirm(lines.join('\n'))) { showToastGlobal('Cancelled - nothing changed.'); return; }
+                        showToastGlobal('Repairing IDs...');
+                        fetch('/api/repair-video-ids?apply=true', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
+                            .then(function(r){ return r.json(); })
+                            .then(function(d2){
+                                showToastGlobal(d2.updated + ' video(s) given their real YouTube ID'
+                                    + (d2.unresolved ? ' - ' + d2.unresolved + ' still unresolved' : '')
+                                    + '. Run Sync Archive next.');
+                            })
+                            .catch(function(e){ showToastGlobal('Error: ' + e); });
+                    })
+                    .catch(function(e){ showToastGlobal('Error: ' + e); });
+            }
+            </script>
             <button class="btn btn-ghost" title="Relink thumbnail images that exist next to your videos, then download missing thumbnails from YouTube. Only creates new -thumb.jpg files — never deletes or overwrites anything." onclick="confirmAction('Rebuild Thumbnails', 'This relinks existing thumbnail images to your videos, then downloads missing thumbnails from YouTube (as new -thumb.jpg files next to each video). Nothing is deleted or overwritten. Continue?', function(){ fetch('/api/rebuild-thumbnails',{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'}}).then(function(r){return r.json()}).then(function(d){showToastGlobal(d.message||'Started'); pollThumbRebuild()}).catch(function(e){showToastGlobal('Error: '+e)}) })">Rebuild Thumbnails</button>
             <script>
             function pollThumbRebuild(){

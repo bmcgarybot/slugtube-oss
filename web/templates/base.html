@@ -1852,6 +1852,9 @@ var SlugTubeTour = {
         // Archive sync
         { target: null, title: 'Sync Archive', desc: 'On the Dashboard, Sync Archive adds every known video ID to the never-re-download ledger. Note the archive is intentionally larger than your library: it also remembers what you deleted on purpose, so junk you cleaned out does not come back.', page: 'settings', noHighlight: true },
 
+        // Repair video IDs
+        { target: '#repair-ids-btn', title: 'Repair Video IDs', desc: 'Videos imported without metadata - TubeArchivist bare-ID filenames, or Pinchflat files whose template omits the ID - get stored with a placeholder ID. Those cannot be added to the archive and cannot match playlists. This recovers the real YouTube ID from the sidecar JSON or the filename. It always shows a preview first and changes nothing until you confirm; watch history and playlist links follow each ID. Run it BEFORE reindexing playlists, then run Sync Archive.', page: 'settings', optional: true },
+
         { target: '#restart-tour-btn', title: 'Restart This Tour', desc: 'That\'s the end of the Settings section! You can always come back here and click this button to see the full walkthrough again.', page: 'settings' },
 
         /* ═══════════════════════════════════════════

@@ -152,6 +152,7 @@ SCHEDULE_PRESETS = {
     "daily_midnight": {"cron": "0 0 * * *",     "label": "Daily at 12:00 AM"},
     "daily_1am":   {"cron": "0 1 * * *",     "label": "Daily at 1:00 AM"},
     "daily_3am":   {"cron": "0 3 * * *",     "label": "Daily at 3:00 AM"},
+    "daily_4am":   {"cron": "0 4 * * *",     "label": "Daily at 4:00 AM"},
     "daily_6am":   {"cron": "0 6 * * *",     "label": "Daily at 6:00 AM"},
     "daily_noon":  {"cron": "0 12 * * *",    "label": "Daily at 12:00 PM"},
     "weekly_sun":  {"cron": "0 3 * * 0",     "label": "Weekly — Sunday 3:00 AM"},
