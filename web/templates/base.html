@@ -1727,6 +1727,25 @@ var SlugTubeTour = {
         // 31 — Add to Queue
         { target: null, title: 'Add to Queue (+)', desc: 'Hover over any video thumbnail and you will see a + button in the bottom-right. Click it to add the video to your queue without leaving the page. A toast confirms it was added.', page: 'channels', noHighlight: true },
 
+
+        // 31b - In-channel search
+        { target: '#video-search', title: 'Search Within a Channel', desc: 'Filters the videos in this channel as you type. Word-based, so "48 hours" finds "48 Hours: The Missing Woman" and "Live PD Presents 48 hours of chaos". The sidebar search covers your whole library; this one narrows the channel you are in.', page: 'channels', optional: true },
+
+        // 31c - Duration filter
+        { target: '#video-duration', title: 'Filter by Length', desc: 'Presets for under 2 min (junk clips), 2-10, 10-30, 30-60, over 30 and over 60 minutes, plus a custom min/max range. Combines with the search box.', page: 'channels', optional: true },
+
+        // 31d - Filters compose
+        { target: '#video-search-count', title: 'Filters Work Together', desc: 'Search "48 hours" + Over 30 min gives just the full episodes, skipping teasers. This label tells you how many matched. Important: with a filter active the grid shows EVERY match instead of one page, so Select All really means all of them.', page: 'channels', optional: true },
+
+        // 31e - Select mode
+        { target: '#bulk-mode-toggle', title: 'Select Multiple Videos', desc: 'Turn on Select to get checkboxes. Then: click one video and Shift-click another to grab everything between them, or click-drag a box across the grid. Select All / Select None cover the rest.', page: 'channels', optional: true },
+
+        // 31f - Bulk actions
+        { target: '#bulk-action-bar', title: 'Bulk Actions', desc: 'With videos selected you can Add to Playlist or Delete Selected. Two handy recipes: search a show + Over 30 min to build a playlist, or Under 2 min with no search to sweep out junk clips.', page: 'channels', optional: true },
+
+        // 31g - Download from grid
+        { target: null, title: 'Download to Your Device', desc: 'Hover any thumbnail for a download button next to the queue +. It hands you the original file with a proper title-based filename - no re-encoding, since the file is already on the server.', page: 'channels', noHighlight: true },
+
         /* ═══════════════════════════════════════════
            PLAYER  (page: 'watch')
            ═══════════════════════════════════════════ */
@@ -1766,6 +1785,16 @@ var SlugTubeTour = {
 
         // 37 — Keyboard Shortcuts
         { target: '.player-container', title: 'Keyboard Shortcuts', desc: 'Space/K = play/pause · J/← = back 10s · L/→ = forward 10s · N = next · P = previous · F = fullscreen · M = mute', page: 'watch', optional: true },
+
+
+        // 37b - Download this video
+        { target: null, title: 'Download Button', desc: 'The download button next to + Playlist saves this video to your device with its real title as the filename.', page: 'watch', noHighlight: true },
+
+        // 37c - Autoplay and playlists
+        { target: null, title: 'Autoplay Through a Playlist', desc: 'When a video ends, a short countdown rolls into the next one. Opened from a playlist, next/previous follow playlist order rather than channel date order. Cancel stops it; Play Now skips the wait.', page: 'watch', noHighlight: true },
+
+        // 37d - Fullscreen persistence
+        { target: null, title: 'Fullscreen Survives Autoplay', desc: 'In fullscreen, the next episode loads into the same player rather than reloading the page - so you stay fullscreen the whole way through a playlist.', page: 'watch', noHighlight: true },
 
         /* ═══════════════════════════════════════════
            SETTINGS  (page: 'settings')
@@ -1808,6 +1837,21 @@ var SlugTubeTour = {
         { target: '#cookies-textarea', title: 'Cookies', desc: 'Paste your exported cookies.txt here — tab characters are auto-fixed. Export from Firefox or Brave, and close the browser after exporting so the cookies stay valid.', page: 'settings', optional: true },
 
         // 50 — Restart Tour
+        // Playlist indexing schedule
+        { target: '#playlist-enabled', title: 'Playlist Indexing Schedule', desc: 'Playlists refresh on their own schedule (default: daily at 4am) rather than on every restart - it fetches from YouTube, so it used to cost ~17 minutes each boot. Pick any interval, or switch it off.', page: 'settings', optional: true },
+
+        // Playlist maintenance buttons
+        { target: '#pl-maint-result', title: 'Playlist Maintenance', desc: 'Fix Flags is instant and local - it marks every channel that already has playlists so the scheduled refresh stops skipping them. Refresh Flagged Now runs the scheduled job immediately. Index All Playlists flags every channel and fetches everything (slow, hits YouTube per channel).', page: 'settings', optional: true },
+
+        // Never-delete guarantee
+        { target: null, title: 'Playlists Are Never Auto-Deleted', desc: 'Playlist indexing only ever adds. If YouTube drops a playlist, renames it, removes a video, or a fetch fails halfway, nothing you already had is removed. And on a playlist page, Remove only takes a video OUT of the playlist - it never deletes the file.', page: 'settings', noHighlight: true },
+
+        // Roster / auto-populate
+        { target: null, title: 'Downloads Fill Playlists Automatically', desc: 'SlugTube remembers every video a playlist contains, including ones you have not downloaded yet. As downloads arrive, each index run links them into their playlists locally - no YouTube requests needed.', page: 'settings', noHighlight: true },
+
+        // Archive sync
+        { target: null, title: 'Sync Archive', desc: 'On the Dashboard, Sync Archive adds every known video ID to the never-re-download ledger. Note the archive is intentionally larger than your library: it also remembers what you deleted on purpose, so junk you cleaned out does not come back.', page: 'settings', noHighlight: true },
+
         { target: '#restart-tour-btn', title: 'Restart This Tour', desc: 'That\'s the end of the Settings section! You can always come back here and click this button to see the full walkthrough again.', page: 'settings' },
 
         /* ═══════════════════════════════════════════
