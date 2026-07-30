@@ -209,8 +209,13 @@ function selectChannel(name) {
     document.getElementById('video-list-tbody').innerHTML = '';
     // Reset in-channel search when switching channels
     _st.search = '';
+    _st.filtering = false;
     var _sb = document.getElementById('video-search');
     if (_sb) _sb.value = '';
+    var _dsel = document.getElementById('video-duration');
+    if (_dsel) _dsel.value = '';
+    var _dcus = document.getElementById('duration-custom');
+    if (_dcus) _dcus.style.display = 'none';
     var _sc = document.getElementById('video-search-count');
     if (_sc) _sc.style.display = 'none';
     var _scl = document.getElementById('video-search-clear');
@@ -346,7 +351,7 @@ function renderVideos(videos) {
     var total = videos ? videos.length : 0;
     // With an active search, show every match (up to a cap) rather than
     // paginating — otherwise "Select All" would only catch the visible page.
-    var searching = !!_st.search;
+    var searching = !!_st.filtering;
     var perPage = searching ? Math.min(SEARCH_RENDER_CAP, Math.max(total, 1)) : _st.perPage;
     var totalPages = Math.max(1, Math.ceil(total / perPage));
     if (_st.page > totalPages) _st.page = totalPages;
@@ -438,6 +443,48 @@ function renderVideoList(videos) {
     tbody.innerHTML = html;
 }
 
+
+/* ═══ Duration filter helpers ═══ */
+// Returns {min, max} in SECONDS (null = unbounded)
+function _getDurationRange() {
+    var sel = document.getElementById('video-duration');
+    var val = sel ? sel.value : '';
+    if (!val) return { min: null, max: null };
+
+    if (val === 'custom') {
+        var lo = parseFloat((document.getElementById('dur-min') || {}).value);
+        var hi = parseFloat((document.getElementById('dur-max') || {}).value);
+        return {
+            min: isNaN(lo) ? null : lo * 60,
+            max: isNaN(hi) ? null : hi * 60
+        };
+    }
+    // Presets look like "0-2", "30-60", "30-" (open-ended)
+    var parts = val.split('-');
+    var lo2 = parts[0] === '' ? null : parseFloat(parts[0]) * 60;
+    var hi2 = (parts.length < 2 || parts[1] === '') ? null : parseFloat(parts[1]) * 60;
+    return { min: lo2, max: hi2 };
+}
+
+function onDurationPresetChange() {
+    var sel = document.getElementById('video-duration');
+    var custom = document.getElementById('duration-custom');
+    if (custom) custom.style.display = (sel && sel.value === 'custom') ? 'inline-flex' : 'none';
+    applyVideoFilters();
+}
+
+function _durationLabel() {
+    var sel = document.getElementById('video-duration');
+    if (!sel || !sel.value) return '';
+    if (sel.value === 'custom') {
+        var lo = (document.getElementById('dur-min') || {}).value;
+        var hi = (document.getElementById('dur-max') || {}).value;
+        if (!lo && !hi) return '';
+        return (lo || '0') + '–' + (hi || '∞') + ' min';
+    }
+    return sel.options[sel.selectedIndex].text;
+}
+
 /* ═══ Search + sort videos within the channel ═══ */
 // Filters the channel's full video list by title, then sorts. When a search
 // is active we render ALL matches (up to a sane cap) instead of paginating,
@@ -470,6 +517,21 @@ function applyVideoFilters() {
         });
     }
 
+    // Duration filter (minutes → seconds). Combines with the search, so you
+    // can do "48 hours" + "over 30 min" to get just the full episodes, or
+    // "under 2 min" with no search to sweep up junk clips for deletion.
+    var dur = _getDurationRange();
+    _st.durMin = dur.min;
+    _st.durMax = dur.max;
+    if (dur.min !== null || dur.max !== null) {
+        vids = vids.filter(function(v) {
+            var d = v.duration || 0;
+            if (dur.min !== null && d < dur.min) return false;
+            if (dur.max !== null && d > dur.max) return false;
+            return true;
+        });
+    }
+
     var comparators = {
         'newest': function(a, b) { return (b.date || '').localeCompare(a.date || ''); },
         'oldest': function(a, b) { return (a.date || '').localeCompare(b.date || ''); },
@@ -484,22 +546,30 @@ function applyVideoFilters() {
 
     _st.videos = vids;
     _st.page = 1;
+    // Any active filter (search text OR duration) means we render the whole
+    // result set rather than paginating, so Select All covers all of it
+    var durLabel = _durationLabel();
+    _st.filtering = !!(term || durLabel);
 
-    // Search result count + clear button
+    // Result count + clear button
     var countEl = document.getElementById('video-search-count');
     var clearBtn = document.getElementById('video-search-clear');
-    if (term) {
+    if (_st.filtering) {
         if (countEl) {
+            var bits = [];
+            if (term) bits.push('"' + term + '"');
+            if (durLabel) bits.push(durLabel);
             var msg = vids.length + ' match' + (vids.length === 1 ? '' : 'es');
+            if (bits.length) msg += ' for ' + bits.join(' + ');
             if (vids.length > SEARCH_RENDER_CAP) {
-                msg += ' (showing first ' + SEARCH_RENDER_CAP + ' — narrow your search)';
+                msg += ' (showing first ' + SEARCH_RENDER_CAP + ' — narrow it down)';
             } else if (vids.length > 0) {
-                msg += ' — use Select to add them all to a playlist';
+                msg += ' — hit Select, then Select All';
             }
             countEl.textContent = msg;
             countEl.style.display = '';
         }
-        if (clearBtn) clearBtn.style.display = '';
+        if (clearBtn) clearBtn.style.display = term ? '' : 'none';
     } else {
         if (countEl) countEl.style.display = 'none';
         if (clearBtn) clearBtn.style.display = 'none';

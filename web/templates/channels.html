@@ -55,6 +55,25 @@
                     style="display:none;position:absolute;right:6px;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;">✕</button>
         </div>
         <span id="video-search-count" style="font-size:12px;color:var(--text-dim);display:none;"></span>
+        <select id="video-duration" class="form-select" onchange="onDurationPresetChange()" title="Filter by video length">
+            <option value="">Any length</option>
+            <option value="0-2">Under 2 min (junk/shorts)</option>
+            <option value="0-5">Under 5 min</option>
+            <option value="2-10">2–10 min</option>
+            <option value="10-30">10–30 min</option>
+            <option value="30-60">30–60 min</option>
+            <option value="30-">Over 30 min (full episodes)</option>
+            <option value="60-">Over 60 min</option>
+            <option value="custom">Custom range…</option>
+        </select>
+        <span id="duration-custom" style="display:none;align-items:center;gap:4px;font-size:12px;color:var(--text-dim);">
+            <input type="number" id="dur-min" min="0" step="1" placeholder="min" oninput="applyVideoFilters()"
+                   class="form-select" style="width:64px;padding:4px 6px;">
+            <span>to</span>
+            <input type="number" id="dur-max" min="0" step="1" placeholder="max" oninput="applyVideoFilters()"
+                   class="form-select" style="width:64px;padding:4px 6px;">
+            <span>min</span>
+        </span>
         <select id="video-sort" class="form-select" onchange="applyVideoFilters()"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="title">Title A-Z</option><option value="largest">Largest</option><option value="smallest">Smallest</option><option value="longest">Longest</option><option value="shortest">Shortest</option><option value="most_viewed">Most Viewed</option></select>
         <label class="bulk-select-toggle text-sm" style="margin-left:12px;cursor:pointer;color:var(--text-dim);"><input type="checkbox" id="bulk-mode-toggle" onchange="toggleBulkMode(this.checked)" style="margin-right:4px;">Select</label>
         <span class="text-dim text-sm" id="video-count-label"></span>
