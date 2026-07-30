@@ -4,6 +4,7 @@ var _st = {
     current: null,   // selected channel name
     data: null,      // API response for current channel
     sort: 'newest',
+    search: '',
     jobRunning: false,
     page: 1,
     perPage: 60
@@ -206,6 +207,14 @@ function selectChannel(name) {
     document.getElementById('detail-stats').textContent = 'Loading...';
     document.getElementById('video-grid').innerHTML = '';
     document.getElementById('video-list-tbody').innerHTML = '';
+    // Reset in-channel search when switching channels
+    _st.search = '';
+    var _sb = document.getElementById('video-search');
+    if (_sb) _sb.value = '';
+    var _sc = document.getElementById('video-search-count');
+    if (_sc) _sc.style.display = 'none';
+    var _scl = document.getElementById('video-search-clear');
+    if (_scl) _scl.style.display = 'none';
     document.getElementById('detail-actions').innerHTML = '';
     document.getElementById('detail-playlists').innerHTML = '';
 
@@ -335,7 +344,10 @@ function renderChannelDetail(d) {
 /* ═══ Render videos ═══ */
 function renderVideos(videos) {
     var total = videos ? videos.length : 0;
-    var perPage = _st.perPage;
+    // With an active search, show every match (up to a cap) rather than
+    // paginating — otherwise "Select All" would only catch the visible page.
+    var searching = !!_st.search;
+    var perPage = searching ? Math.min(SEARCH_RENDER_CAP, Math.max(total, 1)) : _st.perPage;
     var totalPages = Math.max(1, Math.ceil(total / perPage));
     if (_st.page > totalPages) _st.page = totalPages;
     var start = (_st.page - 1) * perPage;
@@ -344,13 +356,13 @@ function renderVideos(videos) {
 
     renderVideoGrid(pageVids);
     renderVideoList(pageVids);
-    renderPagination(total, start, end, totalPages);
+    renderPagination(total, start, end, totalPages, perPage);
 }
 
-function renderPagination(total, start, end, totalPages) {
+function renderPagination(total, start, end, totalPages, perPage) {
     var container = document.getElementById('pagination-controls');
     if (!container) return;
-    if (total <= _st.perPage) {
+    if (total <= (perPage || _st.perPage)) {
         container.style.display = 'none';
         return;
     }
@@ -426,11 +438,37 @@ function renderVideoList(videos) {
     tbody.innerHTML = html;
 }
 
-/* ═══ Sort videos ═══ */
-function sortVideos() {
+/* ═══ Search + sort videos within the channel ═══ */
+// Filters the channel's full video list by title, then sorts. When a search
+// is active we render ALL matches (up to a sane cap) instead of paginating,
+// so "Select All" genuinely selects every match — that's the point of
+// searching before building a playlist.
+var SEARCH_RENDER_CAP = 500;
+
+function applyVideoFilters() {
     if (!_st.data || !_st.data.videos) return;
-    _st.sort = document.getElementById('video-sort').value;
-    var vids = _st.data.videos.slice(); // copy
+
+    var box = document.getElementById('video-search');
+    var term = box ? box.value.trim().toLowerCase() : '';
+    _st.search = term;
+
+    var sortSel = document.getElementById('video-sort');
+    if (sortSel) _st.sort = sortSel.value;
+
+    var vids = _st.data.videos.slice();
+
+    if (term) {
+        // Match all whitespace-separated words anywhere in the title, so
+        // "48 hours" finds "48 Hours: Something" regardless of extra words
+        var words = term.split(/\s+/).filter(Boolean);
+        vids = vids.filter(function(v) {
+            var t = (v.title || '').toLowerCase();
+            for (var i = 0; i < words.length; i++) {
+                if (t.indexOf(words[i]) === -1) return false;
+            }
+            return true;
+        });
+    }
 
     var comparators = {
         'newest': function(a, b) { return (b.date || '').localeCompare(a.date || ''); },
@@ -442,13 +480,43 @@ function sortVideos() {
         'shortest': function(a, b) { return (a.duration || 0) - (b.duration || 0); },
         'most_viewed': function(a, b) { return (b.view_count || 0) - (a.view_count || 0); }
     };
+    vids.sort(comparators[_st.sort] || comparators['newest']);
 
-    var cmp = comparators[_st.sort] || comparators['newest'];
-    vids.sort(cmp);
     _st.videos = vids;
     _st.page = 1;
+
+    // Search result count + clear button
+    var countEl = document.getElementById('video-search-count');
+    var clearBtn = document.getElementById('video-search-clear');
+    if (term) {
+        if (countEl) {
+            var msg = vids.length + ' match' + (vids.length === 1 ? '' : 'es');
+            if (vids.length > SEARCH_RENDER_CAP) {
+                msg += ' (showing first ' + SEARCH_RENDER_CAP + ' — narrow your search)';
+            } else if (vids.length > 0) {
+                msg += ' — use Select to add them all to a playlist';
+            }
+            countEl.textContent = msg;
+            countEl.style.display = '';
+        }
+        if (clearBtn) clearBtn.style.display = '';
+    } else {
+        if (countEl) countEl.style.display = 'none';
+        if (clearBtn) clearBtn.style.display = 'none';
+    }
+
     renderVideos(vids);
 }
+
+function clearVideoSearch() {
+    var box = document.getElementById('video-search');
+    if (box) box.value = '';
+    applyVideoFilters();
+    if (box) box.focus();
+}
+
+// Kept for any existing callers / the sort dropdown
+function sortVideos() { applyVideoFilters(); }
 
 /* ═══ Channel actions ═══ */
 

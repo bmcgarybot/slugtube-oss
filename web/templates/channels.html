@@ -47,7 +47,15 @@
         <div class="detail-actions" id="detail-actions"></div>
     </div>
     <div class="video-toolbar" id="video-toolbar">
-        <select id="video-sort" class="form-select" onchange="sortVideos()"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="title">Title A-Z</option><option value="largest">Largest</option><option value="smallest">Smallest</option><option value="longest">Longest</option><option value="shortest">Shortest</option><option value="most_viewed">Most Viewed</option></select>
+        <div style="position:relative;display:flex;align-items:center;">
+            <input type="search" id="video-search" class="form-select" placeholder="Search in this channel…"
+                   oninput="applyVideoFilters()" autocomplete="off"
+                   style="min-width:240px;padding-right:28px;">
+            <button id="video-search-clear" onclick="clearVideoSearch()" title="Clear search"
+                    style="display:none;position:absolute;right:6px;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;">✕</button>
+        </div>
+        <span id="video-search-count" style="font-size:12px;color:var(--text-dim);display:none;"></span>
+        <select id="video-sort" class="form-select" onchange="applyVideoFilters()"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="title">Title A-Z</option><option value="largest">Largest</option><option value="smallest">Smallest</option><option value="longest">Longest</option><option value="shortest">Shortest</option><option value="most_viewed">Most Viewed</option></select>
         <label class="bulk-select-toggle text-sm" style="margin-left:12px;cursor:pointer;color:var(--text-dim);"><input type="checkbox" id="bulk-mode-toggle" onchange="toggleBulkMode(this.checked)" style="margin-right:4px;">Select</label>
         <span class="text-dim text-sm" id="video-count-label"></span>
     </div>
