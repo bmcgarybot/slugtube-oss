@@ -96,8 +96,11 @@
         transition: opacity 0.15s, transform 0.1s;
     }
     .pl-overlay-btn:hover { transform: scale(1.1); opacity: 1 !important; }
-    .pl-import-btn { bottom: 60px; left: 6px; border: 1px solid var(--accent); color: var(--accent); }
-    .pl-delete-btn { bottom: 60px; right: 6px; border: 1px solid #e74c3c; color: #e74c3c; }
+    /* Anchored to the TOP (over the thumbnail), not the card bottom.
+       bottom:60px assumed a fixed card height, so any playlist whose title
+       wrapped to two lines had the button land on top of the text. */
+    .pl-import-btn { top: 6px; left: 34px; border: 1px solid var(--accent); color: var(--accent); }
+    .pl-delete-btn { top: 6px; right: 6px; border: 1px solid #e74c3c; color: #e74c3c; }
 
     /* ── Playlist Thumbnail ── */
     .playlist-thumb { position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; background: var(--bg); }

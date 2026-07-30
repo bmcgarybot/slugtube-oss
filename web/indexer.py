@@ -154,10 +154,63 @@ def init_db():
             PRIMARY KEY (video_id, playlist_id)
         );
 
+        -- Every video YouTube reported for a playlist, INCLUDING ones not
+        -- downloaded yet. video_playlists only holds memberships for videos
+        -- actually in the library; this roster remembers the rest so that
+        -- when a video is later downloaded we can link it into its playlists
+        -- locally, with no YouTube request.
+        CREATE TABLE IF NOT EXISTS playlist_roster (
+            video_id TEXT NOT NULL,
+            playlist_id TEXT NOT NULL,
+            playlist_index INTEGER DEFAULT 0,
+            PRIMARY KEY (video_id, playlist_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_playlist_roster_video ON playlist_roster(video_id);
         CREATE INDEX IF NOT EXISTS idx_video_playlists_playlist ON video_playlists(playlist_id);
     """)
     conn.commit()
     conn.close()
+
+
+def link_roster_to_library(conn=None):
+    """Link downloaded videos into their playlists using the saved roster.
+
+    Playlist membership used to be recorded ONLY for videos already in the
+    library at fetch time, so videos downloaded afterwards never appeared in
+    their playlists until a full YouTube re-fetch. This pass is purely local:
+    any roster entry whose video now exists gets linked, and playlist counts
+    are refreshed. Cheap enough to run at the end of every video index.
+    Returns the number of new links created.
+    """
+    own_conn = conn is None
+    if own_conn:
+        conn = get_db()
+    try:
+        cur = conn.execute("""
+            INSERT OR IGNORE INTO video_playlists (video_id, playlist_id, playlist_index)
+            SELECT r.video_id, r.playlist_id, r.playlist_index
+            FROM playlist_roster r
+            JOIN videos v ON v.id = r.video_id
+        """)
+        linked = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+
+        if linked:
+            # Refresh counts for the playlists that gained videos
+            conn.execute("""
+                UPDATE playlists SET video_count = (
+                    SELECT COUNT(*) FROM video_playlists vp WHERE vp.playlist_id = playlists.id
+                )
+            """)
+            log(f"  🔗 Linked {linked} newly-downloaded video(s) into their playlists")
+        conn.commit()
+        return linked
+    except Exception as e:
+        log_err(f"⚠️ Playlist linking failed: {e}")
+        return 0
+    finally:
+        if own_conn:
+            conn.close()
 
 
 def _find_video_file(info_json_path):
@@ -988,6 +1041,13 @@ def index_channel_playlists(channel_url, channel_name):
 
             matched = 0
             for vid, vidx in video_entries:
+                # Remember EVERY entry, even if we haven't downloaded the
+                # video yet — so a later download can be linked locally
+                # instead of needing another YouTube fetch.
+                conn.execute("""
+                    INSERT OR REPLACE INTO playlist_roster (video_id, playlist_id, playlist_index)
+                    VALUES (?, ?, ?)
+                """, (vid, pl_id, vidx))
                 # Only link videos that exist in our library
                 exists = conn.execute("SELECT id FROM videos WHERE id = ?", (vid,)).fetchone()
                 if exists:
@@ -1111,6 +1171,16 @@ def run_index(force=False):
                     log(f"  🗑️ Removed {len(dead)} orphaned entries")
 
             conn.commit()
+
+            # Link any newly-downloaded videos into playlists we already
+            # know about (local only — no YouTube requests). This is what
+            # makes freshly downloaded videos appear in their playlists
+            # without waiting for the monthly playlist refresh.
+            try:
+                link_roster_to_library(conn)
+            except Exception as _e:
+                log_err(f"⚠️ Playlist linking skipped: {_e}")
+
             conn.close()
 
             elapsed = time.time() - start

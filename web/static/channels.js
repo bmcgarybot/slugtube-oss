@@ -977,3 +977,35 @@ renderVideoGrid = function(videos) {
     // Inject queue add buttons after a tick (DOM needs to update)
     setTimeout(addQueueBtnToVideoCards, 0);
 };
+
+// ── Shift-click range select ─────────────────────────────────
+// Click one video, then Shift-click another to select everything between
+// them. Uses plain clicks only (no drag gesture), so it works reliably in
+// every browser — including where the drag-box has been unreliable.
+(function initRangeSelect() {
+    var lastIndex = null;
+
+    document.addEventListener('click', function(e) {
+        var toggle = document.getElementById('bulk-mode-toggle');
+        if (!toggle || !toggle.checked) { lastIndex = null; return; }
+        var card = e.target.closest('#video-grid .video-card');
+        if (!card) return;
+
+        var cards = Array.prototype.slice.call(
+            document.querySelectorAll('#video-grid .video-card'));
+        var idx = cards.indexOf(card);
+        if (idx < 0) return;
+
+        if (e.shiftKey && lastIndex !== null && lastIndex !== idx) {
+            var start = Math.min(lastIndex, idx), end = Math.max(lastIndex, idx);
+            for (var i = start; i <= end; i++) {
+                var cb = cards[i].querySelector('.bulk-checkbox');
+                if (cb) cb.checked = true;
+            }
+            updateBulkCount();
+            // Clear the text selection shift-click creates as a side effect
+            if (window.getSelection) window.getSelection().removeAllRanges();
+        }
+        lastIndex = idx;
+    }, true);
+})();
