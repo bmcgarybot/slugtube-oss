@@ -55,6 +55,8 @@
                     style="display:none;position:absolute;right:6px;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;">✕</button>
         </div>
         <span id="video-search-count" style="font-size:12px;color:var(--text-dim);display:none;"></span>
+        <button class="btn btn-sm btn-accent" id="play-results-btn" onclick="playFilteredResults()"
+                style="display:none;" title="Play these results in order - Next and autoplay follow this filtered list instead of the whole channel">&#9654; Play All Results</button>
         <select id="video-duration" class="form-select" onchange="onDurationPresetChange()" title="Filter by video length">
             <option value="">Any length</option>
             <option value="0-2">Under 2 min (junk/shorts)</option>

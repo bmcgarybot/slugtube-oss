@@ -28,6 +28,9 @@
         <span>Results for "{{ query }}" — {{ search_results|length }} found</span>
         <div style="display:flex;gap:8px;align-items:center;">
             {% if search_results %}
+            <a class="btn btn-accent btn-sm" id="play-results-btn"
+               href="/watch/{{ search_results[0].id }}?q={{ query|urlencode }}&ss=newest"
+               title="Play these results in order — Next and autoplay follow the result list instead of the channel">▶ Play All Results</a>
             <button class="btn btn-purple btn-sm" id="toggle-select-btn" onclick="toggleSelectMode()" title="Select videos for bulk actions">Select Videos</button>
             {% endif %}
             <a href="/library" class="btn btn-sm">✕ Clear</a>

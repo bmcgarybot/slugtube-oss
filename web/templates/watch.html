@@ -41,6 +41,30 @@
 </div>
 
 <!-- Video Info -->
+{%- set nav_qs = '' -%}
+{%- if playlist_id -%}
+  {%- set nav_qs = '?playlist=' ~ playlist_id -%}
+{%- elif search_ctx -%}
+  {%- set _p = [] -%}
+  {%- if search_ctx.q %}{% set _ = _p.append('q=' ~ search_ctx.q|urlencode) %}{% endif -%}
+  {%- if search_ctx.channel %}{% set _ = _p.append('sc=' ~ search_ctx.channel|urlencode) %}{% endif -%}
+  {%- if search_ctx.sort %}{% set _ = _p.append('ss=' ~ search_ctx.sort|urlencode) %}{% endif -%}
+  {%- if search_ctx.dmin %}{% set _ = _p.append('dmin=' ~ search_ctx.dmin) %}{% endif -%}
+  {%- if search_ctx.dmax %}{% set _ = _p.append('dmax=' ~ search_ctx.dmax) %}{% endif -%}
+  {%- if _p %}{% set nav_qs = '?' ~ _p|join('&') %}{% endif -%}
+{%- endif -%}
+{% if search_ctx %}
+<div style="max-width:1100px;margin:0 auto 10px;padding:8px 12px;background:var(--bg-card);border:1px solid var(--accent);border-radius:8px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span style="color:var(--accent);font-weight:600;">Playing search results</span>
+    <span style="color:var(--text-dim);">
+        {{ search_ctx.position }} of {{ search_ctx.total }}
+        {%- if search_ctx.q %} for "{{ search_ctx.q }}"{% endif -%}
+        {%- if search_ctx.channel %} in {{ search_ctx.channel }}{% endif -%}
+    </span>
+    <a href="{% if search_ctx.channel %}/channels#{{ search_ctx.channel|urlencode }}{% else %}/library?q={{ search_ctx.q|urlencode }}{% endif %}"
+       style="color:var(--accent);text-decoration:none;margin-left:auto;">Back to results</a>
+</div>
+{% endif %}
 <div class="video-details">
     <h1 class="video-detail-title">{{ video.title }}</h1>
     <div style="position:relative; display:inline-block; margin:6px 0 2px 0;">
@@ -131,10 +155,10 @@
             {% if video.watched %}Watched{% else %}Mark Watched{% endif %}
         </button>
         {% if prev_video %}
-        <a href="/watch/{{ prev_video.id }}{% if playlist_id %}?playlist={{ playlist_id }}{% endif %}" class="btn btn-sm" id="prev-btn">Previous</a>
+        <a href="/watch/{{ prev_video.id }}{{ nav_qs }}" class="btn btn-sm" id="prev-btn">Previous</a>
         {% endif %}
         {% if next_video %}
-        <a href="/watch/{{ next_video.id }}{% if playlist_id %}?playlist={{ playlist_id }}{% endif %}" class="btn btn-sm" id="next-btn">Next</a>
+        <a href="/watch/{{ next_video.id }}{{ nav_qs }}" class="btn btn-sm" id="next-btn">Next</a>
         {% endif %}
         <div class="player-toggles">
             <button id="autoplay-btn" class="btn btn-sm toggle-btn" onclick="toggleAutoplay()" title="Auto-play next video when current ends">
@@ -280,6 +304,27 @@ var nextVideoUrl = {{ (next_video.id if next_video else '') | tojson }};
 var nextVideoTitle = {{ (next_video.title if next_video else '') | tojson }};
 var prevVideoUrl = {{ (prev_video.id if prev_video else '') | tojson }};
 var playlistId = {{ (playlist_id or '') | tojson }};
+var searchCtx = {{ (search_ctx or None) | tojson }};
+
+// Single place that decides what context a /watch/ link carries: a playlist,
+// or a search-results queue, or nothing. Previously each call site rebuilt
+// '?playlist=' by hand, so adding a second queue type would have meant
+// patching ~7 places and missing some.
+function watchUrl(id) {
+    var url = '/watch/' + encodeURIComponent(id);
+    if (playlistId) {
+        url += '?playlist=' + encodeURIComponent(playlistId);
+    } else if (searchCtx) {
+        var p = [];
+        if (searchCtx.q) p.push('q=' + encodeURIComponent(searchCtx.q));
+        if (searchCtx.channel) p.push('sc=' + encodeURIComponent(searchCtx.channel));
+        if (searchCtx.sort) p.push('ss=' + encodeURIComponent(searchCtx.sort));
+        if (searchCtx.dmin !== '') p.push('dmin=' + encodeURIComponent(searchCtx.dmin));
+        if (searchCtx.dmax !== '') p.push('dmax=' + encodeURIComponent(searchCtx.dmax));
+        if (p.length) url += '?' + p.join('&');
+    }
+    return url;
+}
 var playlistVideoIds = {{ (playlist_video_ids or []) | tojson }};
 
 // ── Autoplay + Shuffle state ──
@@ -478,8 +523,7 @@ function playNow() {
         playInPlace(target);
         return;
     }
-    var url = '/watch/' + encodeURIComponent(target);
-    if (playlistId) url += '?playlist=' + encodeURIComponent(playlistId);
+    var url = watchUrl(target);
     if (document.fullscreenElement) {
         sessionStorage.setItem('slugtube-fullscreen', '1');
     }
@@ -509,8 +553,7 @@ function playInPlace(nextId) {
 
     // Update address bar + tab title without reloading
     try {
-        var newUrl = '/watch/' + encodeURIComponent(nextId) +
-                     (playlistId ? '?playlist=' + encodeURIComponent(playlistId) : '');
+        var newUrl = watchUrl(nextId);
         window.history.replaceState({}, '', newUrl);
     } catch (e) {}
 
@@ -536,9 +579,7 @@ function playInPlace(nextId) {
 }
 
 function fallbackNavigate(nextId) {
-    var url = '/watch/' + encodeURIComponent(nextId);
-    if (playlistId) url += '?playlist=' + encodeURIComponent(playlistId);
-    window.location.href = url;
+    window.location.href = watchUrl(nextId);
 }
 
 // After an in-place swap, figure out the new sequential next video from
@@ -820,16 +861,14 @@ document.addEventListener('keydown', (e) => {
             break;
         case 'n':
             if (nextVideoUrl) {
-                var url = '/watch/' + encodeURIComponent(nextVideoUrl);
-                if (playlistId) url += '?playlist=' + encodeURIComponent(playlistId);
+                var url = watchUrl(nextVideoUrl);
                 if (document.fullscreenElement) sessionStorage.setItem('slugtube-fullscreen', '1');
                 window.location.href = url;
             }
             break;
         case 'p':
             if (prevVideoUrl) {
-                var url = '/watch/' + encodeURIComponent(prevVideoUrl);
-                if (playlistId) url += '?playlist=' + encodeURIComponent(playlistId);
+                var url = watchUrl(prevVideoUrl);
                 if (document.fullscreenElement) sessionStorage.setItem('slugtube-fullscreen', '1');
                 window.location.href = url;
             }

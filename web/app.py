@@ -2595,7 +2595,8 @@ def playlist_view(channel_name, playlist_id):
 
 @app.route("/watch/<video_id>")
 def watch(video_id):
-    from indexer import get_video, get_channel_videos, get_playlist_videos, get_playlist
+    from indexer import (get_video, get_channel_videos, get_playlist_videos,
+                         get_playlist, get_search_queue)
 
     video = get_video(video_id)
     if not video:
@@ -2622,7 +2623,42 @@ def watch(video_id):
                         next_video = pl_videos[i + 1]
                     break
 
+    # ── Search-results queue ──────────────────────────────────
+    # Opt-in: only when the page was opened from "Play all results", which
+    # carries the search in the URL. Stateless by design — re-running the
+    # search here means the queue survives a refresh, is shareable, and
+    # re-anchors automatically if the user picks a different result.
+    search_ctx = None
     if not playlist_info:
+        sq = request.args.get('q', '').strip()
+        sq_channel = request.args.get('sc', '').strip() or None
+        if sq or sq_channel:
+            def _intarg(name):
+                raw = request.args.get(name, '')
+                try:
+                    return int(float(raw)) if raw != '' else None
+                except ValueError:
+                    return None
+            sq_sort = request.args.get('ss', 'newest')
+            results = get_search_queue(sq, channel=sq_channel,
+                                       dmin=_intarg('dmin'), dmax=_intarg('dmax'),
+                                       sort=sq_sort)
+            ids = [r['id'] for r in results]
+            if video_id in ids:
+                i = ids.index(video_id)
+                if i > 0:
+                    prev_video = results[i - 1]
+                if i < len(results) - 1:
+                    next_video = results[i + 1]
+                playlist_video_ids = ids      # reuse the client-side walker
+                search_ctx = {
+                    'q': sq, 'channel': sq_channel or '', 'sort': sq_sort,
+                    'dmin': request.args.get('dmin', ''),
+                    'dmax': request.args.get('dmax', ''),
+                    'position': i + 1, 'total': len(ids),
+                }
+
+    if not playlist_info and not search_ctx:
         # Fall back to channel-based prev/next
         playlist_id = ''
         channel_videos, _ = get_channel_videos(video['channel_name'], sort='newest', limit=5000)
@@ -2642,6 +2678,7 @@ def watch(video_id):
         playlist_id=playlist_id,
         playlist_info=playlist_info,
         playlist_video_ids=playlist_video_ids,
+        search_ctx=search_ctx,
         job=jobs,
         paused=is_paused(),
     )

@@ -1490,6 +1490,66 @@ def get_video(video_id):
     return dict(row) if row else None
 
 
+def get_search_queue(query, channel=None, dmin=None, dmax=None,
+                     sort='newest', limit=500):
+    """Ordered video list for a search, used as a playback queue.
+
+    Mirrors what the UI shows so autoplay can walk search results:
+      - word-based title matching (every word must appear), matching the
+        in-channel search box rather than FTS ranking, so the order is
+        stable and reproducible on every page load
+      - optional channel scope (the in-channel search)
+      - optional duration bounds in SECONDS (the duration filter)
+      - the same sort options the channel view offers
+
+    Deliberately stateless: the watch page re-runs this from URL params, so
+    the queue survives a refresh, can be shared as a link, and re-anchors
+    automatically when the user picks a different video from the results.
+    """
+    words = [w for w in (query or '').lower().split() if w]
+    if not words and channel is None:
+        return []
+
+    sql = ["SELECT v.id, v.title, v.channel_name, v.upload_date, v.duration",
+           "FROM videos v WHERE 1=1"]
+    params = []
+
+    if channel:
+        sql.append("AND v.channel_name = ?")
+        params.append(channel)
+    for w in words:
+        sql.append("AND LOWER(v.title) LIKE ?")
+        params.append(f"%{w}%")
+    if dmin is not None:
+        sql.append("AND COALESCE(v.duration, 0) >= ?")
+        params.append(dmin)
+    if dmax is not None:
+        sql.append("AND COALESCE(v.duration, 0) <= ?")
+        params.append(dmax)
+
+    order = {
+        'newest':   "v.upload_date DESC, v.id",
+        'oldest':   "v.upload_date ASC, v.id",
+        'title':    "LOWER(v.title) ASC, v.id",
+        'longest':  "COALESCE(v.duration,0) DESC, v.id",
+        'shortest': "COALESCE(v.duration,0) ASC, v.id",
+        'largest':  "COALESCE(v.file_size,0) DESC, v.id",
+        'smallest': "COALESCE(v.file_size,0) ASC, v.id",
+    }.get(sort, "v.upload_date DESC, v.id")
+    sql.append(f"ORDER BY {order} LIMIT ?")
+    params.append(limit)
+
+    conn = get_db()
+    try:
+        rows = conn.execute(" ".join(sql), params).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        log_err(f"search queue failed: {e}")
+        return []
+    finally:
+        conn.close()
+
+
 def search_videos(query, limit=50):
     """Full-text search across titles and descriptions."""
     conn = get_db()

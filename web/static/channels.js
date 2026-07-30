@@ -485,6 +485,25 @@ function _durationLabel() {
     return sel.options[sel.selectedIndex].text;
 }
 
+
+// Open the current filtered result set as a playback queue. The search and
+// duration filter go into the URL, so the watch page re-runs the same query
+// for prev/next — stateless, survives refresh, shareable, and re-anchors if
+// the user clicks a different result.
+function playFilteredResults() {
+    if (!_st.videos || !_st.videos.length) return;
+    var sel = document.getElementById('video-duration');
+    var dur = _getDurationRange();
+    var p = [];
+    if (_st.search) p.push('q=' + encodeURIComponent(_st.search));
+    if (_st.current) p.push('sc=' + encodeURIComponent(_st.current));
+    p.push('ss=' + encodeURIComponent(_st.sort || 'newest'));
+    if (dur.min !== null) p.push('dmin=' + Math.round(dur.min));
+    if (dur.max !== null) p.push('dmax=' + Math.round(dur.max));
+    window.location.href = '/watch/' + encodeURIComponent(_st.videos[0].id)
+        + (p.length ? '?' + p.join('&') : '');
+}
+
 /* ═══ Search + sort videos within the channel ═══ */
 // Filters the channel's full video list by title, then sorts. When a search
 // is active we render ALL matches (up to a sane cap) instead of paginating,
@@ -570,9 +589,13 @@ function applyVideoFilters() {
             countEl.style.display = '';
         }
         if (clearBtn) clearBtn.style.display = term ? '' : 'none';
+        var pr = document.getElementById('play-results-btn');
+        if (pr) pr.style.display = vids.length ? '' : 'none';
     } else {
         if (countEl) countEl.style.display = 'none';
         if (clearBtn) clearBtn.style.display = 'none';
+        var pr2 = document.getElementById('play-results-btn');
+        if (pr2) pr2.style.display = 'none';
     }
 
     renderVideos(vids);

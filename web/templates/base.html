@@ -1746,6 +1746,9 @@ var SlugTubeTour = {
         // 31g - Download from grid
         { target: null, title: 'Download to Your Device', desc: 'Hover any thumbnail for a download button next to the queue +. It hands you the original file with a proper title-based filename - no re-encoding, since the file is already on the server.', page: 'channels', noHighlight: true },
 
+
+        // 31h - Play all results
+        { target: '#play-results-btn', title: 'Play All Results', desc: 'Turns your current search and length filter into a play queue: Next, Previous and autoplay walk the results instead of the whole channel. Without this, playback always follows the channel newest-first. The queue lives in the URL, so it survives a refresh, can be shared as a link, and re-anchors if you go back and pick a different result.', page: 'channels', optional: true },
         /* ═══════════════════════════════════════════
            PLAYER  (page: 'watch')
            ═══════════════════════════════════════════ */
