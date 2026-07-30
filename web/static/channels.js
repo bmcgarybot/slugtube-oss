@@ -679,6 +679,7 @@ function escAttr(s) {
 
 /* ═══ Bulk Select / Delete ═══ */
 function toggleBulkMode(on) {
+    document.body.classList.toggle('select-mode-on', !!on);
     var bar = document.getElementById('bulk-action-bar');
     if (bar) bar.style.display = on ? 'flex' : 'none';
     // Re-render videos to add/remove checkboxes
@@ -731,7 +732,12 @@ function updateBulkCount() {
         startY = e.pageY;
         // Capture on the grid so every subsequent move/up comes to us
         try { g.setPointerCapture(e.pointerId); } catch (_) {}
-        e.preventDefault();
+        // NOTE: deliberately NOT calling e.preventDefault() here. In Chromium,
+        // preventDefault on pointerdown suppresses the compatibility mouse
+        // events INCLUDING click — which stopped video cards responding to
+        // clicks at all in select mode. Text selection during a drag is
+        // handled with CSS (user-select) instead, and native link dragging is
+        // still blocked by the dragstart handler below.
     });
 
     document.addEventListener('pointermove', function(e) {

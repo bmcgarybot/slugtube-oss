@@ -160,6 +160,9 @@
 .video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-top:8px}
 #drag-marquee{position:absolute;z-index:50;border:1.5px solid var(--accent);background:rgba(88,166,255,0.15);border-radius:4px;pointer-events:none}
 body.dragging-select{user-select:none;-webkit-user-select:none;cursor:crosshair}
+/* While select mode is on, stop the grid selecting text on drag. Done in CSS
+   because preventDefault() on pointerdown also cancels the click event. */
+body.select-mode-on #video-grid{user-select:none;-webkit-user-select:none}
 .video-card.bulk-selected{outline:2px solid var(--accent);outline-offset:-1px}
 .video-card.bulk-selected .video-thumb{opacity:.85}
 .video-card{border-radius:8px;overflow:hidden;background:var(--bg-card);border:1px solid var(--border);transition:transform .2s,box-shadow .2s;cursor:pointer;text-decoration:none;color:var(--text);display:block}
