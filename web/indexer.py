@@ -6,6 +6,7 @@ Runs in background, incremental updates — no 5-hour rescan.
 
 import sqlite3
 import os
+import re
 import json
 import time
 import threading
@@ -213,6 +214,105 @@ def link_roster_to_library(conn=None):
             conn.close()
 
 
+def repair_synthetic_ids(dry_run=True):
+    """Recover real YouTube IDs for videos stored with synthetic f_<hash> IDs.
+
+    Files indexed without a usable ID get 'f_' + md5(path) as a placeholder.
+    Those videos can't be archived (so yt-dlp may re-download them) and can't
+    be matched into playlists (playlist rosters use real YouTube IDs).
+
+    This re-derives the real ID from, in order:
+      1. a sidecar .info.json's 'id' field (Pinchflat writes these; its output
+         templates often omit the ID from the filename entirely)
+      2. the filename — [VIDEO_ID] brackets, or a bare 11-char stem
+         (TubeArchivist's <channel-id>/<video-id>.mp4 layout)
+
+    Returns a report. Pass dry_run=False to apply. Updates are done as
+    id rewrites, carrying watch history and playlist links with them, and
+    skip any case where the real ID already exists in the library (that
+    would be a duplicate row, handled by leaving the placeholder alone).
+    """
+    import json as _json
+
+    conn = get_db()
+    report = {"scanned": 0, "recoverable": 0, "updated": 0,
+              "already_present": 0, "unresolved": 0, "examples": []}
+    try:
+        rows = conn.execute(
+            "SELECT id, file_path, json_path FROM videos WHERE id LIKE 'f\\_%' ESCAPE '\\'"
+        ).fetchall()
+        report["scanned"] = len(rows)
+
+        for row in rows:
+            old_id = row["id"]
+            fpath = row["file_path"] or ""
+            real = ""
+
+            # 1) sidecar .info.json
+            for cand in (row["json_path"] or "",
+                         os.path.splitext(fpath)[0] + ".info.json"):
+                if cand and os.path.isfile(cand):
+                    try:
+                        with open(cand, "r", encoding="utf-8") as f:
+                            data = _json.load(f)
+                        cid = str(data.get("id") or "").strip()
+                        if re.fullmatch(r"[A-Za-z0-9_-]{11}", cid):
+                            real = cid
+                            break
+                    except Exception:
+                        pass
+
+            # 2) filename patterns
+            if not real and fpath:
+                got, _t, _d = _parse_filename(os.path.basename(fpath),
+                                              os.path.dirname(fpath))
+                if got:
+                    real = got
+
+            if not real:
+                report["unresolved"] += 1
+                continue
+
+            report["recoverable"] += 1
+            if len(report["examples"]) < 5:
+                report["examples"].append({"old": old_id, "new": real,
+                                           "file": os.path.basename(fpath)})
+
+            exists = conn.execute("SELECT 1 FROM videos WHERE id = ?", (real,)).fetchone()
+            if exists:
+                report["already_present"] += 1
+                continue
+
+            if not dry_run:
+                # Rewrite the id, carrying dependent rows with it
+                conn.execute("UPDATE videos SET id = ? WHERE id = ?", (real, old_id))
+                for tbl, col in (("video_playlists", "video_id"),
+                                 ("watch_history", "video_id"),
+                                 ("playlist_roster", "video_id")):
+                    try:
+                        conn.execute(f"UPDATE OR IGNORE {tbl} SET {col} = ? WHERE {col} = ?",
+                                     (real, old_id))
+                    except Exception:
+                        pass
+                report["updated"] += 1
+
+        if not dry_run:
+            conn.commit()
+            # Newly-real IDs may now match playlist rosters
+            try:
+                link_roster_to_library(conn)
+            except Exception:
+                pass
+            log(f"🔧 ID repair: {report['updated']} video(s) given their real "
+                f"YouTube ID ({report['unresolved']} still unresolved)")
+        else:
+            log(f"🔧 ID repair (dry run): {report['recoverable']} of "
+                f"{report['scanned']} recoverable, {report['unresolved']} unresolved")
+    finally:
+        conn.close()
+    return report
+
+
 def _find_video_file(info_json_path):
     """Given an .info.json path, find the matching video file."""
     base = str(info_json_path).replace('.info.json', '')
@@ -254,18 +354,56 @@ def _find_subtitle(info_json_path):
     return ''
 
 
-def _parse_filename(fname):
+def _parse_filename(fname, dirpath=None):
     """Extract video ID, title, and date from filename patterns.
-    SlugTube:   s2026e20260515 - Title Here [VIDEO_ID].mp4
-    PinchFlat:  Title Here [VIDEO_ID].mp4  or  Title Here.mp4
+
+    Supported conventions (verified against upstream docs):
+      SlugTube / yt-dlp:  s2026e20260515 - Title Here [VIDEO_ID].mp4
+      Pinchflat:          Title Here [VIDEO_ID].mp4 — but note Pinchflat's
+                          common output templates ({{ title }},
+                          {{ upload_yyyy_mm_dd }}) contain NO id, in which
+                          case the id comes from its .info.json sidecar.
+      TubeArchivist:      <channel-id>/<video-id>.mp4 — a BARE 11-char id
+                          as the whole filename. TA standardised on this in
+                          v0.4.0 and its FAQ confirms it's still the layout.
+                          Previously unhandled here, so every TA import was
+                          stored with a synthetic f_<hash> id instead of its
+                          real YouTube id — which broke archive sync and
+                          playlist matching for those videos.
     """
     import re
 
     base = os.path.splitext(fname)[0]
+    YTID = r'[A-Za-z0-9_-]{11}'
 
-    # Try to extract video ID from [brackets]
-    vid_match = re.search(r'\[([A-Za-z0-9_-]{11})\]', base)
+    # 1) [VIDEO_ID] anywhere in the name (yt-dlp / SlugTube / Pinchflat)
+    vid_match = re.search(r'\[(' + YTID + r')\]', base)
     video_id = vid_match.group(1) if vid_match else ''
+
+    # 2) Bare-id filename (TubeArchivist). Require the whole stem to be a
+    #    valid id. A parent directory that looks like a YouTube channel id
+    #    (UC + 22 chars) is strong confirmation this is TA's layout.
+    if not video_id and re.fullmatch(YTID, base):
+        parent_is_channel = False
+        if dirpath:
+            parent = os.path.basename(os.path.normpath(dirpath))
+            parent_is_channel = bool(re.fullmatch(r'UC[A-Za-z0-9_-]{22}', parent))
+        # Accept either way — a bare 11-char stem is overwhelmingly an id
+        # rather than a title (titles almost always contain spaces or
+        # punctuation) — but the channel-dir check makes TA certain.
+        video_id = base
+        if not parent_is_channel:
+            # Guard against a plain 11-letter word ("Documentary") being read
+            # as an id. Real YouTube ids are base64-ish: they nearly always
+            # contain a digit/_/- or an uppercase letter somewhere after the
+            # first character (e.g. rNvgoMenvuQ). An ordinary capitalised
+            # word is first-letter-upper then all lowercase.
+            looks_like_id = (
+                bool(re.search(r'[0-9_-]', base)) or
+                bool(re.search(r'(?<!^)[A-Z]', base))
+            )
+            if not looks_like_id:
+                video_id = ''
 
     # Try to extract date from SlugTube naming: s2026e20260515
     date_match = re.search(r's(\d{4})e(\d{8})', base)
@@ -549,7 +687,8 @@ def _scan_channel(conn, channel_dir):
                 total_size += existing['file_size'] or 0
                 continue
 
-            video_id, title, upload_date = _parse_filename(vfname)
+            video_id, title, upload_date = _parse_filename(
+                vfname, os.path.dirname(video_path))
 
             if not video_id:
                 import hashlib
@@ -776,7 +915,8 @@ def index_single_video(file_path):
 
         else:
             # No .info.json — parse from filename
-            video_id, title, upload_date = _parse_filename(fp.name)
+            video_id, title, upload_date = _parse_filename(
+                fp.name, os.path.dirname(str(file_path)))
             if not video_id:
                 import hashlib
                 video_id = 'f_' + hashlib.md5(file_path.encode()).hexdigest()[:10]

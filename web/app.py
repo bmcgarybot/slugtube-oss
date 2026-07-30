@@ -2068,6 +2068,29 @@ def api_health():
     return jsonify({"app": "slugtube", "ok": True})
 
 
+@app.route("/api/repair-video-ids", methods=["POST"])
+def api_repair_video_ids():
+    """Recover real YouTube IDs for videos stored with synthetic f_<hash> IDs.
+
+    Defaults to a DRY RUN — pass ?apply=true to actually write. Videos
+    imported from TubeArchivist (<channel-id>/<video-id>.mp4) or Pinchflat
+    (ID only in the .info.json sidecar) could end up with placeholder IDs,
+    which blocks archive sync and playlist matching for them.
+    """
+    from indexer import repair_synthetic_ids, _index_status
+    if _index_status.get("scanning"):
+        return jsonify({"status": "busy",
+                        "message": "A scan is running — try again when it finishes"}), 409
+
+    data = request.get_json(silent=True) or {}
+    apply_changes = (request.args.get("apply", "").lower() == "true"
+                     or bool(data.get("apply")))
+    report = repair_synthetic_ids(dry_run=not apply_changes)
+    report["status"] = "ok"
+    report["dry_run"] = not apply_changes
+    return jsonify(report)
+
+
 @app.route("/api/sync-archive", methods=["POST"])
 def api_sync_archive():
     """Backfill the yt-dlp archive with YouTube IDs from the indexer DB and
@@ -2103,6 +2126,7 @@ def api_sync_archive():
 
     found_ids = set()
     scanned = 0
+    from_sidecar = 0
 
     # 1) Indexer DB - the real catalog
     db_ids = 0
@@ -2138,6 +2162,20 @@ def api_sync_archive():
             m = bare_re.match(stem)
             if m:
                 found_ids.add(m.group(1))
+                continue
+            # 4) .info.json sidecar — Pinchflat's common output templates
+            #    ({{ title }}, {{ upload_yyyy_mm_dd }}) put NO id in the
+            #    filename, so the sidecar is the only local source of it.
+            sidecar = os.path.join(root, stem + ".info.json")
+            if os.path.isfile(sidecar):
+                try:
+                    with open(sidecar, "r", encoding="utf-8") as jf:
+                        jid = str((json.load(jf) or {}).get("id") or "").strip()
+                    if _re.fullmatch(ID, jid) and jid not in found_ids:
+                        found_ids.add(jid)
+                        from_sidecar += 1
+                except Exception:
+                    pass
 
     missing_ids = found_ids - existing_ids
     added = 0
@@ -2157,6 +2195,7 @@ def api_sync_archive():
         if db_error:
             _ilog_err(f"📦 Archive sync: DB read failed ({db_error}) — used filenames only")
         _ilog(f"📦 Archive sync: {db_ids} IDs from database, "
+              f"{from_sidecar} from .info.json sidecars, "
               f"{len(found_ids)} total known ({scanned} files scanned), "
               f"{len(existing_ids)} already in archive → added {added}, "
               f"archive now {new_total}")
@@ -2167,6 +2206,7 @@ def api_sync_archive():
         "status": "ok",
         "scanned_files": scanned,
         "ids_from_db": db_ids,
+        "ids_from_sidecar": from_sidecar,
         "ids_on_disk": len(found_ids),
         "ids_in_archive_before": len(existing_ids),
         "ids_missing": len(missing_ids),
