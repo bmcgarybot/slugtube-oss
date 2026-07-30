@@ -2106,17 +2106,23 @@ def api_sync_archive():
 
     # 1) Indexer DB - the real catalog
     db_ids = 0
+    db_error = None
     try:
-        from indexer import get_db
+        from indexer import get_db, log as _ilog
         conn = get_db()
-        for row in conn.execute("SELECT video_id FROM videos WHERE video_id IS NOT NULL"):
+        # NOTE: the column is `id` (the YouTube video ID), not `video_id`.
+        # This previously selected a non-existent column, raised, and was
+        # swallowed by a bare except — so the DB (the authoritative source
+        # for everything cataloged) contributed ZERO ids and the whole sync
+        # silently did nothing.
+        for row in conn.execute("SELECT id FROM videos WHERE id IS NOT NULL"):
             vid = (row[0] or "").strip()
             if _re.fullmatch(ID, vid):
                 found_ids.add(vid)
         db_ids = len(found_ids)
         conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        db_error = f"{type(e).__name__}: {e}"
 
     # 2 + 3) Filesystem scan
     for root, dirs, files in os.walk(shows_dir):
@@ -2144,6 +2150,19 @@ def api_sync_archive():
 
     new_total = count_lines(archive_path)
 
+    # Log it — previously this ran completely silently, so there was no way
+    # to tell whether it had done anything.
+    try:
+        from indexer import log as _ilog, log_err as _ilog_err
+        if db_error:
+            _ilog_err(f"📦 Archive sync: DB read failed ({db_error}) — used filenames only")
+        _ilog(f"📦 Archive sync: {db_ids} IDs from database, "
+              f"{len(found_ids)} total known ({scanned} files scanned), "
+              f"{len(existing_ids)} already in archive → added {added}, "
+              f"archive now {new_total}")
+    except Exception:
+        pass
+
     return jsonify({
         "status": "ok",
         "scanned_files": scanned,
@@ -2153,6 +2172,7 @@ def api_sync_archive():
         "ids_missing": len(missing_ids),
         "ids_added": added,
         "archive_total": new_total,
+        "db_error": db_error,
     })
 
 

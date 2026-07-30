@@ -242,14 +242,22 @@ function mergeHashFolders(btn) {
 }
 
 function syncArchive() {
+    showToastGlobal('Syncing archive…');
     fetch('/api/sync-archive', {method:'POST'})
         .then(r => r.json())
         .then(d => {
+            if (d.db_error) {
+                showToastGlobal('Archive sync problem: ' + d.db_error);
+                return;
+            }
             if (d.ids_added > 0) {
-                showToastGlobal(d.ids_added + ' missing IDs added to archive (total: ' + d.archive_total.toLocaleString() + ')');
-                setTimeout(() => location.reload(), 1500);
+                showToastGlobal(d.ids_added.toLocaleString() + ' IDs added to archive — now '
+                    + d.archive_total.toLocaleString() + ' (from ' + d.ids_from_db.toLocaleString()
+                    + ' in library)');
+                setTimeout(() => location.reload(), 2000);
             } else {
-                showToastGlobal('Archive already in sync (' + d.archive_total.toLocaleString() + ' entries)');
+                showToastGlobal('Already in sync — ' + d.archive_total.toLocaleString()
+                    + ' entries cover all ' + d.ids_on_disk.toLocaleString() + ' known videos');
             }
         })
         .catch(() => showToastGlobal('Archive sync failed'));
