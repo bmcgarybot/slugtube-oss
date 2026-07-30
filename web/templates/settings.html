@@ -286,7 +286,26 @@
                     </select>
                     <input type="text" id="playlist-cron" value="{{ playlist_cron }}" class="form-select"
                         style="width:130px; font-family:monospace; font-size:12px;"
-                        onchange="customCron('playlist')" placeholder="0 4 1 * *">
+                        onchange="customCron('playlist')" placeholder="0 4 * * *">
+                </div>
+            </div>
+
+            <!-- Playlist maintenance actions -->
+            <div class="setting-row" style="align-items:flex-start;">
+                <div style="flex:1;">
+                    <div class="setting-label">Playlist Maintenance</div>
+                    <div class="setting-desc">
+                        <strong>Fix Flags</strong> is instant and local — it marks every channel that already
+                        has playlists so the scheduled refresh stops skipping them.<br>
+                        <strong>Index All Playlists</strong> flags every subscribed channel and fetches all of
+                        their playlists from YouTube. Thorough but slow (minutes per channel).
+                    </div>
+                    <div id="pl-maint-result" style="font-size:12px;margin-top:8px;color:var(--text-dim);"></div>
+                </div>
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <button class="btn btn-sm" onclick="fixPlaylistFlags()">Fix Flags</button>
+                    <button class="btn btn-sm" onclick="refreshAllPlaylists(false)">Refresh Flagged Now</button>
+                    <button class="btn btn-sm btn-danger" onclick="refreshAllPlaylists(true)">Index All Playlists</button>
                 </div>
             </div>
 
@@ -934,6 +953,40 @@ function confirmImport(source) {
         btn.textContent = 'Import Selected';
         showStatus(prefix, 'Import failed: ' + e.message, true);
     });
+}
+
+function _plMaintMsg(text, isErr) {
+    var el = document.getElementById('pl-maint-result');
+    if (el) { el.textContent = text; el.style.color = isErr ? '#e66' : 'var(--text-dim)'; }
+}
+
+function fixPlaylistFlags() {
+    _plMaintMsg('Checking channels…');
+    fetch('/api/fix-playlist-flags', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.status !== 'ok') { _plMaintMsg(d.error || 'Failed', true); return; }
+            var msg = d.message || 'Done';
+            if (d.newly_flagged && d.newly_flagged.length) {
+                msg += ' — ' + d.newly_flagged.slice(0, 6).join(', ');
+                if (d.newly_flagged.length > 6) msg += ', …';
+            }
+            _plMaintMsg(msg);
+        })
+        .catch(function(e) { _plMaintMsg('Failed: ' + e, true); });
+}
+
+function refreshAllPlaylists(all) {
+    if (all && !confirm('This flags EVERY subscribed channel and fetches all their playlists from YouTube.\n\nIt can take a long time (minutes per channel) and makes a lot of requests. Continue?')) return;
+    if (!all && !confirm('Refresh playlists for all flagged channels now?')) return;
+    _plMaintMsg(all ? 'Flagging all channels and starting full playlist index…' : 'Starting playlist refresh…');
+    fetch('/api/reindex-all-playlists' + (all ? '?all=true' : ''), { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.status === 'busy') { _plMaintMsg(d.message || 'A scan is already running', true); return; }
+            _plMaintMsg((d.message || 'Started') + ' — watch the Logs page for progress.');
+        })
+        .catch(function(e) { _plMaintMsg('Failed: ' + e, true); });
 }
 </script>
 

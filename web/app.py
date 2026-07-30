@@ -293,7 +293,7 @@ def rebuild_cron(config=None):
     fast = get_schedule(config, "fast_cron", "0 */6 * * *")
     full = get_schedule(config, "full_cron", "0 3 * * 0")
     update = get_schedule(config, "update_cron", "0 1 * * *")
-    playlist = get_schedule(config, "playlist_cron", "0 4 1 * *")  # monthly, 1st @ 4am
+    playlist = get_schedule(config, "playlist_cron", "0 4 * * *")  # daily @ 4am
 
     fast_enabled = config.get("fast_enabled", True)
     full_enabled = config.get("full_enabled", True)
@@ -1418,7 +1418,7 @@ def settings():
     fast_cron = get_schedule(config, "fast_cron", "0 */6 * * *")
     full_cron = get_schedule(config, "full_cron", "0 3 * * 0")
     update_cron = get_schedule(config, "update_cron", "0 1 * * *")
-    playlist_cron = get_schedule(config, "playlist_cron", "0 4 1 * *")
+    playlist_cron = get_schedule(config, "playlist_cron", "0 4 * * *")
     state = load_state()
     save_status = request.args.get("saved", None)
     tz = get_timezone()
@@ -3199,21 +3199,86 @@ def api_delete_folder(channel_name):
     return _ajax_or_redirect(f"Deleted {channel_name}")
 
 
+@app.route("/api/fix-playlist-flags", methods=["POST"])
+def api_fix_playlist_flags():
+    """Set the |playlists flag on every channel that already has playlists
+    indexed in the database.
+
+    Fast and entirely local — no YouTube requests. This repairs the split
+    where channels indexed via the old one-off 'Reindex Playlists' button
+    were never flagged, so the scheduled refresh skipped them. After this,
+    every channel with known playlists is included in scans going forward.
+    """
+    from indexer import get_db
+
+    conn = get_db()
+    try:
+        rows = conn.execute("""
+            SELECT DISTINCT channel_name, COUNT(*) AS n
+            FROM playlists
+            WHERE channel_name != ?
+            GROUP BY channel_name
+        """, (PERSONAL_CHANNEL,)).fetchall()
+    finally:
+        conn.close()
+
+    known = {ch['name'] for ch in get_channels()}
+    flagged, already, skipped = [], [], []
+    for row in rows:
+        name = row['channel_name']
+        if name not in known:
+            # Playlists exist for a channel that isn't in channels.txt
+            skipped.append(name)
+            continue
+        if _set_playlist_flag(name, True):
+            flagged.append(name)
+        else:
+            already.append(name)
+
+    return jsonify({
+        "status": "ok",
+        "newly_flagged": flagged,
+        "already_flagged": already,
+        "not_in_channels_txt": skipped,
+        "message": (f"Flagged {len(flagged)} channel(s); "
+                    f"{len(already)} already set"
+                    + (f"; {len(skipped)} not in channels.txt" if skipped else "")),
+    })
+
+
 @app.route("/api/reindex-all-playlists", methods=["POST"])
 def api_reindex_all_playlists():
     """Refresh playlists for ALL flagged channels. Called by the scheduled
-    cron job (default monthly) and available as a manual 'refresh now'.
-    Additive only — never deletes existing playlists or memberships."""
+    cron job and available as a manual 'refresh now'. Additive only —
+    never deletes existing playlists or memberships.
+
+    Pass ?all=true (or JSON {"all": true}) to first flag EVERY subscribed
+    channel, then index them all — the 'index all playlists and make sure
+    the flags are right' action. That fetches from YouTube per channel, so
+    it's slow; the scheduled job uses the flagged set only.
+    """
     from indexer import _index_status
     if _index_status.get("scanning"):
         return jsonify({"status": "busy", "message": "A scan is already running"}), 409
 
+    data = request.get_json(silent=True) or {}
+    flag_all = (request.args.get("all", "").lower() == "true"
+                or bool(data.get("all")))
+
+    newly_flagged = []
+    if flag_all:
+        for ch in get_channels():
+            if _set_playlist_flag(ch['name'], True):
+                newly_flagged.append(ch['name'])
+
     pl_channels = _get_playlist_channels()
     if not pl_channels:
         return jsonify({"status": "ok", "message": "No flagged channels"}), 200
-
     _trigger_playlist_index()
-    return jsonify({"status": "ok", "message": f"Refreshing playlists for {len(pl_channels)} channel(s)"}), 200
+    msg = f"Refreshing playlists for {len(pl_channels)} channel(s)"
+    if newly_flagged:
+        msg += f" (newly flagged {len(newly_flagged)})"
+    return jsonify({"status": "ok", "newly_flagged": newly_flagged, "message": msg}), 200
 
 
 @app.route("/api/reindex-playlists/<path:channel_name>", methods=["POST"])
