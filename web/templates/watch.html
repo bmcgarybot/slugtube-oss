@@ -534,31 +534,61 @@ function playNow() {
 // so fullscreen is preserved. Updates the URL, title, and per-video state
 // enough to keep the experience seamless; falls back to a normal
 // navigation if anything goes wrong.
+var _swapping = false;          // guards against re-entrant swaps
+var _swapGuardUntil = 0;        // ignore end-detection right after a swap
+
 function playInPlace(nextId) {
+    // Re-entrancy guard. Without this, any stray 'ended' during the load
+    // transition re-triggers a swap, and the video restarts every second or
+    // two in an endless loop until the user leaves fullscreen.
+    if (_swapping || !nextId || nextId === videoId) return;
+    _swapping = true;
+
     var overlay = document.getElementById('autoplay-overlay');
     if (overlay) overlay.style.display = 'none';
+    clearInterval(autoplayTimer);
+    autoplayTimer = null;
 
-    // Point the player at the new file and play
     var src = player.querySelector('source');
-    if (src) {
-        src.src = '/media/video/' + encodeURIComponent(nextId);
-        player.load();
+    if (!src) { _swapping = false; fallbackNavigate(nextId); return; }
+
+    // Block end-detection until the new media is actually loaded AND has
+    // played a little. While a source swap is in flight some browsers keep
+    // reporting the PREVIOUS duration, so "currentTime >= duration - 0.5"
+    // can be true for the old video and fire 'ended' again immediately.
+    _endedHandled = true;
+    _swapGuardUntil = Date.now() + 2000;
+
+    // Drop the stale MIME type: it was rendered from the ORIGINAL video's
+    // extension, and a wrong/unknown type (e.g. the invalid "video/mkv")
+    // makes browsers reject the source outright. Letting them sniff is safer.
+    src.removeAttribute('type');
+    src.src = '/media/video/' + encodeURIComponent(nextId);
+
+    // The subtitle track still points at the previous video - remove it so we
+    // don't show the wrong captions. It is re-added below if one exists.
+    player.querySelectorAll('track').forEach(function(t) { t.remove(); });
+
+    player.load();
+
+    player.addEventListener('loadedmetadata', function onMeta() {
+        player.removeEventListener('loadedmetadata', onMeta);
+        // Now the new duration is authoritative - safe to detect the end again
+        _endedHandled = false;
+        _swapping = false;
         var pr = player.play();
         if (pr && pr.catch) pr.catch(function(){});
-    } else {
-        // No <source> element to swap — fall back to navigation
+    });
+
+    // If the new source never loads, don't leave the player wedged
+    player.addEventListener('error', function onErr() {
+        player.removeEventListener('error', onErr);
+        _swapping = false;
         fallbackNavigate(nextId);
-        return;
-    }
+    });
 
-    // Update address bar + tab title without reloading
-    try {
-        var newUrl = watchUrl(nextId);
-        window.history.replaceState({}, '', newUrl);
-    } catch (e) {}
+    try { window.history.replaceState({}, '', watchUrl(nextId)); } catch (e) {}
 
-    // Refresh the lightweight on-page bits from the API; if it fails, the
-    // video is already playing so it's non-fatal
     fetch('/api/video-info/' + encodeURIComponent(nextId))
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
@@ -568,13 +598,17 @@ function playInPlace(nextId) {
                 var h1 = document.querySelector('.video-detail-title');
                 if (h1) h1.textContent = data.title;
             }
+            if (data.has_subtitles) {
+                var tr = document.createElement('track');
+                tr.kind = 'subtitles'; tr.srclang = 'en'; tr.label = 'English';
+                tr.default = true;
+                tr.src = '/media/subtitle/' + encodeURIComponent(nextId);
+                player.appendChild(tr);
+            }
         })
         .catch(function(){});
 
-    // Advance our client-side "current video" pointer so the NEXT autoplay
-    // targets the right subsequent video
     videoId = nextId;
-    _endedHandled = false;
     recomputeNextFromPlaylist(nextId);
 }
 
@@ -586,14 +620,17 @@ function fallbackNavigate(nextId) {
 // the playlist id list we already have, so chained autoplay keeps working.
 function recomputeNextFromPlaylist(currentId) {
     autoplayTarget = null;
-    if (playlistId && playlistVideoIds && playlistVideoIds.length) {
+    // playlistVideoIds is also populated for a search-results queue, so this
+    // covers both. If the current id isn't in the list we must CLEAR the
+    // pointer - leaving the previous value can point back at the video we
+    // just loaded and loop it forever.
+    if (playlistVideoIds && playlistVideoIds.length) {
         var idx = playlistVideoIds.indexOf(currentId);
-        if (idx >= 0 && idx < playlistVideoIds.length - 1) {
-            nextVideoUrl = playlistVideoIds[idx + 1];
-            return;
-        }
-        nextVideoUrl = '';  // was last in playlist
+        nextVideoUrl = (idx >= 0 && idx < playlistVideoIds.length - 1)
+            ? playlistVideoIds[idx + 1] : '';
+        return;
     }
+    nextVideoUrl = '';
 }
 
 // ── Resume playback ──
@@ -702,7 +739,10 @@ window.addEventListener('beforeunload', () => {
 // "currentTime has reached duration" as ended regardless of paused.
 var _endedHandled = false;
 player.addEventListener('timeupdate', function() {
-    if (_endedHandled || !player.duration) return;
+    if (_endedHandled || _swapping || Date.now() < _swapGuardUntil) return;
+    // Require a real duration and some elapsed playback: during a source swap
+    // the element can briefly report stale values that look like end-of-file.
+    if (!player.duration || player.duration < 2 || player.currentTime < 1) return;
     if (player.currentTime >= player.duration - 0.5) {
         _endedHandled = true;
         player.dispatchEvent(new Event('ended'));

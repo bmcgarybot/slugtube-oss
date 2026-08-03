@@ -43,6 +43,7 @@
         <div class="bulk-bar-left">
             <label class="bulk-select-all"><input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this)"> Select All</label>
             <span id="selected-count" class="bulk-count">0 selected</span>
+            <span style="font-size:12px;color:var(--text-dimmer);">— click one, then Shift-click another for a range, or drag a box</span>
         </div>
         <div class="bulk-bar-right">
             <button class="btn btn-purple btn-sm" onclick="showPlaylistDialog()" title="Add selected videos to a custom playlist">Add to Playlist</button>
@@ -67,6 +68,9 @@
                         {% endif %}
                         <span class="video-duration">{{ format_duration(v.duration) }}</span>
                         {% if v.watched %}<span class="watched-badge">✓</span>{% endif %}
+                        <a class="card-download-btn" href="/media/download/{{ v.id }}" download
+                           title="Download to your device"
+                           onclick="event.stopPropagation();">⭳</a>
                     </div>
                     <div class="video-info">
                         <div class="video-title">{{ v.title }}</div>
@@ -307,6 +311,16 @@
     .bulk-select-all input { width: 16px; height: 16px; cursor: pointer; accent-color: #8b5cf6; }
     .bulk-count { font-size: 13px; font-weight: 600; color: var(--purple, #8b5cf6); }
 
+    .video-card-wrapper { position: relative; }
+    .card-download-btn { position:absolute; bottom:6px; right:6px; z-index:5;
+        width:28px; height:28px; border-radius:50%; background:rgba(0,0,0,0.75);
+        border:1px solid rgba(255,255,255,0.2); color:#fff; font-size:15px;
+        line-height:1; text-decoration:none; display:flex; align-items:center;
+        justify-content:center; opacity:0; transition:opacity .15s, background .15s;
+        pointer-events:none; }
+    .video-card-wrapper:hover .card-download-btn { opacity:1; pointer-events:auto; }
+    .card-download-btn:hover { background:var(--accent); border-color:var(--accent); }
+    .select-mode #video-grid { cursor: crosshair; user-select: none; -webkit-user-select: none; }
     .select-mode .video-checkbox { display: block !important; position: absolute; top: 8px; left: 8px; z-index: 10; width: 20px; height: 20px; cursor: pointer; accent-color: #8b5cf6; }
     .select-mode .video-card-wrapper { position: relative; cursor: pointer; }
     .select-mode .video-card-wrapper.selected { outline: 2px solid #8b5cf6; border-radius: 10px; }
@@ -369,17 +383,115 @@ function toggleSelectMode() {
     }
 }
 
+// Click to toggle, Shift-click to select a whole range. Mirrors the channel
+// page so selection behaves the same everywhere.
+var _lastIdx = null;
+
+function _wrappers() {
+    return Array.prototype.slice.call(
+        document.querySelectorAll('#video-grid .video-card-wrapper'));
+}
+
+function _setSelected(wrapper, on) {
+    var cb = wrapper.querySelector('.video-checkbox');
+    if (!cb) return;
+    cb.checked = on;
+    wrapper.classList.toggle('selected', on);
+}
+
 document.addEventListener('click', function(e) {
     if (!selectMode) return;
     const wrapper = e.target.closest('.video-card-wrapper');
     if (!wrapper) return;
     if (e.target.classList.contains('video-checkbox')) return;
     e.preventDefault();
-    const cb = wrapper.querySelector('.video-checkbox');
-    cb.checked = !cb.checked;
-    wrapper.classList.toggle('selected', cb.checked);
+
+    var all = _wrappers();
+    var idx = all.indexOf(wrapper);
+
+    if (e.shiftKey && _lastIdx !== null && idx >= 0 && _lastIdx !== idx) {
+        var lo = Math.min(_lastIdx, idx), hi = Math.max(_lastIdx, idx);
+        for (var i = lo; i <= hi; i++) _setSelected(all[i], true);
+        if (window.getSelection) window.getSelection().removeAllRanges();
+    } else {
+        const cb = wrapper.querySelector('.video-checkbox');
+        _setSelected(wrapper, !cb.checked);
+    }
+    if (idx >= 0) _lastIdx = idx;
     updateSelectedCount();
 });
+
+// Drag a box across the results to select everything it touches. Pointer
+// Events + capture keeps working over the <a> cards, which plain mouse
+// events do not in Chromium.
+(function initLibraryDragSelect() {
+    var dragging = false, moved = false, activeId = null;
+    var startX = 0, startY = 0, box = null;
+
+    function grid() { return document.getElementById('video-grid'); }
+
+    document.addEventListener('dragstart', function(e) {
+        if (selectMode && grid() && grid().contains(e.target)) e.preventDefault();
+    });
+
+    document.addEventListener('pointerdown', function(e) {
+        if (e.button !== 0 || e.pointerType === 'touch' || !selectMode) return;
+        var g = grid();
+        if (!g || !g.contains(e.target)) return;
+        if (e.target.classList.contains('video-checkbox')) return;
+        dragging = true; moved = false; activeId = e.pointerId;
+        startX = e.pageX; startY = e.pageY;
+        try { g.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+
+    document.addEventListener('pointermove', function(e) {
+        if (!dragging || e.pointerId !== activeId) return;
+        if (!box && Math.abs(e.pageX - startX) < 5 && Math.abs(e.pageY - startY) < 5) return;
+        moved = true;
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'lib-drag-marquee';
+            box.style.cssText = 'position:absolute;z-index:50;border:1.5px solid #8b5cf6;'
+                + 'background:rgba(139,92,246,0.15);border-radius:4px;pointer-events:none;';
+            document.body.appendChild(box);
+            document.body.style.userSelect = 'none';
+        }
+        var x = Math.min(e.pageX, startX), y = Math.min(e.pageY, startY);
+        var w = Math.abs(e.pageX - startX), h = Math.abs(e.pageY - startY);
+        box.style.left = x + 'px'; box.style.top = y + 'px';
+        box.style.width = w + 'px'; box.style.height = h + 'px';
+        var sel = { left: x, top: y, right: x + w, bottom: y + h };
+        _wrappers().forEach(function(wr) {
+            var r = wr.getBoundingClientRect();
+            var cr = { left: r.left + scrollX, top: r.top + scrollY,
+                       right: r.right + scrollX, bottom: r.bottom + scrollY };
+            if (!(cr.right < sel.left || cr.left > sel.right ||
+                  cr.bottom < sel.top || cr.top > sel.bottom)) {
+                _setSelected(wr, true);
+            }
+        });
+        updateSelectedCount();
+    });
+
+    function endDrag(e) {
+        if (!dragging || (e && e.pointerId !== activeId)) return;
+        dragging = false;
+        var g = grid();
+        if (g && activeId !== null) { try { g.releasePointerCapture(activeId); } catch (_) {} }
+        activeId = null;
+        if (box) { box.remove(); box = null; document.body.style.userSelect = ''; }
+        if (moved) {
+            var swallow = function(ev) {
+                ev.stopPropagation(); ev.preventDefault();
+                document.removeEventListener('click', swallow, true);
+            };
+            document.addEventListener('click', swallow, true);
+            setTimeout(function(){ document.removeEventListener('click', swallow, true); }, 400);
+        }
+    }
+    document.addEventListener('pointerup', endDrag);
+    document.addEventListener('pointercancel', endDrag);
+})();
 
 function toggleSelectAll(master) {
     const checkboxes = document.querySelectorAll('.video-checkbox');

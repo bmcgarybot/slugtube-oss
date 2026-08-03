@@ -2919,7 +2919,14 @@ def api_video_info(video_id):
     video = get_video(video_id)
     if not video:
         return jsonify({"error": "Not found"}), 404
-    return jsonify({"id": video['id'], "title": video['title'], "channel_name": video['channel_name']})
+    keys = video.keys()
+    return jsonify({
+        "id": video['id'],
+        "title": video['title'],
+        "channel_name": video['channel_name'],
+        # Lets an in-place (fullscreen) swap attach the right subtitle track
+        "has_subtitles": bool(video['subtitle_path']) if 'subtitle_path' in keys else False,
+    })
 
 
 @app.route("/api/random-video/<path:channel_name>")

@@ -55,10 +55,10 @@
         </a>
         <button title="Add all videos from this playlist to one of My Playlists"
                 class="pl-overlay-btn pl-import-btn"
-                onclick="event.preventDefault(); event.stopPropagation(); importToMyPlaylist('playlist', '{{ pl.id }}', {{ pl.title | tojson }})">→ My Playlist</button>
+                onclick="event.preventDefault(); event.stopPropagation(); importFromCard(this)">→ My Playlist</button>
         <button title="Delete this playlist"
                 class="pl-overlay-btn pl-delete-btn"
-                onclick="event.preventDefault(); event.stopPropagation(); deletePlaylist('{{ pl.id }}', {{ pl.title | tojson }}, {{ pl.video_count }})">✕</button>
+                onclick="event.preventDefault(); event.stopPropagation(); deleteFromCard(this)">✕</button>
     </div>
     {% endfor %}
 </div>
@@ -245,6 +245,29 @@ function bulkDelete(deleteVideos) {
 }
 
 // Single delete — simplified to confirm() instead of prompt()
+// Read the playlist's details from the card's data-* attributes rather than
+// interpolating them into the onclick. A title containing a quote (very common
+// in real playlist names) used to terminate the onclick attribute early, so the
+// handler never ran and the button silently did nothing.
+function _cardData(btn) {
+    var w = btn.closest('.pl-wrapper');
+    return {
+        id: w ? w.dataset.playlistId : '',
+        title: w ? (w.dataset.title || '') : '',
+        count: w ? (parseInt(w.dataset.count, 10) || 0) : 0
+    };
+}
+
+function deleteFromCard(btn) {
+    var d = _cardData(btn);
+    deletePlaylist(d.id, d.title, d.count);
+}
+
+function importFromCard(btn) {
+    var d = _cardData(btn);
+    importToMyPlaylist('playlist', d.id, d.title);
+}
+
 function deletePlaylist(playlistId, playlistTitle, videoCount) {
     if (!confirm('Delete playlist "' + playlistTitle + '" (' + videoCount + ' videos)?\n\nPlaylist will be removed. Video files are kept.')) return;
 
