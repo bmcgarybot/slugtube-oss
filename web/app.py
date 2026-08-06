@@ -4801,6 +4801,16 @@ def _rebuild_thumbnails_worker(fetch_missing: bool):
                 conn.execute("UPDATE videos SET thumbnail_path = ? WHERE id = ?",
                              (found, r["id"]))
                 _thumb_job["relinked"] += 1
+            elif tp:
+                # The database points at a thumbnail file that no longer
+                # exists and there is no sidecar to relink. Clear the dead
+                # path so Phase 2 can fetch a replacement — previously such
+                # videos fell through BOTH phases (Phase 1 found nothing to
+                # relink, Phase 2 only looked at rows with an EMPTY path) and
+                # could never recover a thumbnail at all.
+                conn.execute("UPDATE videos SET thumbnail_path = '' WHERE id = ?",
+                             (r["id"],))
+                _thumb_job["cleared"] = _thumb_job.get("cleared", 0) + 1
         conn.commit()
 
         # Phase 2: fetch from YouTube for real-ID videos still missing one.
@@ -4809,6 +4819,9 @@ def _rebuild_thumbnails_worker(fetch_missing: bool):
         if _thumb_job["relinked"]:
             _ilog(f"  🖼️ Relinked {_thumb_job['relinked']} existing "
                   f"thumbnail file(s) that the database had lost track of")
+        if _thumb_job.get("cleared"):
+            _ilog(f"  🖼️ Cleared {_thumb_job['cleared']} dead thumbnail "
+                  f"path(s) pointing at files that no longer exist")
         if fetch_missing:
             _thumb_job["phase"] = "fetching"
             still_missing = conn.execute("""
@@ -4834,6 +4847,29 @@ def _rebuild_thumbnails_worker(fetch_missing: bool):
                 else:
                     _thumb_job["failed"] += 1
             conn.commit()
+
+        # Name whatever is STILL missing. When only a handful of videos lack
+        # a thumbnail, "0 fetched" is useless — knowing which ones, and why,
+        # is the whole answer.
+        leftovers = conn.execute("""
+            SELECT id, title, file_path FROM videos
+            WHERE (thumbnail_path IS NULL OR thumbnail_path = '')
+              AND file_path != ''
+            LIMIT 25
+        """).fetchall()
+        real_leftovers = [r for r in leftovers if os.path.isfile(r["file_path"] or "")]
+        _thumb_job["still_missing"] = len(real_leftovers)
+        if real_leftovers:
+            _ilog(f"  🖼️ Still without a thumbnail ({len(real_leftovers)} shown):")
+            for r in real_leftovers:
+                vid = r["id"]
+                why = ("no YouTube ID (imported without metadata) — "
+                       "run Repair Video IDs first"
+                       if vid.startswith("f_") or len(vid) != 11
+                       else "YouTube had no thumbnail available for this ID"
+                       if fetch_missing else "fetch was disabled")
+                _ilog(f"      • {(r['title'] or vid)[:70]} [{vid}] — {why}")
+
         conn.close()
     except Exception as e:
         import traceback
@@ -4855,12 +4891,19 @@ def _rebuild_thumbnails_worker(fetch_missing: bool):
         app.logger.info(f"Thumbnail rebuild: {summary}")
         try:
             from indexer import log as _ilog2
-            changed = (_thumb_job["relinked"] + _thumb_job["fetched"])
+            changed = (_thumb_job["relinked"] + _thumb_job["fetched"]
+                       + _thumb_job.get("cleared", 0))
+            still = _thumb_job.get("still_missing", 0)
             if changed:
-                _ilog2(f"🖼️ Thumbnail rebuild done — {summary}")
+                _ilog2(f"🖼️ Thumbnail rebuild done — {summary}"
+                       + (f"; {still} still without one (listed above)"
+                          if still else ""))
+            elif still:
+                _ilog2(f"🖼️ Thumbnail rebuild done — {still} video(s) still "
+                       f"have no thumbnail and could not be fixed "
+                       f"automatically (listed above). {summary}")
             else:
-                # Zero counts are the normal result when every video already
-                # has a working thumbnail. Say so, rather than leaving the
+                # Genuinely nothing to do — say so, rather than leaving the
                 # user to guess whether the button did anything.
                 _ilog2(f"🖼️ Thumbnail rebuild done — nothing needed; every "
                        f"video already has a thumbnail ({summary})")
@@ -4877,7 +4920,8 @@ def api_rebuild_thumbnails():
     if _thumb_job["running"]:
         return _ajax_or_redirect("Thumbnail rebuild already running", fallback="settings")
     fetch_missing = request.args.get("fetch", "1") != "0"
-    for k in ("checked", "relinked", "fetched", "failed", "skipped_synthetic"):
+    for k in ("checked", "relinked", "fetched", "failed",
+              "skipped_synthetic", "cleared", "still_missing"):
         _thumb_job[k] = 0
     _thumb_job.update({"running": True, "phase": "starting", "done_at": ""})
     threading.Thread(target=_rebuild_thumbnails_worker,

@@ -458,8 +458,11 @@
                             return;
                         }
                         clearInterval(t);
-                        var changed = (s.relinked||0) + (s.fetched||0);
-                        if(changed === 0){
+                        var changed = (s.relinked||0) + (s.fetched||0) + (s.cleared||0);
+                        if(s.still_missing){
+                            showToastGlobal('Thumbnails: ' + s.still_missing +
+                                            ' still missing - see the Logs page for which ones and why');
+                        } else if(changed === 0){
                             showToastGlobal('Thumbnails: nothing needed - all ' + (s.checked||0) +
                                             ' videos already have one' +
                                             (s.skipped_synthetic ? ' (' + s.skipped_synthetic +
