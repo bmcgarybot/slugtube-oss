@@ -4767,9 +4767,16 @@ def _fetch_youtube_thumb(video_id: str, dest_path: str) -> bool:
 
 
 def _rebuild_thumbnails_worker(fetch_missing: bool):
-    from indexer import get_db as idx_get_db
+    from indexer import get_db as idx_get_db, log as _ilog, log_err as _ilog_err
     import time as _time
     try:
+        # Log to the indexer log — that is what the Logs page shows.
+        # This used to report only through app.logger, which goes to the
+        # container's stderr, so from the UI the operation looked like it
+        # did nothing at all.
+        _ilog("🖼️ Thumbnail rebuild started"
+              + (" (will fetch missing from YouTube)" if fetch_missing
+                 else " (relink only)"))
         conn = idx_get_db()
         rows = conn.execute(
             "SELECT id, file_path, thumbnail_path FROM videos").fetchall()
@@ -4777,8 +4784,12 @@ def _rebuild_thumbnails_worker(fetch_missing: bool):
         # Phase 1: relink — thumbnail missing/dead in DB but a sidecar
         # image already exists next to the video file
         _thumb_job["phase"] = "relinking"
+        _ilog(f"  🖼️ Checking {len(rows)} video(s) for missing thumbnails...")
         for r in rows:
             _thumb_job["checked"] += 1
+            if _thumb_job["checked"] % 5000 == 0:
+                _ilog(f"  🖼️ ...{_thumb_job['checked']}/{len(rows)} checked, "
+                      f"{_thumb_job['relinked']} relinked so far")
             fp = r["file_path"] or ""
             tp = r["thumbnail_path"] or ""
             if not fp or not os.path.isfile(fp):
@@ -4795,6 +4806,9 @@ def _rebuild_thumbnails_worker(fetch_missing: bool):
         # Phase 2: fetch from YouTube for real-ID videos still missing one.
         # Writes <videobase>-thumb.jpg ONLY when no such file exists —
         # never overwrites anything.
+        if _thumb_job["relinked"]:
+            _ilog(f"  🖼️ Relinked {_thumb_job['relinked']} existing "
+                  f"thumbnail file(s) that the database had lost track of")
         if fetch_missing:
             _thumb_job["phase"] = "fetching"
             still_missing = conn.execute("""
@@ -4822,16 +4836,36 @@ def _rebuild_thumbnails_worker(fetch_missing: bool):
             conn.commit()
         conn.close()
     except Exception as e:
+        import traceback
         app.logger.error(f"Thumbnail rebuild error: {e}")
+        try:
+            _ilog_err(f"❌ Thumbnail rebuild failed: {type(e).__name__}: {e}")
+            _ilog_err(traceback.format_exc())
+        except Exception:
+            pass
     finally:
         _thumb_job["running"] = False
         _thumb_job["phase"] = "done"
         _thumb_job["done_at"] = datetime.now().strftime("%H:%M:%S")
-        app.logger.info(
-            f"Thumbnail rebuild: {_thumb_job['relinked']} relinked, "
-            f"{_thumb_job['fetched']} fetched, {_thumb_job['failed']} failed, "
-            f"{_thumb_job['skipped_synthetic']} skipped (no YouTube id) "
-            f"of {_thumb_job['checked']} checked")
+        summary = (f"{_thumb_job['relinked']} relinked, "
+                   f"{_thumb_job['fetched']} fetched, "
+                   f"{_thumb_job['failed']} failed, "
+                   f"{_thumb_job['skipped_synthetic']} skipped (no YouTube ID) "
+                   f"of {_thumb_job['checked']} checked")
+        app.logger.info(f"Thumbnail rebuild: {summary}")
+        try:
+            from indexer import log as _ilog2
+            changed = (_thumb_job["relinked"] + _thumb_job["fetched"])
+            if changed:
+                _ilog2(f"🖼️ Thumbnail rebuild done — {summary}")
+            else:
+                # Zero counts are the normal result when every video already
+                # has a working thumbnail. Say so, rather than leaving the
+                # user to guess whether the button did anything.
+                _ilog2(f"🖼️ Thumbnail rebuild done — nothing needed; every "
+                       f"video already has a thumbnail ({summary})")
+        except Exception:
+            pass
 
 
 @app.route("/api/rebuild-thumbnails", methods=["POST"])

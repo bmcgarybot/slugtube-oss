@@ -450,8 +450,21 @@
             function pollThumbRebuild(){
                 var t = setInterval(function(){
                     fetch('/api/rebuild-thumbnails/status').then(function(r){return r.json()}).then(function(s){
-                        if(!s.running){
-                            clearInterval(t);
+                        if(s.running){
+                            // Show progress while it runs - on a large library the
+                            // relink pass takes a while and silence looked like failure
+                            showToastGlobal('Thumbnails: ' + (s.phase||'working') + '... ' +
+                                            (s.checked||0) + ' checked, ' + (s.relinked||0) + ' relinked');
+                            return;
+                        }
+                        clearInterval(t);
+                        var changed = (s.relinked||0) + (s.fetched||0);
+                        if(changed === 0){
+                            showToastGlobal('Thumbnails: nothing needed - all ' + (s.checked||0) +
+                                            ' videos already have one' +
+                                            (s.skipped_synthetic ? ' (' + s.skipped_synthetic +
+                                             ' have no YouTube ID so cannot be fetched)' : ''));
+                        } else {
                             showToastGlobal('Thumbnails: ' + s.relinked + ' relinked, ' + s.fetched + ' fetched, ' +
                                             s.failed + ' failed, ' + s.skipped_synthetic + ' skipped (no YouTube ID)');
                         }
