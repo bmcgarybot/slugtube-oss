@@ -207,7 +207,9 @@
         try {
             const r = await fetch('/api/index-status');
             const d = await r.json();
-            if (!d.scanning) { clearInterval(poll); location.reload(); }
+            // Reload once, only after scanning actually finishes. Guard
+            // against a reload storm if the endpoint flaps between states.
+            if (!d.scanning) { clearInterval(poll); setTimeout(function(){ location.reload(); }, 1500); }
         } catch(e) {}
     }, 8000);
 })();

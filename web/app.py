@@ -1143,12 +1143,18 @@ def dashboard():
 
     # Use the indexer database for stats (same source as Library page)
     from indexer import get_library_stats, get_all_channels, get_index_status, get_recent_videos
-    idx_stats = get_library_stats()
-    idx_channels = get_all_channels()
+    # These aggregate over the whole library: COUNT(*)/SUM(file_size) across
+    # 65k+ video rows, plus a per-channel count for every channel. Uncached,
+    # they ran on every dashboard load, and while the indexer is writing they
+    # contend for the same SQLite lock - which is what froze the dashboard
+    # during scans and downloads. Short TTLs keep the numbers fresh without
+    # re-scanning the table on every refresh.
+    idx_stats = _cached("dash_stats", 30, get_library_stats)
+    idx_channels = _cached("dash_channels", 60, get_all_channels)
     idx_status = get_index_status()
     total_videos = idx_stats.get('total_videos', 0)
     top_channels = sorted(idx_channels, key=lambda c: c.get('video_count', 0), reverse=True)[:10]
-    recent_videos = get_recent_videos(limit=8)
+    recent_videos = _cached("dash_recent", 20, lambda: get_recent_videos(limit=8))
 
     # Check if a download is actually running (lock file or subprocess alive)
     lock_file = "/config/slugtube.lock"
@@ -2047,6 +2053,10 @@ def api_log_size():
 @app.route("/api/refresh-stats", methods=["POST"])
 def api_refresh_stats():
     if not _stats_cache["scanning"]:
+        # Refresh Stats is the explicit "give me current numbers" action, so
+        # drop the dashboard TTL caches too rather than waiting them out.
+        for _k in ("dash_stats", "dash_channels", "dash_recent", "archive_count"):
+            _cache_bust(_k)
         _stats_cache["updated"] = 0  # force stale
         thread = threading.Thread(target=_scan_channel_stats, daemon=True)
         thread.start()
