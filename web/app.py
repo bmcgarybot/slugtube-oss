@@ -655,6 +655,9 @@ def get_log_tail(lines=100, filter_mode=None):
 _ttl_cache = {}
 _ttl_lock = threading.Lock()
 
+_channels_maint = {"last": 0}
+
+
 def _cached(key, ttl, fn):
     import time as _t
     now = _t.time()
@@ -1195,11 +1198,24 @@ def dashboard():
 def channels():
     channels_list = get_channels()
     from indexer import get_all_channels, get_index_status
-    idx_channels = get_all_channels()
+    idx_channels = _cached("chan_all", 60, get_all_channels)
     idx_status = get_index_status()
 
+    # Everything from here to the end of the cleanup block is MAINTENANCE, not
+    # rendering: ~150 is_dir() checks for subscribed folders, a full iterdir of
+    # the shows directory, another ~150 isdir() checks for ghost channels, and
+    # DELETE queries. Every one of those stat calls crosses the network share,
+    # and it all ran on every single load of this page, which is why Channels
+    # locked up. Run it at most once every 10 minutes instead; nothing here is
+    # time-critical to a page view.
+    _now = time.time()
+    _do_maint = (_now - _channels_maint.get("last", 0)) > 600
+    if _do_maint:
+        _channels_maint["last"] = _now
+
     # Auto-create folders for subscribed channels that don't have one yet
-    for ch in channels_list:
+    if _do_maint:
+      for ch in channels_list:
         ch_dir = Path(SHOWS_DIR) / ch['name']
         if not ch_dir.is_dir():
             try:
@@ -1208,12 +1224,13 @@ def channels():
             except Exception as e:
                 app.logger.error(f"Failed to create folder for {ch['name']}: {e}")
 
+
     # Auto-delete ghost TubeArchivist "#playlists" folders only
     # (NOT regular folders with # — yt-dlp creates channel folders like "Travel Channel#")
     try:
         import shutil
         shows = Path(SHOWS_DIR)
-        if shows.is_dir():
+        if _do_maint and shows.is_dir():
             for d in shows.iterdir():
                 if d.is_dir() and d.name.endswith('#playlists'):
                     shutil.rmtree(str(d), ignore_errors=True)
@@ -1224,8 +1241,8 @@ def channels():
     # Auto-purge ghost DB entries: channels whose folder no longer exists on disk
     from indexer import get_db as idx_get_db
     try:
-        conn = idx_get_db()
-        for ch in idx_channels:
+        conn = idx_get_db() if _do_maint else None
+        for ch in (idx_channels if _do_maint else []):
             ch_path = ch.get('path', '')
             if ch_path and not os.path.isdir(ch_path):
                 name = ch['name']
@@ -1244,10 +1261,12 @@ def channels():
                     pass
                 conn.execute("DELETE FROM playlists WHERE channel_name = ?", (name,))
                 conn.execute("DELETE FROM channels WHERE name = ?", (name,))
-        conn.commit()
-        conn.close()
-        # Refresh after cleanup
-        idx_channels = get_all_channels()
+        if conn is not None:
+            conn.commit()
+            conn.close()
+            # Refresh after cleanup
+            idx_channels = get_all_channels()
+            _cache_bust("chan_all")
     except Exception as e:
         app.logger.error(f"Ghost channel cleanup error: {e}")
 
