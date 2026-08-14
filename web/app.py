@@ -3079,7 +3079,9 @@ def api_merge_hash_folders():
     import shutil
     shows = Path(SHOWS_DIR)
     merged = 0
+    repointed = 0
     errors = []
+    db_errors = []
     for hdir in sorted(shows.iterdir()):
         if not hdir.is_dir() or not hdir.name.endswith('#'):
             continue
@@ -3106,11 +3108,51 @@ def api_merge_hash_folders():
                         pass
             else:
                 hdir.rename(base_path)
-            # DB cleanup
+            # DB cleanup. This is what makes a reindex unnecessary: the merge
+            # already knows exactly which files moved and where, so it repoints
+            # the existing rows instead of forcing a rescan.
+            #
+            # Previously this whole block was wrapped in `except Exception: pass`.
+            # If any statement raised - most commonly the UNIQUE constraint on
+            # channels.name when a row for base_name already existed - the
+            # commit never ran, every path update was silently discarded, and
+            # the files had already moved on disk. Every row then pointed at the
+            # old Channel# path that no longer existed, which is exactly the
+            # state that forces an hour-long reindex. Order matters here, and
+            # failures are now reported instead of swallowed.
             try:
                 from indexer import get_db as idx_get_db
                 conn = idx_get_db()
-                conn.execute("UPDATE videos SET channel_name = ? WHERE channel_name = ?", (base_name, hdir.name))
+
+                # Resolve the channels-table collision FIRST, before any UPDATE
+                # can trip the UNIQUE constraint and abort the transaction.
+                existing = conn.execute(
+                    "SELECT COUNT(*) FROM channels WHERE name = ?", (base_name,)
+                ).fetchone()[0]
+
+                if existing:
+                    # Both rows exist. Move the children onto the surviving
+                    # parent BEFORE deleting the old one, or the FK constraint
+                    # fails and the whole transaction is lost.
+                    conn.execute("UPDATE channels SET path = ? WHERE name = ?",
+                                 (str(base_path), base_name))
+                    conn.execute("UPDATE videos SET channel_name = ? WHERE channel_name = ?",
+                                 (base_name, hdir.name))
+                    conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?",
+                                 (base_name, hdir.name))
+                    conn.execute("DELETE FROM channels WHERE name = ?", (hdir.name,))
+                else:
+                    # Only the # row exists. Renaming the parent orphans its
+                    # videos for the duration of the statement, which trips the
+                    # FK. Insert the new parent first, move the children onto
+                    # it, then drop the old parent.
+                    conn.execute("INSERT OR IGNORE INTO channels (name, path) VALUES (?, ?)",
+                                 (base_name, str(base_path)))
+                    conn.execute("UPDATE videos SET channel_name = ? WHERE channel_name = ?",
+                                 (base_name, hdir.name))
+                    conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?",
+                                 (base_name, hdir.name))
+                    conn.execute("DELETE FROM channels WHERE name = ?", (hdir.name,))
                 # Fix path columns so thumbnails/playback survive the merge
                 old_prefix = str(hdir) + "/"
                 new_prefix = str(base_path) + "/"
@@ -3119,20 +3161,49 @@ def api_merge_hash_folders():
                         f"UPDATE videos SET {col} = ? || substr({col}, ?) "
                         f"WHERE {col} LIKE ? || '%'",
                         (new_prefix, len(old_prefix) + 1, old_prefix))
-                conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?", (base_name, hdir.name))
-                conn.execute("UPDATE channels SET name = ?, path = ? WHERE name = ?",
-                             (base_name, str(base_path), hdir.name))
+                conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?",
+                             (base_name, hdir.name))
+
+                # Keep the search index in step, or search returns the old name
+                try:
+                    conn.execute("UPDATE videos_fts SET channel_name = ? WHERE channel_name = ?",
+                                 (base_name, hdir.name))
+                except Exception:
+                    pass   # FTS table is optional
+
                 rows = conn.execute("SELECT COUNT(*) FROM channels WHERE name = ?", (base_name,)).fetchone()[0]
                 if rows > 1:
-                    conn.execute("DELETE FROM channels WHERE name = ? AND rowid NOT IN (SELECT MIN(rowid) FROM channels WHERE name = ?)", (base_name, base_name))
+                    conn.execute("DELETE FROM channels WHERE name = ? AND rowid NOT IN "
+                                 "(SELECT MIN(rowid) FROM channels WHERE name = ?)",
+                                 (base_name, base_name))
                 conn.commit()
                 conn.close()
-            except Exception:
-                pass
+                repointed += 1
+            except Exception as e:
+                # Loud, not silent: the files have already moved, so a failure
+                # here is the difference between "done" and "reindex for an hour".
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                db_errors.append(f"{hdir.name}: database not updated - {e}")
             merged += 1
         except Exception as e:
             errors.append(f"{hdir.name}: {e}")
-    return jsonify({"merged": merged, "errors": errors})
+    _cache_bust("chan_all")
+    _cache_bust("dash_channels")
+    return jsonify({
+        "merged": merged,
+        "repointed": repointed,
+        "errors": errors,
+        "db_errors": db_errors,
+        "reindex_needed": bool(db_errors),
+        "message": ("Merged and database repointed - no reindex needed."
+                    if merged and not db_errors else
+                    "Some folders merged but the database could NOT be updated. "
+                    "A reindex IS required. See db_errors."
+                    if db_errors else "Nothing to merge."),
+    })
 
 
 @app.route("/api/cleanup-ghosts", methods=["POST"])
