@@ -1,6 +1,64 @@
 {% extends "base.html" %}
 {% block title_extra %} — Channels{% endblock %}
 {% block content %}
+{% if ghost_channels %}
+<div id="ghostWarn" style="margin:0 0 14px;padding:12px 14px;border:1px solid #e0a000;
+     background:rgba(224,160,0,0.10);border-radius:10px;font-size:0.9rem;">
+  <div style="font-weight:600;margin-bottom:6px;">
+    ⚠️ {{ ghost_channels|length }} channel folder(s) not found on disk
+  </div>
+  <div style="color:var(--text-dim);margin-bottom:8px;">
+    This usually means a drive is unplugged, a network share did not mount, or
+    the folder was renamed. It does <b>not</b> necessarily mean the videos are
+    gone. Nothing has been deleted.
+  </div>
+  <details style="margin-bottom:10px;">
+    <summary style="cursor:pointer;color:var(--accent);">Show the affected channels</summary>
+    <ul style="margin:8px 0 0 18px;color:var(--text-dim);">
+      {% for g in ghost_channels %}
+      <li>{{ g.name }} <span style="opacity:.7;">({{ g.video_count }} videos) — {{ g.path }}</span></li>
+      {% endfor %}
+    </ul>
+  </details>
+  <button class="btn btn-sm" style="border:1px solid #e74c3c;color:#e74c3c;"
+          onclick="purgeGhosts({{ ghost_channels|length }})">
+    Remove these from the library
+  </button>
+</div>
+
+<script>
+function purgeGhosts(n) {
+  if (!confirm(
+      'Remove ' + n + ' channel(s) from the library database?\n\n' +
+      'This deletes their video entries, watch history and playlist links.\n' +
+      'Your actual video FILES are not touched.')) return;
+
+  if (!confirm(
+      'SECOND CHECK - please read.\n\n' +
+      'Before removing anything, confirm that:\n' +
+      '  - external drives are plugged in and powered on\n' +
+      '  - network shares are mounted and reachable\n' +
+      '  - no drive is showing an error or still mounting\n\n' +
+      'If a drive is simply offline, these channels are NOT gone and removing ' +
+      'them will lose your watch history and playlists for them.\n\n' +
+      'Everything is connected and working. Remove them permanently?')) return;
+
+  fetch('/api/purge-ghost-channels', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.status !== 'ok') { alert('Failed: ' + (d.error || 'unknown')); return; }
+      var msg = 'Removed ' + d.removed_count + ' channel(s).';
+      if (d.recovered) msg += '\n\n' + d.recovered + ' folder(s) were reachable again ' +
+        'and were left alone.';
+      alert(msg);
+      location.reload();
+    })
+    .catch(function(e){ alert('Error: ' + e); });
+}
+</script>
+{% endif %}
+
+
 
 <div class="page-header">
     <h1>Channels <span class="text-dim text-sm" style="font-weight:400;" id="channel-count">({{ unified | length }})</span></h1>

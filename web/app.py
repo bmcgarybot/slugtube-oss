@@ -1240,35 +1240,26 @@ def channels():
 
     # Auto-purge ghost DB entries: channels whose folder no longer exists on disk
     from indexer import get_db as idx_get_db
+    # DETECT ONLY. This used to delete videos, watch history and playlist
+    # entries automatically whenever a channel folder was missing. If the SMB
+    # mount is dropped, slow to mount at boot, or errored, every channel looks
+    # like a ghost at once - so an unrelated mount problem could silently wipe
+    # the library. Detection is now surfaced in the UI and the user confirms
+    # twice before anything is removed.
+    ghost_channels = []
     try:
-        conn = idx_get_db() if _do_maint else None
-        for ch in (idx_channels if _do_maint else []):
-            ch_path = ch.get('path', '')
-            if ch_path and not os.path.isdir(ch_path):
-                name = ch['name']
-                app.logger.info(f"Auto-purging ghost channel: {name} (path gone: {ch_path})")
-                video_ids = [r['id'] for r in conn.execute(
-                    "SELECT id FROM videos WHERE channel_name = ?", (name,)
-                ).fetchall()]
-                if video_ids:
-                    ph = ",".join("?" * len(video_ids))
-                    conn.execute(f"DELETE FROM video_playlists WHERE video_id IN ({ph})", video_ids)
-                    conn.execute(f"DELETE FROM watch_history WHERE video_id IN ({ph})", video_ids)
-                    conn.execute(f"DELETE FROM videos WHERE channel_name = ?", (name,))
-                try:
-                    conn.execute("DELETE FROM videos_fts WHERE channel_name = ?", (name,))
-                except Exception:
-                    pass
-                conn.execute("DELETE FROM playlists WHERE channel_name = ?", (name,))
-                conn.execute("DELETE FROM channels WHERE name = ?", (name,))
-        if conn is not None:
-            conn.commit()
-            conn.close()
-            # Refresh after cleanup
-            idx_channels = get_all_channels()
-            _cache_bust("chan_all")
+        if _do_maint:
+            for ch in idx_channels:
+                ch_path = ch.get('path', '')
+                if ch_path and not os.path.isdir(ch_path):
+                    ghost_channels.append({"name": ch['name'], "path": ch_path,
+                                           "video_count": ch.get('video_count', 0)})
+            if ghost_channels:
+                app.logger.warning(
+                    f"{len(ghost_channels)} channel folder(s) not found on disk. "
+                    "NOT purging automatically - awaiting confirmation in the UI.")
     except Exception as e:
-        app.logger.error(f"Ghost channel cleanup error: {e}")
+        app.logger.error(f"Ghost channel detection error: {e}")
 
     # Build unified channel list: merge subscriptions + library
     sub_names = {ch['name'].lower().replace(' ', ''): ch for ch in channels_list}
@@ -1342,6 +1333,7 @@ def channels():
                 })
 
     return render_template("channels.html",
+        ghost_channels=ghost_channels,
         page="channels",
         channels=channels_list,
         unified=unified,
@@ -2067,6 +2059,54 @@ def api_log_size():
     except:
         size = 0
     return jsonify({"size_bytes": size})
+
+
+@app.route("/api/purge-ghost-channels", methods=["POST"])
+def api_purge_ghost_channels():
+    """Remove DB entries for channels whose folder is missing.
+
+    Only ever runs when the user has confirmed twice in the UI. Re-checks
+    every path at the moment of deletion rather than trusting the list the
+    page was rendered with, so a drive that came back online in the meantime
+    is not wiped.
+    """
+    from indexer import (get_db as idx_get_db, get_all_channels,
+                         log as _ilog, log_err as _ilog_err)
+    removed, skipped = [], []
+    try:
+        conn = idx_get_db()
+        for ch in get_all_channels():
+            name, ch_path = ch['name'], ch.get('path', '')
+            if not ch_path:
+                continue
+            if os.path.isdir(ch_path):
+                skipped.append(name)   # folder is back - leave it alone
+                continue
+            video_ids = [r['id'] for r in conn.execute(
+                "SELECT id FROM videos WHERE channel_name = ?", (name,)).fetchall()]
+            if video_ids:
+                ph = ",".join("?" * len(video_ids))
+                conn.execute(f"DELETE FROM video_playlists WHERE video_id IN ({ph})", video_ids)
+                conn.execute(f"DELETE FROM watch_history WHERE video_id IN ({ph})", video_ids)
+                conn.execute("DELETE FROM videos WHERE channel_name = ?", (name,))
+            try:
+                conn.execute("DELETE FROM videos_fts WHERE channel_name = ?", (name,))
+            except Exception:
+                pass
+            conn.execute("DELETE FROM playlists WHERE channel_name = ?", (name,))
+            conn.execute("DELETE FROM channels WHERE name = ?", (name,))
+            removed.append({"name": name, "videos": len(video_ids)})
+            _ilog(f"🗑️ Purged ghost channel (user confirmed): {name} "
+                  f"({len(video_ids)} video rows)")
+        conn.commit()
+        conn.close()
+        _cache_bust("chan_all")
+        return jsonify({"status": "ok", "removed": removed,
+                        "removed_count": len(removed),
+                        "recovered": len(skipped)})
+    except Exception as e:
+        _ilog_err(f"Ghost purge failed: {e}")
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 
 @app.route("/api/refresh-stats", methods=["POST"])
