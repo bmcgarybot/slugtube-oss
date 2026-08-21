@@ -28,6 +28,20 @@
     </div>
 </div>
 
+<!-- Merge results: stays on the page until dismissed or the next run.
+     Previously this was a browser alert, which vanished on dismissal and was
+     easy to miss entirely on a long merge. -->
+<div id="mergeResult" class="mb-16" style="display:none;border:1px solid var(--border);
+     border-radius:10px;padding:14px 16px;background:var(--bg-card);">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+    <b id="mergeResultTitle">Merge results</b>
+    <span id="mergeResultTime" style="color:var(--text-dim);font-size:12px;"></span>
+    <button class="btn btn-sm" style="margin-left:auto;"
+            onclick="document.getElementById('mergeResult').style.display='none'">Dismiss</button>
+  </div>
+  <div id="mergeResultBody" style="font-size:13px;line-height:1.7;"></div>
+</div>
+
 <!-- Cookie Health Warning -->
 {% if cookie_health and cookie_health.status in ('expired', 'missing') %}
 <div class="job-banner job-error mb-16">
@@ -229,43 +243,90 @@ function refreshStats(btn) {
 function mergeHashFolders(btn) {
     btn.disabled = true;
     btn.textContent = 'Merging...';
+
+    const panel = document.getElementById('mergeResult');
+    const body  = document.getElementById('mergeResultBody');
+    const title = document.getElementById('mergeResultTitle');
+    const time  = document.getElementById('mergeResultTime');
+
+    // Show progress immediately. A merge over a network share can run for
+    // minutes and the button label alone is not enough feedback.
+    panel.style.display = 'block';
+    title.textContent = 'Merging...';
+    time.textContent = '';
+    body.innerHTML = '<span style="color:var(--text-dim);">Scanning the shows '
+                   + 'folder and moving files. This can take a while on a network '
+                   + 'share. Results appear here and stay until you dismiss them.</span>';
+
+    const esc = t => String(t).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
     fetch('/api/merge-hash-folders', {method:'POST'})
         .then(r => r.json())
         .then(d => {
-            // Say what actually happened. "None found" while # folders are
-            // plainly still on disk is impossible to act on.
-            let msg = '';
-            if (d.merged > 0) msg += 'Merged ' + d.merged + ' folder(s).\n';
-            if (d.db_errors && d.db_errors.length) {
-                msg += '\nThe files moved but the database was NOT updated for:\n  '
-                     + d.db_errors.join('\n  ')
-                     + '\nA reindex IS needed for those.\n';
+            btn.disabled = false;
+            btn.textContent = '🔧 Merge # Folders';
+            time.textContent = new Date().toLocaleTimeString();
+
+            if (d.status === 'error') {
+                title.textContent = 'Merge failed';
+                body.innerHTML = '<span style="color:var(--red);">' + esc(d.error) + '</span>';
+                return;
             }
-            if (d.skipped && d.skipped.length) {
-                msg += '\nLeft alone on purpose:\n';
-                d.skipped.forEach(s => { msg += '  ' + s.name + '\n      ' + s.reason + '\n'; });
+
+            let h = '';
+            if (d.merged > 0) {
+                h += '<div style="color:var(--green);">Merged <b>' + d.merged
+                   + '</b> folder(s), and repointed <b>' + d.repointed
+                   + '</b> in the database (no reindex needed).</div>';
+            } else {
+                h += '<div>No folders were merged.</div>';
+            }
+            h += '<div style="color:var(--text-dim);font-size:12px;margin-top:4px;">Scanned: '
+               + esc(d.scanned || 'unknown') + '</div>';
+
+            if (d.db_errors && d.db_errors.length) {
+                h += '<div style="margin-top:10px;color:var(--red);"><b>Files moved but the '
+                   + 'database was NOT updated:</b><ul style="margin:4px 0 0 18px;">';
+                d.db_errors.forEach(e => h += '<li>' + esc(e) + '</li>');
+                h += '</ul>A reindex IS required for those.</div>';
             }
             if (d.errors && d.errors.length) {
-                msg += '\nErrors:\n  ' + d.errors.join('\n  ') + '\n';
+                h += '<div style="margin-top:10px;color:var(--red);"><b>Errors:</b>'
+                   + '<ul style="margin:4px 0 0 18px;">';
+                d.errors.forEach(e => h += '<li>' + esc(e) + '</li>');
+                h += '</ul></div>';
+            }
+            if (d.skipped && d.skipped.length) {
+                h += '<div style="margin-top:10px;"><b>Left alone on purpose:</b>'
+                   + '<ul style="margin:4px 0 0 18px;color:var(--text-dim);">';
+                d.skipped.forEach(s2 => h += '<li><b>' + esc(s2.name) + '</b> - '
+                                           + esc(s2.reason) + '</li>');
+                h += '</ul></div>';
             }
             if (d.remaining_hash_folders && d.remaining_hash_folders.length) {
-                msg += '\nStill has a # in the name:\n  '
-                     + d.remaining_hash_folders.join('\n  ');
+                h += '<div style="margin-top:10px;"><b>Still has a # in the name:</b>'
+                   + '<ul style="margin:4px 0 0 18px;color:var(--text-dim);">';
+                d.remaining_hash_folders.forEach(n => h += '<li>' + esc(n) + '</li>');
+                h += '</ul></div>';
             }
-            if (d.status === 'error') { alert('Merge failed: ' + d.error); btn.disabled=false; btn.textContent='🔧 Merge # Folders'; return; }
-            if (!msg) msg = 'No folders with a # were found in ' + (d.scanned || 'the shows folder')
-                          + '.\n\nIf you can see them on disk, the container is looking somewhere else '
-                          + 'than you are.';
+            if (d.merged === 0 && !(d.skipped||[]).length && !(d.remaining_hash_folders||[]).length) {
+                h += '<div style="margin-top:8px;color:var(--text-dim);">Nothing with a # was '
+                   + 'found at the top level of that path. If you can see such folders on disk, '
+                   + 'the container is looking somewhere other than where you are looking.</div>';
+            }
 
-            alert(msg);
-            if (d.merged > 0) { setTimeout(() => location.reload(), 500); }
-            else { btn.disabled = false; btn.textContent = '🔧 Merge # Folders'; }
+            title.textContent = d.merged > 0 ? 'Merge complete' : 'Merge finished';
+            body.innerHTML = h;
+            if (d.merged > 0) setTimeout(() => location.reload(), 4000);
         })
         .catch(e => {
-            // Never fail silently here. A server error looked identical to
-            // "nothing happened", which made this impossible to diagnose.
-            alert('Merge request failed: ' + e + '\n\nCheck Logs for the server error.');
-            btn.disabled = false; btn.textContent = '🔧 Merge # Folders';
+            btn.disabled = false;
+            btn.textContent = '🔧 Merge # Folders';
+            title.textContent = 'Merge request failed';
+            time.textContent = new Date().toLocaleTimeString();
+            body.innerHTML = '<span style="color:var(--red);">' + esc(e)
+                           + '</span><br><span style="color:var(--text-dim);">'
+                           + 'Check Logs for the server-side error.</span>';
         });
 }
 

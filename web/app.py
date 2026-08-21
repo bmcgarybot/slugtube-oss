@@ -3269,6 +3269,25 @@ def api_merge_hash_folders():
     except OSError:
         pass
 
+    # Permanent record, so the result survives a page reload and can be read
+    # later from Logs rather than only in the moment.
+    try:
+        summary = (f"Merge # folders: {merged} merged, {repointed} DB rows "
+                   f"repointed, {len(skipped)} left alone, "
+                   f"{len(db_errors)} DB failure(s). Scanned {shows}.")
+        app.logger.info(summary)
+        with open(LOG_FILE, "a") as lf:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            lf.write(f"\n{ts} [merge] {summary}\n")
+            for sk in skipped:
+                lf.write(f"{ts} [merge]   skipped {sk['name']}: {sk['reason']}\n")
+            for e in db_errors:
+                lf.write(f"{ts} [merge]   DB ERROR {e}\n")
+            for r in remaining:
+                lf.write(f"{ts} [merge]   still has #: {r}\n")
+    except Exception:
+        pass
+
     return jsonify({
         "scanned": str(shows),
         "merged": merged,
