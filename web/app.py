@@ -2524,6 +2524,49 @@ def playlists_overview(channel_name):
     )
 
 
+@app.route("/api/playlist/<playlist_id>/download", methods=["POST"])
+def api_download_playlist(playlist_id):
+    """Download only the videos in one playlist.
+
+    Useful when a channel does not organise its uploads and you only want one
+    strand of it. yt-dlp treats a playlist URL like any other, and the download
+    archive means anything already held is skipped rather than re-fetched.
+
+    By default the videos land in the channel's own folder, so the playlist is
+    a filter on WHAT to fetch, not a separate library. Pass a folder to keep
+    them apart instead.
+    """
+    from indexer import get_db
+    data = request.get_json(silent=True) or {}
+
+    if jobs.get("status") == "running":
+        return jsonify({"status": "error",
+                        "error": "A download is already running. Wait for it to finish."}), 409
+
+    conn = get_db()
+    row = conn.execute("SELECT * FROM playlists WHERE id = ?", (playlist_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"status": "error", "error": "Playlist not found"}), 404
+    pl = dict(row)
+
+    # A real YouTube playlist id, not one of our locally-generated ones
+    if not playlist_id.startswith(("PL", "UU", "OLAK", "RD", "FL")):
+        return jsonify({"status": "error",
+                        "error": "This looks like a local playlist, not a YouTube one, "
+                                 "so there is nothing to download from YouTube."}), 400
+
+    url = f"https://www.youtube.com/playlist?list={playlist_id}"
+    folder = (data.get("folder") or "").strip() or pl.get("channel_name") or None
+
+    thread = threading.Thread(target=run_single_channel,
+                              args=(url, folder, False), daemon=True)
+    thread.start()
+    app.logger.info(f"Playlist download started: {pl.get('title')} -> {folder}")
+    return jsonify({"status": "ok", "url": url, "folder": folder,
+                    "title": pl.get("title")})
+
+
 @app.route("/api/playlist/<playlist_id>/delete", methods=["POST"])
 def delete_playlist(playlist_id):
     """Delete a playlist. Optionally delete the video files too."""

@@ -53,6 +53,9 @@
                 <div class="playlist-card-meta">{{ pl.video_count }} videos in your library</div>
             </div>
         </a>
+        <button title="Download every video in this playlist from YouTube"
+                class="pl-overlay-btn pl-dl-btn"
+                onclick="event.preventDefault(); event.stopPropagation(); downloadFromCard(this)">⬇ Download</button>
         <button title="Add all videos from this playlist to one of My Playlists"
                 class="pl-overlay-btn pl-import-btn"
                 onclick="event.preventDefault(); event.stopPropagation(); importFromCard(this)">→ My Playlist</button>
@@ -90,6 +93,11 @@
     .playlist-card:hover { border-color: var(--accent); transform: translateY(-3px); box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
 
     /* ── Overlay buttons ── */
+    .pl-dl-btn {
+        right: 96px;
+        border-color: #4fc3f7;
+        color: #4fc3f7;
+    }
     .pl-overlay-btn {
         position: absolute; z-index: 5; background: rgba(0,0,0,0.75); border-radius: 6px;
         padding: 4px 10px; cursor: pointer; font-size: 12px; font-weight: 600;
@@ -261,6 +269,36 @@ function _cardData(btn) {
 function deleteFromCard(btn) {
     var d = _cardData(btn);
     deletePlaylist(d.id, d.title, d.count);
+}
+
+function downloadFromCard(btn){
+  const d = _cardData(btn);
+  if (!d) return;
+  const sameFolder = confirm(
+    'Download every video in "' + d.title + '" from YouTube?\n\n' +
+    'Anything already in your library is skipped, so only what is missing '
+    + 'gets fetched.\n\n' +
+    'OK  = save into the channel\'s existing folder\n' +
+    'Cancel = choose a separate folder instead');
+
+  let folder = null;
+  if (!sameFolder) {
+    folder = prompt('Folder name for these videos:', d.title);
+    if (!folder) return;
+  }
+
+  fetch('/api/playlist/' + d.id + '/download', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(folder ? {folder: folder} : {})
+  })
+  .then(r => r.json())
+  .then(res => {
+    if (res.status !== 'ok') { alert(res.error || 'Failed to start'); return; }
+    alert('Started downloading "' + res.title + '" into ' + res.folder +
+          '.\n\nWatch progress on the dashboard or in Logs.');
+  })
+  .catch(e => alert('Error: ' + e));
 }
 
 function importFromCard(btn) {
