@@ -296,6 +296,23 @@ function mergeHashFolders(btn) {
                 d.errors.forEach(e => h += '<li>' + esc(e) + '</li>');
                 h += '</ul></div>';
             }
+            if (d.blocked && d.blocked.length) {
+                h += '<div style="margin-top:10px;color:var(--orange);">'
+                   + '<b>Merged, but could not be emptied.</b> These still have a # '
+                   + 'because some files already exist in the target folder, and '
+                   + 'overwriting is never done automatically:'
+                   + '<ul style="margin:4px 0 0 18px;">';
+                d.blocked.forEach(b => {
+                    h += '<li><b>' + esc(b.folder) + '</b> - ' + b.count
+                       + ' file(s) blocked, ' + b.same_size + ' identical in size'
+                       + '<div style="color:var(--text-dim);font-size:12px;margin-left:8px;">'
+                       + b.examples.map(esc).join('<br>') + '</div></li>';
+                });
+                h += '</ul><div style="color:var(--text-dim);font-size:12px;margin-top:6px;">'
+                   + 'Where the size matches, the copy in the # folder is almost certainly '
+                   + 'a duplicate and can be deleted. Where it differs, compare them before '
+                   + 'deciding.</div></div>';
+            }
             if (d.skipped && d.skipped.length) {
                 h += '<div style="margin-top:10px;"><b>Left alone on purpose:</b>'
                    + '<ul style="margin:4px 0 0 18px;color:var(--text-dim);">';

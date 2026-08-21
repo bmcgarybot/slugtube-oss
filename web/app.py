@@ -3130,6 +3130,7 @@ def api_merge_hash_folders():
     errors = []
     db_errors = []
     skipped = []          # every # folder NOT merged, with the reason why
+    blocked = []          # merged folders that could not be emptied, and why
 
     for hdir in sorted(shows.iterdir()):
         if not hdir.is_dir():
@@ -3159,6 +3160,7 @@ def api_merge_hash_folders():
         base_path = hdir.parent / base_name
         try:
             if base_path.is_dir():
+                collided = []      # files that could not move: name already taken
                 for root, dirs, files in os.walk(str(hdir)):
                     rel_root = os.path.relpath(root, str(hdir))
                     dest_root = base_path / rel_root
@@ -3168,12 +3170,33 @@ def api_merge_hash_folders():
                         if not dest.exists():
                             dest_root.mkdir(parents=True, exist_ok=True)
                             shutil.move(str(src), str(dest))
+                        else:
+                            # Refusing to overwrite is correct, but silently
+                            # leaving the file behind is why # folders survive
+                            # a "successful" merge with no explanation.
+                            same_size = False
+                            try:
+                                same_size = src.stat().st_size == dest.stat().st_size
+                            except OSError:
+                                pass
+                            collided.append({
+                                "file": os.path.relpath(str(src), str(hdir)),
+                                "identical_size": same_size,
+                            })
                 # Never delete unmoved (collided) files — remove empty dirs only
                 for root, dirs, files in os.walk(str(hdir), topdown=False):
                     try:
                         os.rmdir(root)
                     except OSError:
                         pass
+                if collided:
+                    dupes = sum(1 for c in collided if c["identical_size"])
+                    blocked.append({
+                        "folder": hdir.name,
+                        "count": len(collided),
+                        "same_size": dupes,
+                        "examples": [c["file"] for c in collided[:5]],
+                    })
             else:
                 hdir.rename(base_path)
             # DB cleanup. This is what makes a reindex unnecessary: the merge
@@ -3273,14 +3296,21 @@ def api_merge_hash_folders():
     # later from Logs rather than only in the moment.
     try:
         summary = (f"Merge # folders: {merged} merged, {repointed} DB rows "
-                   f"repointed, {len(skipped)} left alone, "
-                   f"{len(db_errors)} DB failure(s). Scanned {shows}.")
+                   f"repointed, {len(skipped)} left alone, {len(blocked)} "
+                   f"could not be emptied, {len(db_errors)} DB failure(s). "
+                   f"Scanned {shows}.")
         app.logger.info(summary)
         with open(LOG_FILE, "a") as lf:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             lf.write(f"\n{ts} [merge] {summary}\n")
             for sk in skipped:
                 lf.write(f"{ts} [merge]   skipped {sk['name']}: {sk['reason']}\n")
+            for b in blocked:
+                lf.write(f"{ts} [merge]   {b['folder']}: {b['count']} file(s) "
+                         f"already exist in the target ({b['same_size']} identical "
+                         f"in size), so the folder was left in place\n")
+                for ex in b['examples']:
+                    lf.write(f"{ts} [merge]       {ex}\n")
             for e in db_errors:
                 lf.write(f"{ts} [merge]   DB ERROR {e}\n")
             for r in remaining:
@@ -3295,6 +3325,7 @@ def api_merge_hash_folders():
         "errors": errors,
         "db_errors": db_errors,
         "skipped": skipped,
+        "blocked": blocked,
         "remaining_hash_folders": remaining,
         "reindex_needed": bool(db_errors),
         "message": ("Merged and database repointed - no reindex needed."
