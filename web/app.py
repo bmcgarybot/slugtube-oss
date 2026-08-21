@@ -3167,6 +3167,7 @@ def api_merge_hash_folders():
     blocked = []          # merged folders that could not be emptied, and why
     forced_deleted = 0    # verified duplicates removed under force
     forced_kept = 0       # same name but different content: never removed
+    path_checked = 0      # DB path rows examined during repointing
 
     for hdir in sorted(shows.iterdir()):
         if not hdir.is_dir():
@@ -3308,14 +3309,33 @@ def api_merge_hash_folders():
                     conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?",
                                  (base_name, hdir.name))
                     conn.execute("DELETE FROM channels WHERE name = ?", (hdir.name,))
-                # Fix path columns so thumbnails/playback survive the merge
+                # Fix path columns so thumbnails and playback survive the merge.
+                #
+                # This must be done per-row, not as a blanket prefix rewrite.
+                # A blanket rewrite repoints EVERY path under the old folder,
+                # including files that never moved because their name already
+                # existed in the target. Those rows then point at a file that
+                # is not there, which is exactly how thumbnails end up broken
+                # after a "successful" merge. Only rewrite a path when the file
+                # is actually at the new location.
                 old_prefix = str(hdir) + "/"
                 new_prefix = str(base_path) + "/"
                 for col in ("file_path", "thumbnail_path", "subtitle_path", "json_path"):
-                    conn.execute(
-                        f"UPDATE videos SET {col} = ? || substr({col}, ?) "
-                        f"WHERE {col} LIKE ? || '%'",
-                        (new_prefix, len(old_prefix) + 1, old_prefix))
+                    try:
+                        rows_to_fix = conn.execute(
+                            f"SELECT id, {col} FROM videos "
+                            f"WHERE {col} IS NOT NULL AND {col} LIKE ? || '%'",
+                            (old_prefix,)).fetchall()
+                        for vid, oldp in rows_to_fix:
+                            newp = new_prefix + oldp[len(old_prefix):]
+                            if os.path.exists(newp):
+                                conn.execute(f"UPDATE videos SET {col} = ? WHERE id = ?",
+                                             (newp, vid))
+                            # else: the file stayed behind (name collision), so
+                            # the existing path is still the correct one.
+                            path_checked += 1
+                    except Exception as e:
+                        db_errors.append(f"{hdir.name}: could not repoint {col} - {e}")
                 conn.execute("UPDATE playlists SET channel_name = ? WHERE channel_name = ?",
                              (base_name, hdir.name))
 
@@ -3393,6 +3413,7 @@ def api_merge_hash_folders():
         "forced": force,
         "forced_deleted": forced_deleted,
         "forced_kept": forced_kept,
+        "paths_checked": path_checked,
         "remaining_hash_folders": remaining,
         "reindex_needed": bool(db_errors),
         "message": ("Merged and database repointed - no reindex needed."
