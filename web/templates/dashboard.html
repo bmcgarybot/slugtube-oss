@@ -232,13 +232,31 @@ function mergeHashFolders(btn) {
     fetch('/api/merge-hash-folders', {method:'POST'})
         .then(r => r.json())
         .then(d => {
-            if (d.merged > 0) {
-                btn.textContent = '✅ Merged ' + d.merged;
-                setTimeout(() => location.reload(), 2000);
-            } else {
-                btn.textContent = '✅ None found';
-                setTimeout(() => { btn.disabled = false; btn.textContent = '🔧 Merge # Folders'; }, 3000);
+            // Say what actually happened. "None found" while # folders are
+            // plainly still on disk is impossible to act on.
+            let msg = '';
+            if (d.merged > 0) msg += 'Merged ' + d.merged + ' folder(s).\n';
+            if (d.db_errors && d.db_errors.length) {
+                msg += '\nThe files moved but the database was NOT updated for:\n  '
+                     + d.db_errors.join('\n  ')
+                     + '\nA reindex IS needed for those.\n';
             }
+            if (d.skipped && d.skipped.length) {
+                msg += '\nLeft alone on purpose:\n';
+                d.skipped.forEach(s => { msg += '  ' + s.name + '\n      ' + s.reason + '\n'; });
+            }
+            if (d.errors && d.errors.length) {
+                msg += '\nErrors:\n  ' + d.errors.join('\n  ') + '\n';
+            }
+            if (d.remaining_hash_folders && d.remaining_hash_folders.length) {
+                msg += '\nStill has a # in the name:\n  '
+                     + d.remaining_hash_folders.join('\n  ');
+            }
+            if (!msg) msg = 'No folders with a # were found at the top level of your shows folder.';
+
+            alert(msg);
+            if (d.merged > 0) { setTimeout(() => location.reload(), 500); }
+            else { btn.disabled = false; btn.textContent = '🔧 Merge # Folders'; }
         })
         .catch(() => { btn.disabled = false; btn.textContent = '🔧 Merge # Folders'; });
 }

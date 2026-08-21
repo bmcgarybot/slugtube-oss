@@ -3125,12 +3125,33 @@ def api_merge_hash_folders():
     repointed = 0
     errors = []
     db_errors = []
+    skipped = []          # every # folder NOT merged, with the reason why
+
     for hdir in sorted(shows.iterdir()):
-        if not hdir.is_dir() or not hdir.name.endswith('#'):
+        if not hdir.is_dir():
             continue
-        if hdir.name.endswith('#playlists'):
+        name = hdir.name
+        if '#' not in name:
             continue
-        base_name = hdir.name.rstrip('#')
+
+        # Report anything with a # that is not merged, instead of skipping in
+        # silence. Running the button twice and still seeing # folders on disk
+        # is impossible to diagnose otherwise.
+        if name.endswith('#playlists'):
+            skipped.append({"name": name,
+                            "reason": "playlist data folder, kept on purpose"})
+            continue
+        if not name.rstrip().endswith('#'):
+            skipped.append({"name": name,
+                            "reason": "the # is not at the end of the name, so "
+                                      "there is no matching base folder to merge into"})
+            continue
+
+        # Tolerate trailing whitespace: "Channel# " should still merge.
+        base_name = name.rstrip().rstrip('#').rstrip()
+        if not base_name:
+            skipped.append({"name": name, "reason": "name is only # characters"})
+            continue
         base_path = hdir.parent / base_name
         try:
             if base_path.is_dir():
@@ -3235,11 +3256,22 @@ def api_merge_hash_folders():
             errors.append(f"{hdir.name}: {e}")
     _cache_bust("chan_all")
     _cache_bust("dash_channels")
+
+    # Anything with a # still sitting at the top level after the run
+    remaining = []
+    try:
+        remaining = sorted(p.name for p in shows.iterdir()
+                           if p.is_dir() and '#' in p.name)
+    except OSError:
+        pass
+
     return jsonify({
         "merged": merged,
         "repointed": repointed,
         "errors": errors,
         "db_errors": db_errors,
+        "skipped": skipped,
+        "remaining_hash_folders": remaining,
         "reindex_needed": bool(db_errors),
         "message": ("Merged and database repointed - no reindex needed."
                     if merged and not db_errors else
