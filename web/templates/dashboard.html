@@ -252,13 +252,21 @@ function mergeHashFolders(btn) {
                 msg += '\nStill has a # in the name:\n  '
                      + d.remaining_hash_folders.join('\n  ');
             }
-            if (!msg) msg = 'No folders with a # were found at the top level of your shows folder.';
+            if (d.status === 'error') { alert('Merge failed: ' + d.error); btn.disabled=false; btn.textContent='🔧 Merge # Folders'; return; }
+            if (!msg) msg = 'No folders with a # were found in ' + (d.scanned || 'the shows folder')
+                          + '.\n\nIf you can see them on disk, the container is looking somewhere else '
+                          + 'than you are.';
 
             alert(msg);
             if (d.merged > 0) { setTimeout(() => location.reload(), 500); }
             else { btn.disabled = false; btn.textContent = '🔧 Merge # Folders'; }
         })
-        .catch(() => { btn.disabled = false; btn.textContent = '🔧 Merge # Folders'; });
+        .catch(e => {
+            // Never fail silently here. A server error looked identical to
+            // "nothing happened", which made this impossible to diagnose.
+            alert('Merge request failed: ' + e + '\n\nCheck Logs for the server error.');
+            btn.disabled = false; btn.textContent = '🔧 Merge # Folders';
+        });
 }
 
 function syncArchive() {

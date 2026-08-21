@@ -3121,6 +3121,10 @@ def api_merge_hash_folders():
     """One-click: merge all ChannelName# folders into ChannelName."""
     import shutil
     shows = Path(SHOWS_DIR)
+    if not shows.is_dir():
+        return jsonify({"status": "error", "merged": 0,
+                        "error": f"{SHOWS_DIR} is not readable from inside the "
+                                 f"container. Nothing can be merged."}), 500
     merged = 0
     repointed = 0
     errors = []
@@ -3266,6 +3270,7 @@ def api_merge_hash_folders():
         pass
 
     return jsonify({
+        "scanned": str(shows),
         "merged": merged,
         "repointed": repointed,
         "errors": errors,
