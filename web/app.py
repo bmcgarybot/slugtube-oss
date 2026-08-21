@@ -3116,10 +3116,44 @@ def api_reindex():
     return jsonify({"status": "started"})
 
 
+def _same_file_content(a, b, chunk=1024 * 1024):
+    """True only if two files are byte-for-byte identical.
+
+    Compares incrementally so a 4GB video does not have to be read into
+    memory, and bails at the first difference.
+    """
+    import hashlib
+    try:
+        ha, hb = hashlib.sha256(), hashlib.sha256()
+        with open(a, "rb") as fa, open(b, "rb") as fb:
+            while True:
+                ba, bb = fa.read(chunk), fb.read(chunk)
+                if ba != bb:
+                    return False
+                if not ba:
+                    return True
+                ha.update(ba)
+                hb.update(bb)
+    except OSError:
+        return False
+
+
 @app.route("/api/merge-hash-folders", methods=["POST"])
 def api_merge_hash_folders():
-    """One-click: merge all ChannelName# folders into ChannelName."""
+    """One-click: merge all ChannelName# folders into ChannelName.
+
+    Normally a file whose name already exists in the target is left alone and
+    its folder survives. That is deliberate: the merge must never overwrite or
+    destroy something silently.
+
+    force=True deletes leftover files after the move, but ONLY where the file
+    is byte-for-byte identical to the copy already in the target, verified by
+    hash. Anything that differs is still kept, because a same-name file of a
+    different size is a different video, not a duplicate.
+    """
     import shutil
+    import hashlib
+    force = bool((request.get_json(silent=True) or {}).get("force"))
     shows = Path(SHOWS_DIR)
     if not shows.is_dir():
         return jsonify({"status": "error", "merged": 0,
@@ -3131,6 +3165,8 @@ def api_merge_hash_folders():
     db_errors = []
     skipped = []          # every # folder NOT merged, with the reason why
     blocked = []          # merged folders that could not be emptied, and why
+    forced_deleted = 0    # verified duplicates removed under force
+    forced_kept = 0       # same name but different content: never removed
 
     for hdir in sorted(shows.iterdir()):
         if not hdir.is_dir():
@@ -3189,6 +3225,34 @@ def api_merge_hash_folders():
                         os.rmdir(root)
                     except OSError:
                         pass
+                if collided and force:
+                    # Delete only PROVEN duplicates. Size matching is a decent
+                    # hint but not proof, so compare content before removing
+                    # anything that cannot be recovered.
+                    for c in collided:
+                        src_p = hdir / c["file"]
+                        dst_p = base_path / c["file"]
+                        try:
+                            if not (src_p.is_file() and dst_p.is_file()):
+                                continue
+                            if src_p.stat().st_size != dst_p.stat().st_size:
+                                continue
+                            if _same_file_content(src_p, dst_p):
+                                src_p.unlink()
+                                forced_deleted += 1
+                            else:
+                                forced_kept += 1
+                        except OSError:
+                            forced_kept += 1
+                    # Try again to clear the now-possibly-empty tree
+                    for root, dirs, files in os.walk(str(hdir), topdown=False):
+                        try:
+                            os.rmdir(root)
+                        except OSError:
+                            pass
+                    collided = [c for c in collided
+                                if (hdir / c["file"]).exists()]
+
                 if collided:
                     dupes = sum(1 for c in collided if c["identical_size"])
                     blocked.append({
@@ -3326,6 +3390,9 @@ def api_merge_hash_folders():
         "db_errors": db_errors,
         "skipped": skipped,
         "blocked": blocked,
+        "forced": force,
+        "forced_deleted": forced_deleted,
+        "forced_kept": forced_kept,
         "remaining_hash_folders": remaining,
         "reindex_needed": bool(db_errors),
         "message": ("Merged and database repointed - no reindex needed."
