@@ -410,7 +410,14 @@ function renderVideoGrid(videos) {
             progressLabel = '<span class="video-progress-label">' + Math.round(pct) + '% watched</span>';
         }
         var watchedClass = v.watched ? ' is-watched' : '';
-        var checkbox = bulkMode ? '<input type="checkbox" class="bulk-checkbox" data-id="' + escHtml(v.id) + '" onclick="event.preventDefault();event.stopPropagation();this.checked=!this.checked;updateBulkCount();" style="position:absolute;top:8px;left:8px;z-index:5;width:18px;height:18px;cursor:pointer;">' : '';
+        // The checkbox must NOT call preventDefault(). On a checkbox the click
+        // event fires after the browser has already toggled .checked, so
+        // preventDefault() reverts it. Combined with a manual this.checked=!this.checked
+        // the two cancelled out and clicking a checkbox did nothing at all,
+        // leaving drag-select as the only way to select anything.
+        // stopPropagation() is still needed so the card's own handler does not
+        // toggle it a second time.
+        var checkbox = bulkMode ? '<input type="checkbox" class="bulk-checkbox" data-id="' + escHtml(v.id) + '" onclick="event.stopPropagation();updateBulkCount();" style="position:absolute;top:8px;left:8px;z-index:5;width:18px;height:18px;cursor:pointer;">' : '';
 
         html += '<a class="video-card' + watchedClass + '" draggable="false" style="position:relative;" ' + (bulkMode ? 'onclick="event.preventDefault();var cb=this.querySelector(\'.bulk-checkbox\');cb.checked=!cb.checked;updateBulkCount();"' : 'href="/watch/' + encodeURIComponent(v.id) + '"') + '>' +
             checkbox +
