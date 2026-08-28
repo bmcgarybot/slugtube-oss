@@ -41,7 +41,9 @@ OUTPUT_LINES=()
 PINNED=0
 UNPINNED=0
 
-while IFS= read -r line || [ -n "$line" ]; do
+# Read on FD 3: the yt-dlp call inside this loop would otherwise swallow the
+# rest of channels.txt and the loop would stop after the first channel.
+while IFS= read -r line <&3 || [ -n "$line" ]; do
     # Preserve comments and blank lines
     if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "${line// /}" ]]; then
         OUTPUT_LINES+=("$line")
@@ -60,7 +62,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     echo "   🔍 Probing: $URL"
 
     # Get channel name from YouTube (just need 1 video)
-    YT_NAME=$(yt-dlp --print channel --playlist-items 1 --no-warnings --quiet "$URL" 2>/dev/null | head -1)
+    YT_NAME=$(yt-dlp --print channel --playlist-items 1 --no-warnings --quiet "$URL" </dev/null 2>/dev/null | head -1)
 
     if [ -z "$YT_NAME" ]; then
         echo "      ⚠️  Could not resolve channel name — keeping URL only"
@@ -116,7 +118,7 @@ while IFS= read -r line || [ -n "$line" ]; do
         ((PINNED++))
     fi
 
-done < "$CHANNELS_FILE"
+done 3< "$CHANNELS_FILE"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

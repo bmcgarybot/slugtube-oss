@@ -407,7 +407,10 @@ SUCCESS=0
 FAILED=0
 SKIPPED=0
 
-while IFS= read -r line || [ -n "$line" ]; do
+# Read on FD 3, not stdin. yt-dlp inside this loop inherits stdin and
+# swallows the remainder of channels.txt, which made the loop exit after
+# the FIRST channel while still reporting "Processing N channels".
+while IFS= read -r line <&3 || [ -n "$line" ]; do
     [[ "$line" =~ ^[[:space:]]*# ]] && continue
     [[ -z "${line// /}" ]] && continue
 
@@ -461,7 +464,7 @@ while IFS= read -r line || [ -n "$line" ]; do
             echo "   ❌ Error (exit code: $RC)"
             ((FAILED++)) || true
         fi
-    elif yt-dlp "${CHANNEL_YT_OPTS[@]}" "$CHANNEL_URL" 2>&1; then
+    elif yt-dlp "${CHANNEL_YT_OPTS[@]}" "$CHANNEL_URL" </dev/null 2>&1; then
         echo "   ✅ Done"
         ((SUCCESS++)) || true
     else
@@ -475,7 +478,7 @@ while IFS= read -r line || [ -n "$line" ]; do
         fi
     fi
 
-done < "$CHANNELS_FILE"
+done 3< "$CHANNELS_FILE"
 
 # ── Post-download: merge any # folders ──
 /app/scripts/cleanup-hash.sh 2>/dev/null || true
