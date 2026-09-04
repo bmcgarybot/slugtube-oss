@@ -3230,13 +3230,32 @@ def api_merge_hash_folders():
                     # Delete only PROVEN duplicates. Size matching is a decent
                     # hint but not proof, so compare content before removing
                     # anything that cannot be recovered.
+                    # Metadata sidecars are regenerable and are keyed to the
+                    # video, so the copy already in the real channel folder is
+                    # authoritative. They are almost never byte-identical
+                    # (scrape timestamps differ), which meant a folder holding
+                    # only .json sidecars could never empty and the # name
+                    # survived every force merge.
+                    SIDECAR = {".json", ".nfo", ".jpg", ".jpeg", ".png", ".webp",
+                               ".vtt", ".srt", ".txt", ".description", ".lock",
+                               ".part", ".ytdl"}
                     for c in collided:
                         src_p = hdir / c["file"]
                         dst_p = base_path / c["file"]
                         try:
-                            if not (src_p.is_file() and dst_p.is_file()):
+                            if not src_p.is_file():
+                                continue
+                            is_sidecar = src_p.suffix.lower() in SIDECAR
+                            if is_sidecar and dst_p.is_file():
+                                # The channel folder already has one. This copy
+                                # is redundant whatever its contents.
+                                src_p.unlink()
+                                forced_deleted += 1
+                                continue
+                            if not dst_p.is_file():
                                 continue
                             if src_p.stat().st_size != dst_p.stat().st_size:
+                                forced_kept += 1      # different file, keep it
                                 continue
                             if _same_file_content(src_p, dst_p):
                                 src_p.unlink()
@@ -3399,6 +3418,22 @@ def api_merge_hash_folders():
                 lf.write(f"{ts} [merge]   DB ERROR {e}\n")
             for r in remaining:
                 lf.write(f"{ts} [merge]   still has #: {r}\n")
+                # Say WHAT is left, or this line is impossible to act on.
+                try:
+                    leftover = []
+                    for root, _dirs, files in os.walk(str(shows / r)):
+                        for fn in files:
+                            leftover.append(os.path.relpath(
+                                os.path.join(root, fn), str(shows / r)))
+                    if leftover:
+                        lf.write(f"{ts} [merge]       {len(leftover)} file(s) "
+                                 f"remain, e.g. {', '.join(leftover[:4])}\n")
+                    else:
+                        lf.write(f"{ts} [merge]       folder is EMPTY but could "
+                                 f"not be removed (permissions, or open on "
+                                 f"another machine)\n")
+                except OSError as e:
+                    lf.write(f"{ts} [merge]       could not inspect: {e}\n")
     except Exception:
         pass
 
