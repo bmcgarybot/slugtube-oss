@@ -1821,8 +1821,15 @@ def cancel_all():
         try:
             with open(lock_file) as f:
                 lock_pid = int(f.read().strip())
-            os.kill(lock_pid, signal.SIGTERM)
-            cancelled.append(f"Killed lock holder (PID {lock_pid})")
+            # Kill the whole PROCESS GROUP, not just download.sh. A cron-started
+            # run spawns yt-dlp as a child; signalling the parent alone left
+            # yt-dlp downloading while Cancel All reported success.
+            try:
+                os.killpg(os.getpgid(lock_pid), signal.SIGTERM)
+                cancelled.append(f"Killed lock holder group (PID {lock_pid})")
+            except (ProcessLookupError, PermissionError, OSError):
+                os.kill(lock_pid, signal.SIGTERM)
+                cancelled.append(f"Killed lock holder (PID {lock_pid})")
         except (ValueError, ProcessLookupError, PermissionError):
             pass
         try:
@@ -1830,7 +1837,15 @@ def cancel_all():
         except OSError:
             pass
 
-    # 3. Clear the queue
+    # 3. Catch any yt-dlp that outlived its parent, whatever started it.
+    try:
+        killed = subprocess.run(["pkill", "-f", "yt-dlp"], capture_output=True)
+        if killed.returncode == 0:
+            cancelled.append("Killed stray yt-dlp process(es)")
+    except Exception:
+        pass
+
+    # 4. Clear the queue
     queue_dir = "/config/queue"
     queued_files = glob.glob(os.path.join(queue_dir, "*.job"))
     for qf in queued_files:
