@@ -4963,6 +4963,23 @@ _temp_scan_state = {
     "results": [],
 }
 
+def _probes_ok(path: str) -> bool:
+    """True if ffprobe can read a video stream from this file.
+
+    Used to protect a real video whose TITLE merely looks like a temp file.
+    A partial download has no readable stream, so this cleanly separates the
+    two without relying on the filename.
+    """
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name", "-of", "csv=p=0", path],
+            capture_output=True, text=True, timeout=30)
+        return r.returncode == 0 and bool(r.stdout.strip())
+    except Exception:
+        return False   # unreadable: treat as a partial, which is the point
+
+
 def _is_incomplete_download(filename: str) -> bool:
     """True for a partial/interrupted download.
 
@@ -5004,6 +5021,14 @@ def api_temp_scan():
             _temp_scan_state["current_dir"] = os.path.basename(root)
             for f in files:
                 if _is_incomplete_download(f):
+                    path_check = os.path.join(root, f)
+                    # Name matching alone is not proof. A real video that
+                    # happens to contain ".temp." in its title would otherwise
+                    # be offered for deletion. A genuine partial download has
+                    # no valid container, so ask ffprobe: if the file plays,
+                    # it is not a partial, whatever it is called.
+                    if _probes_ok(path_check):
+                        continue
                     ext = os.path.splitext(f)[1].lower()
                     path = os.path.join(root, f)
                     vid_match = re.search(r'\[([a-zA-Z0-9_-]{11})\]', f)
