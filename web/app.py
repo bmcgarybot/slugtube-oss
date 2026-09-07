@@ -4963,6 +4963,26 @@ _temp_scan_state = {
     "results": [],
 }
 
+def _is_incomplete_download(filename: str) -> bool:
+    """True for a partial/interrupted download.
+
+    Checking only the FINAL extension misses the most common case by far:
+    yt-dlp writes "Title.temp.mp4" during a merge, so the last extension is
+    .mp4 and the file looks finished. The marker can sit anywhere in the name,
+    and fragment files carry a .part-FragN suffix.
+    """
+    low = filename.lower()
+    if low.endswith(('.temp', '.part', '.ytdl')):
+        return True
+    if '.part-frag' in low:                 # .part-Frag12 etc
+        return True
+    # Marker before the container extension: name.temp.mp4, name.part.mkv
+    for marker in ('.temp.', '.part.', '.ytdl.'):
+        if marker in low:
+            return True
+    return False
+
+
 @app.route("/api/healthcheck/temp-scan", methods=["POST"])
 def api_temp_scan():
     """Start scanning library for .temp / .part files (background thread)."""
@@ -4977,15 +4997,14 @@ def api_temp_scan():
 
     def scan_worker():
         shows_dir = os.environ.get("SHOWS_DIR", "/shows")
-        temp_extensions = {'.temp', '.part', '.ytdl'}
         found = []
 
         for root, dirs, files in os.walk(shows_dir):
             _temp_scan_state["dirs_scanned"] += 1
             _temp_scan_state["current_dir"] = os.path.basename(root)
             for f in files:
-                ext = os.path.splitext(f)[1].lower()
-                if ext in temp_extensions:
+                if _is_incomplete_download(f):
+                    ext = os.path.splitext(f)[1].lower()
                     path = os.path.join(root, f)
                     vid_match = re.search(r'\[([a-zA-Z0-9_-]{11})\]', f)
                     video_id = vid_match.group(1) if vid_match else None
@@ -5034,7 +5053,7 @@ def api_temp_fix():
 
     archive_file = "/config/archive/downloaded.txt"
     shows_dir = os.environ.get("SHOWS_DIR", "/shows")
-    temp_extensions = {'.temp', '.part', '.ytdl'}
+
     fixed = 0
 
     # Collect files to fix
@@ -5044,7 +5063,7 @@ def api_temp_fix():
     elif fix_all:
         for root, dirs, files in os.walk(shows_dir):
             for f in files:
-                if os.path.splitext(f)[1].lower() in temp_extensions:
+                if _is_incomplete_download(f):
                     targets.append(os.path.join(root, f))
 
     for path in targets:
