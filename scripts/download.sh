@@ -407,10 +407,23 @@ SUCCESS=0
 FAILED=0
 SKIPPED=0
 
-# Read on FD 3, not stdin. yt-dlp inside this loop inherits stdin and
-# swallows the remainder of channels.txt, which made the loop exit after
-# the FIRST channel while still reporting "Processing N channels".
-while IFS= read -r line <&3 || [ -n "$line" ]; do
+# Read the whole channel list into an array FIRST, then iterate it.
+#
+# Earlier attempts kept the file open during the loop (stdin, then FD 3) and
+# relied on every child being detached from it. That is fragile: children
+# inherit every descriptor, so one unguarded command anywhere in the body can
+# end the loop early with no error at all. Runs were stopping after 1-3 of
+# 164 channels with nothing logged.
+#
+# With the file read and closed before the first channel is touched, nothing
+# a child process does can truncate the list.
+CHANNEL_LINES=()
+while IFS= read -r _l || [ -n "$_l" ]; do
+    CHANNEL_LINES+=("$_l")
+done < "$CHANNELS_FILE"
+echo "   Loaded ${#CHANNEL_LINES[@]} line(s) from $CHANNELS_FILE"
+
+for line in "${CHANNEL_LINES[@]}"; do
     [[ "$line" =~ ^[[:space:]]*# ]] && continue
     [[ -z "${line// /}" ]] && continue
 
@@ -478,7 +491,7 @@ while IFS= read -r line <&3 || [ -n "$line" ]; do
         fi
     fi
 
-done 3< "$CHANNELS_FILE"
+done
 
 # ── Post-download: merge any # folders ──
 /app/scripts/cleanup-hash.sh 2>/dev/null || true
