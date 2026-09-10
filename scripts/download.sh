@@ -45,7 +45,7 @@ fast_check_channel() {
                  --print id --no-warnings --ignore-errors \
                  --cookies "$COOKIES_FILE" \
                  --sleep-requests 2 \
-                 "$url" 2>/dev/null | grep -E '^[A-Za-z0-9_-]{11}$' || true)
+                 "$url" </dev/null 2>/dev/null | grep -E '^[A-Za-z0-9_-]{11}$' || true)
 
     if [ -z "$ids" ]; then
         echo "   ⚠️  Could not list recent videos for fast check"
@@ -73,7 +73,7 @@ fast_check_channel() {
         [ -n "$vid" ] && urls+=("https://www.youtube.com/watch?v=${vid}")
     done <<< "$new_ids"
 
-    yt-dlp "${_opts[@]}" "${urls[@]}" || true
+    yt-dlp "${_opts[@]}" "${urls[@]}" </dev/null || true
 }
 
 
@@ -290,7 +290,7 @@ if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_
         elif [ $RC -ne 10 ]; then
             echo "   ❌ Error (exit code: $RC)"
         fi
-    elif yt-dlp "${YT_OPTS[@]}" "$SINGLE_URL" 2>&1; then
+    elif yt-dlp "${YT_OPTS[@]}" "$SINGLE_URL" </dev/null 2>&1; then
         echo "   ✅ Done"
     else
         EXIT_CODE=$?
