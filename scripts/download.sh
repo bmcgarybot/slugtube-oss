@@ -466,8 +466,15 @@ for line in "${CHANNEL_LINES[@]}"; do
     fi
 
     if [ "$MODE" = "--fast" ]; then
-        fast_check_channel "$CHANNEL_URL" CHANNEL_YT_OPTS
-        RC=$?
+        # set -euo pipefail is active. fast_check_channel returns a MEANINGFUL
+        # non-zero code (10 = up to date, 20 = listing failed), and under
+        # errexit a bare command returning non-zero terminates the script
+        # immediately, before RC=$? can even run. That is why every run ended
+        # at the first already-current channel with no error message.
+        # "|| RC=$?" keeps the call in a condition context, where errexit does
+        # not apply.
+        RC=0
+        fast_check_channel "$CHANNEL_URL" CHANNEL_YT_OPTS || RC=$?
         if [ $RC -eq 0 ]; then
             echo "   ✅ Done"
             ((SUCCESS++)) || true
