@@ -283,8 +283,10 @@ if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_
     echo "   Started: $(date '+%H:%M:%S')"
 
     if [ "$FAST_SINGLE" = "true" ]; then
-        fast_check_channel "$SINGLE_URL" YT_OPTS
-        RC=$?
+        # Same errexit trap as the main loop: a bare call returning 10
+        # (up to date) would terminate the script before RC=$? ran.
+        RC=0
+        fast_check_channel "$SINGLE_URL" YT_OPTS || RC=$?
         if [ $RC -eq 0 ]; then
             echo "   ✅ Done"
         elif [ $RC -ne 10 ]; then
