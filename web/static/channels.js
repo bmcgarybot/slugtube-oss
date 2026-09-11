@@ -912,6 +912,8 @@ function executeDelete(ids, exclude) {
         if (data.status === 'ok') {
             var msg = 'Deleted ' + (data.deleted || total) + ' video' + ((data.deleted || total) > 1 ? 's' : '') + '.';
             if (exclude) msg += ' Excluded from future downloads.';
+            else if (data.requeued) msg += ' ' + data.requeued +
+                     ' will be downloaded again on the next scan.';
             showToast(msg);
         } else {
             alert('Error: ' + (data.error || 'Unknown error'));

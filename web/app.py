@@ -4069,6 +4069,7 @@ def api_bulk_delete():
     video_ids = data["video_ids"]
     deleted = 0
     excluded = 0
+    requeued = 0      # entries removed from the archive so they download again
 
     for vid_id in video_ids:
         video = get_video(vid_id)
@@ -4105,19 +4106,38 @@ def api_bulk_delete():
         except Exception as e:
             app.logger.error(f"Error deleting {vid_id} from DB: {e}")
 
-        # Add youtube ID to archive to block re-download (only if exclude requested)
+        # The checkbox says "Prevents these videos from being re-downloaded",
+        # so unchecking it has to mean they WILL be re-downloaded. Skipping the
+        # archive write is not enough for anything already recorded there, such
+        # as an interrupted download: yt-dlp logs the ID when the download
+        # STARTS, so a failed merge leaves a .temp file whose ID is already in
+        # the archive and which therefore never comes back. Unchecked now
+        # REMOVES the entry.
         also_exclude = data.get('exclude', True)  # Default true for backward compat
         yt_id = video.get('youtube_id', vid_id)
-        if yt_id and also_exclude:
+        if yt_id:
             try:
                 os.makedirs("/config/archive", exist_ok=True)
-                with open(ARCHIVE_FILE, "a") as f:
-                    f.write(f"youtube {yt_id}\n")
-                excluded += 1
+                if also_exclude:
+                    with open(ARCHIVE_FILE, "a") as f:
+                        f.write(f"youtube {yt_id}\n")
+                    excluded += 1
+                elif os.path.isfile(ARCHIVE_FILE):
+                    # Drop any existing entry so this video downloads again.
+                    with open(ARCHIVE_FILE, "r") as f:
+                        lines = f.readlines()
+                    kept = [l for l in lines if yt_id not in l]
+                    if len(kept) != len(lines):
+                        tmp = ARCHIVE_FILE + ".tmp"
+                        with open(tmp, "w") as f:
+                            f.writelines(kept)
+                        os.replace(tmp, ARCHIVE_FILE)
+                        requeued += 1
             except Exception as e:
-                app.logger.error(f"Error adding {yt_id} to archive: {e}")
+                app.logger.error(f"Error updating archive for {yt_id}: {e}")
 
-    return jsonify({"status": "ok", "deleted": deleted, "excluded": excluded})
+    return jsonify({"status": "ok", "deleted": deleted,
+                    "excluded": excluded, "requeued": requeued})
 
 
 @app.route("/api/bulk-exclude", methods=["POST"])
