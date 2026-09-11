@@ -2176,6 +2176,80 @@ def api_repair_video_ids():
     return jsonify(report)
 
 
+@app.route("/api/prune-archive", methods=["POST"])
+def api_prune_archive():
+    """Remove archive entries for videos that are no longer on disk.
+
+    yt-dlp refuses to download anything whose ID is in the archive, so a video
+    deleted from the library is gone for good: the file is missing and the
+    archive still claims it was downloaded. Nothing re-queues it.
+
+    This walks the library, collects every video ID actually present, and drops
+    archive lines for IDs that are not. Deleting a video then simply means it
+    comes back on the next scan, which is what people expect deleting to do.
+    """
+    import re as _re, shutil
+    data = request.get_json(silent=True) or {}
+    dry_run = bool(data.get("dry_run", True))     # safe by default
+
+    archive_path = ARCHIVE_FILE
+    if not os.path.isfile(archive_path):
+        return jsonify({"status": "error", "error": "No archive file found."}), 404
+
+    # Every ID present on disk, taken from the filename, e.g. [dQw4w9WgXcQ]
+    VIDEO_EXT = (".mp4", ".mkv", ".webm", ".avi", ".m4v", ".mov")
+    on_disk = set()
+    id_re = _re.compile(r"\[([A-Za-z0-9_-]{11})\]")
+    try:
+        for root, _dirs, files in os.walk(SHOWS_DIR):
+            for fn in files:
+                if not fn.lower().endswith(VIDEO_EXT):
+                    continue
+                if _is_incomplete_download(fn):
+                    continue          # a partial is not "present"
+                m = id_re.search(fn)
+                if m:
+                    on_disk.add(m.group(1))
+    except OSError as e:
+        return jsonify({"status": "error", "error": f"Could not scan library: {e}"}), 500
+
+    kept, pruned = [], []
+    with open(archive_path, "r") as f:
+        for line in f:
+            raw = line.rstrip("\n")
+            if not raw.strip():
+                continue
+            parts = raw.split()
+            vid = parts[1] if len(parts) >= 2 else parts[0]
+            if vid in on_disk:
+                kept.append(raw)
+            else:
+                pruned.append(vid)
+
+    if not dry_run and pruned:
+        # Keep a copy: this file decides what the whole library re-downloads.
+        try:
+            shutil.copy2(archive_path, archive_path + ".bak")
+        except Exception:
+            pass
+        tmp = archive_path + ".tmp"
+        with open(tmp, "w") as f:
+            f.write("\n".join(kept) + ("\n" if kept else ""))
+        os.replace(tmp, archive_path)
+        app.logger.info(f"Archive pruned: {len(pruned)} entr(ies) removed, "
+                        f"{len(kept)} kept")
+
+    return jsonify({
+        "status": "ok",
+        "dry_run": dry_run,
+        "on_disk": len(on_disk),
+        "archive_total": len(kept) + len(pruned),
+        "would_remove" if dry_run else "removed": len(pruned),
+        "kept": len(kept),
+        "examples": pruned[:20],
+    })
+
+
 @app.route("/api/sync-archive", methods=["POST"])
 def api_sync_archive():
     """Backfill the yt-dlp archive with YouTube IDs from the indexer DB and
