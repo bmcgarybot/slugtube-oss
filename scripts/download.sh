@@ -243,7 +243,14 @@ if ([ "$MODE" = "--single" ] || [ "$MODE" = "--fast-single" ]) && [ -n "$SINGLE_
         --retry-sleep 30
         --no-overwrites
         --windows-filenames
-        --trim-filenames 200
+        # 60 CHARACTERS, not 200. Linux caps a filename component at 255
+        # BYTES, and --trim-filenames counts characters. A title in Cyrillic,
+        # CJK or containing emoji runs 2-4 bytes per character, so 200
+        # characters can be 800 bytes and the write fails with Errno 36,
+        # "File name too long". That stalled a run on a video whose title was
+        # non-Latin. 60 characters is safe even at 4 bytes each, leaving room
+        # for the [videoid] and suffixes like .en-orig.srt.
+        --trim-filenames 60
         --no-write-playlist-metafiles
         --exec "after_move:curl -sf -X POST http://localhost:5000/api/index-video -d file={} || true"
     )
@@ -355,7 +362,9 @@ YT_OPTS=(
     --retry-sleep 30
     --no-overwrites
     --windows-filenames
-    --trim-filenames 200
+    # 60 characters, not 200: the limit is 255 BYTES and this counts
+    # characters. See the note on the other options array.
+    --trim-filenames 60
     --no-write-playlist-metafiles
 
     # Live-index: notify Flask to index each video as soon as it's downloaded
