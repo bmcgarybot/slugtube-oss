@@ -1,11 +1,13 @@
 # ============================================================
-# SlugTube - Homemade PinchFlat (With Dashboard)
+# SlugTube - self-hosted YouTube archiver with a dashboard
 # ============================================================
-# Start:   docker compose up -d
-# Stop:    docker compose down
-# Logs:    docker compose logs -f
-# Web UI:  http://localhost:5000
-# Update:  Run update.bat (git pull + restart)
+# 1. Copy .env.example to .env and set your paths
+# 2. docker compose up -d
+# 3. Open http://localhost:5000
+#
+# Stop:   docker compose down
+# Logs:   docker compose logs -f
+# Update: run update.bat (Windows) or git pull && docker compose restart
 # ============================================================
 
 services:
@@ -14,22 +16,32 @@ services:
     container_name: slugtube
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "${WEB_PORT:-5000}:5000"
     environment:
-      - FAST_CRON=0 */6 * * *
-      - FULL_CRON=0 3 * * 0
-      - UPDATE_CRON=0 1 * * *
-      - TZ=America/Phoenix
-      - PUID=1000
-      - PGID=1000
+      - FAST_CRON=${FAST_CRON:-0 */6 * * *}
+      - FULL_CRON=${FULL_CRON:-0 3 * * 0}
+      - UPDATE_CRON=${UPDATE_CRON:-0 1 * * *}
+      - TZ=${TZ:-UTC}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
     volumes:
-      # Your media library
-      - G:/Youtube/shows:/shows
-      # SlugTube config, cookies, archive, logs, database
-      - C:/SlugTube:/config
-      # Live code mount — relative to this docker-compose.yml
+      # Your media library. Set MEDIA_PATH in .env
+      - ${MEDIA_PATH:?set MEDIA_PATH in .env}:/shows
+      # Config, cookies, archive, logs, database. Set CONFIG_PATH in .env
+      - ${CONFIG_PATH:?set CONFIG_PATH in .env}:/config
+      # Live code mount, relative to this file
       - ./scripts:/app/scripts
       - ./web:/app/web
+
+      # ---- Optional: spread the library across more than one drive ----
+      # SlugTube treats /shows as one library. To put individual channels on
+      # another disk, mount that disk's folder at the channel's path inside
+      # /shows. The app sees one library; the files live on two drives.
+      # Useful when the drives cannot be pooled, for example a non-NTFS disk
+      # that StableBit DrivePool will not accept.
+      #
+      # - D:/Youtube/Chilling Tales for Dark Nights:/shows/Chilling Tales for Dark Nights
+      # - D:/Youtube/Creeps McPasta:/shows/Creeps McPasta
     logging:
       driver: json-file
       options:

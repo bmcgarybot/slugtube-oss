@@ -13,7 +13,7 @@ SlugTube replaces PinchFlat with a simpler, more reliable YouTube archiver. It u
 ## Requirements
 
 - **Docker Desktop** (Windows, Mac, or Linux)
-- **A media drive** with your YouTube library (e.g., `G:\Youtube\shows`)
+- **A media drive** with your YouTube library (e.g., `<MEDIA_PATH>`)
 - **YouTube cookies** (for age-restricted or members-only content)
 
 ---
@@ -23,15 +23,15 @@ SlugTube replaces PinchFlat with a simpler, more reliable YouTube archiver. It u
 ### 1. Create the SlugTube folder
 
 ```
-C:\SlugTube\
+<CONFIG_PATH>\
 ```
 
 ### 2. Extract the archive
 
-Extract `SlugTube.tar.gz` into `C:\SlugTube\`. You should have:
+Extract `SlugTube.tar.gz` into `<CONFIG_PATH>\`. You should have:
 
 ```
-C:\SlugTube\
+<CONFIG_PATH>\
 ├── docker-compose.yml
 ├── Dockerfile
 ├── README.md
@@ -59,16 +59,16 @@ The default mount points are:
 
 ```yaml
 volumes:
-  - ./:/config              # C:\SlugTube config, cookies, archive, logs
-  - G:\Youtube\shows:/shows  # Your media library
+  - ./:/config              # <CONFIG_PATH> config, cookies, archive, logs
+  - <MEDIA_PATH>:/shows  # Your media library
 ```
 
-Change `G:\Youtube\shows` to wherever your library lives.
+Change `<MEDIA_PATH>` to wherever your library lives.
 
 ### 4. Build and start
 
 ```powershell
-cd C:\SlugTube
+cd <CONFIG_PATH>
 docker compose up -d --build
 ```
 
@@ -125,7 +125,7 @@ You can watch progress on the **Logs** page.
 Go to **Channels** → paste a YouTube URL → click **Add Channel**
 
 ### Manually
-Edit `C:\SlugTube\channels.txt` — one URL per line:
+Edit `<CONFIG_PATH>\channels.txt` — one URL per line:
 
 ```
 # --- Science & Education ---
@@ -149,7 +149,7 @@ Some videos require authentication (age-restricted, members-only, etc.).
 3. Export cookies
 4. Go to **Cookies** page → paste → **Save**
 
-Or manually place the file at `C:\SlugTube\Cookie\cookies.txt`
+Or manually place the file at `<CONFIG_PATH>\Cookie\cookies.txt`
 
 ---
 
@@ -158,7 +158,7 @@ Or manually place the file at `C:\SlugTube\Cookie\cookies.txt`
 SlugTube organizes downloads as Jellyfin TV shows:
 
 ```
-G:\Youtube\shows\
+<MEDIA_PATH>\
 ├── Channel Name/
 │   ├── poster.jpg              ← Channel avatar
 │   ├── tvshow.nfo              ← Jellyfin metadata
@@ -179,7 +179,7 @@ This is compatible with Jellyfin alongside existing PinchFlat downloads.
 
 ## Settings
 
-Configurable from the **Settings** page or `C:\SlugTube\slugtube-config.json`:
+Configurable from the **Settings** page or `<CONFIG_PATH>\slugtube-config.json`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -198,7 +198,7 @@ Configurable from the **Settings** page or `C:\SlugTube\slugtube-config.json`:
 ## Updating SlugTube
 
 ```powershell
-cd C:\SlugTube
+cd <CONFIG_PATH>
 docker compose down
 # Replace code files (keep Cookie/, archive/, logs/ folders)
 docker compose up -d --build
@@ -221,7 +221,7 @@ Your data (archive, cookies, logs, config) is preserved — only code files get 
 - Run a manual **⚡ Fast Check** from the dashboard
 
 ### Videos being re-downloaded
-- The archive file (`C:\SlugTube\archive\downloaded.txt`) tracks completed downloads
+- The archive file (`<CONFIG_PATH>\archive\downloaded.txt`) tracks completed downloads
 - If it's empty or missing, run the archive seeder: the container does this automatically on first start
 
 ### Container won't start
@@ -253,8 +253,8 @@ Your data (archive, cookies, logs, config) is preserved — only code files get 
 │  │  - Pause-aware                   │   │
 │  └──────────────────────────────────┘   │
 │                                         │
-├─── /config ── C:\SlugTube\ ─────────────┤
-├─── /shows ── G:\Youtube\shows\ ─────────┤
+├─── /config ── <CONFIG_PATH>\ ─────────────┤
+├─── /shows ── <MEDIA_PATH>\ ─────────┤
 └─────────────────────────────────────────┘
 ```
 

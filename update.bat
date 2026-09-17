@@ -4,7 +4,7 @@ echo   SlugTube Updater
 echo ========================================
 echo.
 
-cd /d C:\SlugTube-new
+cd /d "%~dp0"
 echo Pulling latest from GitHub...
 git pull
 if %ERRORLEVEL% neq 0 (

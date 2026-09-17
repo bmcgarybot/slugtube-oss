@@ -8,23 +8,40 @@ Same features (embedded subs, metadata, thumbnails, Jellyfin TV show structure),
 
 ## Quick Start
 
-```powershell
-# 1. Make sure Docker Desktop is running
+You need Docker installed. Everything else is in this repo.
 
-# 2. Open PowerShell, navigate to SlugTube
-cd C:\SlugTube
+```bash
+git clone https://github.com/bmcgarybot/slugtube-oss.git
+cd slugtube-oss
 
-# 3. Add your channels to channels.txt (one URL per line)
-notepad channels.txt
+# 1. Tell it where your files go
+cp .env.example .env
+#    then edit .env and set MEDIA_PATH and CONFIG_PATH
 
-# 4. Make sure your cookies.txt is at C:\SlugTube\Cookie\cookies.txt
-
-# 5. Launch
+# 2. Start it
 docker compose up -d
 
-# 6. Watch it work
-docker compose logs -f
+# 3. Open the dashboard
+#    http://localhost:5000
 ```
+
+Add channels from the dashboard, or edit `channels.txt` directly.
+
+### Cookies
+
+YouTube blocks a lot of downloads without a signed-in session. Export your
+cookies to `cookies.txt` (the "Get cookies.txt LOCALLY" browser extension
+works) and place it at `<CONFIG_PATH>/Cookie/cookies.txt`. The dashboard shows
+a coloured dot for cookie health: green is fine, orange means refresh soon,
+red means expired.
+
+### Storage across more than one drive
+
+SlugTube treats `/shows` as a single library. If one disk is not enough, mount
+a second disk at the path of a specific channel inside `/shows`. There are
+commented examples in `docker-compose.yml`. The app still sees one library
+while the files live on two drives, which also works when the disks cannot be
+pooled, for example a non-NTFS disk that StableBit DrivePool will not accept.
 
 ## What It Does
 
@@ -39,7 +56,7 @@ docker compose logs -f
 
 ```powershell
 # Add a channel — just edit the text file
-notepad C:\SlugTube\channels.txt
+notepad <CONFIG_PATH>\channels.txt
 
 # Add a line like:
 # https://www.youtube.com/@NewChannel
@@ -75,7 +92,7 @@ docker compose down
 ## File Structure
 
 ```
-C:\SlugTube\
+<CONFIG_PATH>\
 ├── docker-compose.yml      ← Docker config
 ├── Dockerfile              ← Container build
 ├── channels.txt            ← YOUR CHANNELS (edit this!)
@@ -118,14 +135,14 @@ YouTube requires cookies for:
 - Member/paid content
 - Sometimes to avoid rate limiting
 
-Your cookies file should be in Netscape format at `C:\SlugTube\Cookie\cookies.txt`.
+Your cookies file should be in Netscape format at `<CONFIG_PATH>/Cookie/cookies.txt`.
 
 To refresh cookies, use a browser extension like "Get cookies.txt LOCALLY" and export to that path.
 
 ## Troubleshooting
 
 **"No channels.txt found"**
-→ Make sure `C:\SlugTube\channels.txt` exists with at least one URL
+→ Make sure `<CONFIG_PATH>\channels.txt` exists with at least one URL
 
 **Videos aren't downloading**
 → Check logs: `docker compose logs --tail 50`
@@ -136,7 +153,7 @@ To refresh cookies, use a browser extension like "Get cookies.txt LOCALLY" and e
 → Or restart the container (it updates on startup)
 
 **Want to re-download a specific video**
-→ Remove its line from `C:\SlugTube\archive\downloaded.txt`
+→ Remove its line from `<CONFIG_PATH>\archive\downloaded.txt`
 → Run a manual check
 
 ---
